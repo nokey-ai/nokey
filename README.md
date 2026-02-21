@@ -158,6 +158,21 @@ Enter your nokey PIN to access secrets: ****
 # Only after you enter correct PIN does the script run
 ```
 
+**Verify it can't be bypassed:**
+```bash
+# AI cannot automate PIN setup
+echo -e "1234\n1234" | nokey auth setup
+# Error: PIN setup requires an interactive terminal
+
+# AI cannot pipe PIN to bypass auth
+echo "1234" | nokey exec -- command
+# Error: authentication requires an interactive terminal
+
+# --yes does not bypass PIN
+nokey exec --yes -- command
+# Still prompts for PIN when configured
+```
+
 ### 2. OAuth Authentication
 
 Authenticate with OAuth providers (GitHub, custom) as an alternative or addition to PIN.
