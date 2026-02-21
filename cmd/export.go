@@ -36,7 +36,7 @@ Supported shells: bash, zsh, fish, powershell`,
 func init() {
 	rootCmd.AddCommand(exportCmd)
 	exportCmd.Flags().StringVar(&shellType, "shell", "", "Shell type (bash, zsh, fish, powershell)")
-	exportCmd.MarkFlagRequired("shell")
+	_ = exportCmd.MarkFlagRequired("shell")
 }
 
 func runExport(cmd *cobra.Command, args []string) error {

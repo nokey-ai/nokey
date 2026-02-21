@@ -38,19 +38,19 @@ type Provider interface {
 }
 
 // TokenKeyPrefix is the keyring prefix for OAuth tokens
-const TokenKeyPrefix = "__nokey_oauth_token_"
+const TokenKeyPrefix = "__nokey_oauth_token_" //nolint:gosec // Not a credential, just a keyring key prefix
 
 // CredentialsKeyPrefix is the keyring prefix for OAuth client credentials
-const CredentialsKeyPrefix = "__nokey_oauth_creds_"
+const CredentialsKeyPrefix = "__nokey_oauth_creds_" //nolint:gosec // Not a credential, just a keyring key prefix
 
 // ClientCredentials stores OAuth client credentials for token refresh
 type ClientCredentials struct {
 	ClientID     string   `json:"client_id"`
 	ClientSecret string   `json:"client_secret"`
-	AuthURL      string   `json:"auth_url,omitempty"`      // For generic providers
-	TokenURL     string   `json:"token_url,omitempty"`     // For generic providers
-	UserInfoURL  string   `json:"userinfo_url,omitempty"`  // For generic providers
-	Scopes       []string `json:"scopes,omitempty"`        // For generic providers
+	AuthURL      string   `json:"auth_url,omitempty"`     // For generic providers
+	TokenURL     string   `json:"token_url,omitempty"`    // For generic providers
+	UserInfoURL  string   `json:"userinfo_url,omitempty"` // For generic providers
+	Scopes       []string `json:"scopes,omitempty"`       // For generic providers
 }
 
 // GetTokenKey returns the keyring key for a provider's token

@@ -121,7 +121,7 @@ func verifyArgon2id(pin, encoded string) (bool, error) {
 	}
 
 	// Compute hash with same parameters
-	computedHash := argon2.IDKey([]byte(pin), salt, time, memory, threads, uint32(len(expectedHash)))
+	computedHash := argon2.IDKey([]byte(pin), salt, time, memory, threads, uint32(len(expectedHash))) //nolint:gosec // len(expectedHash) is always 32 bytes from argon2 output
 
 	// Constant-time comparison to prevent timing attacks
 	return subtle.ConstantTimeCompare(computedHash, expectedHash) == 1, nil

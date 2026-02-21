@@ -158,9 +158,9 @@ func init() {
 	authOAuthSetupCmd.Flags().StringVar(&oauthTokenURL, "token-url", "", "OAuth token URL (for generic provider)")
 	authOAuthSetupCmd.Flags().StringVar(&oauthUserInfoURL, "userinfo-url", "", "OAuth user info URL (for generic provider)")
 	authOAuthSetupCmd.Flags().StringSliceVar(&oauthScopes, "scopes", nil, "OAuth scopes (for generic provider)")
-	authOAuthSetupCmd.MarkFlagRequired("provider")
-	authOAuthSetupCmd.MarkFlagRequired("client-id")
-	authOAuthSetupCmd.MarkFlagRequired("client-secret")
+	_ = authOAuthSetupCmd.MarkFlagRequired("provider")
+	_ = authOAuthSetupCmd.MarkFlagRequired("client-id")
+	_ = authOAuthSetupCmd.MarkFlagRequired("client-secret")
 
 	// OAuth refresh/logout flags
 	authOAuthRefreshCmd.Flags().StringVar(&oauthProvider, "provider", "github", "OAuth provider name")
@@ -294,7 +294,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create callback server: %w", err)
 		}
-		defer callbackServer.Shutdown(context.Background())
+		defer func() { _ = callbackServer.Shutdown(context.Background()) }()
 
 		redirectURL := callbackServer.GetRedirectURL()
 		providerName = "github"
@@ -365,7 +365,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("failed to create callback server: %w", err)
 		}
-		defer callbackServer.Shutdown(context.Background())
+		defer func() { _ = callbackServer.Shutdown(context.Background()) }()
 
 		redirectURL := callbackServer.GetRedirectURL()
 		providerName = "generic"

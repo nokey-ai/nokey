@@ -40,9 +40,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	signal.Notify(ch, syscall.SIGWINCH)
 	go func() {
 		for range ch {
-			if err := pty.InheritSize(os.Stdin, ptmx); err != nil {
-				// Ignore errors
-			}
+			_ = pty.InheritSize(os.Stdin, ptmx)
 		}
 	}()
 	ch <- syscall.SIGWINCH // Initial resize
@@ -55,7 +53,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 		oldState = nil
 	}
 	if oldState != nil {
-		defer term.Restore(int(os.Stdin.Fd()), oldState)
+		defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
 	}
 
 	// Setup signal forwarding
@@ -64,7 +62,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	go func() {
 		for sig := range sigChan {
 			if cmd.Process != nil {
-				cmd.Process.Signal(sig)
+				_ = cmd.Process.Signal(sig)
 			}
 		}
 	}()
@@ -81,12 +79,12 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 		case <-ctx.Done():
 			return
 		default:
-			io.Copy(ptmx, os.Stdin)
+			_, _ = io.Copy(ptmx, os.Stdin)
 		}
 	}()
 
 	// Copy PTY output to stdout with redaction
-	io.Copy(os.Stdout, &redactingReader{
+	_, _ = io.Copy(os.Stdout, &redactingReader{
 		reader:   ptmx,
 		redactor: redactor,
 	})

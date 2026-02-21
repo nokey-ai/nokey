@@ -189,7 +189,7 @@ func (cs *CallbackServer) renderSuccess(w http.ResponseWriter) {
 </html>
 `))
 
-	tmpl.Execute(w, nil)
+	_ = tmpl.Execute(w, nil)
 }
 
 // renderError renders an error page
@@ -253,5 +253,5 @@ func (cs *CallbackServer) renderError(w http.ResponseWriter, errorMsg string) {
 </html>
 `))
 
-	tmpl.Execute(w, errorMsg)
+	_ = tmpl.Execute(w, errorMsg)
 }
