@@ -1,0 +1,148 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+// AuditConfig contains audit logging configuration
+type AuditConfig struct {
+	Enabled       bool `yaml:"enabled,omitempty"`
+	MaxEntries    int  `yaml:"max_entries,omitempty"`
+	RetentionDays int  `yaml:"retention_days,omitempty"`
+}
+
+// OAuthGitHubConfig contains GitHub OAuth configuration
+type OAuthGitHubConfig struct {
+	Enabled      bool   `yaml:"enabled,omitempty"`
+	ClientID     string `yaml:"client_id,omitempty"`
+	ClientSecret string `yaml:"client_secret,omitempty"`
+}
+
+// OAuthCustomConfig contains custom OAuth 2.0 provider configuration
+type OAuthCustomConfig struct {
+	Enabled      bool   `yaml:"enabled,omitempty"`
+	ProviderName string `yaml:"provider_name,omitempty"`
+	AuthURL      string `yaml:"auth_url,omitempty"`
+	TokenURL     string `yaml:"token_url,omitempty"`
+	ClientID     string `yaml:"client_id,omitempty"`
+	ClientSecret string `yaml:"client_secret,omitempty"`
+}
+
+// OAuthConfig contains OAuth configuration for all providers
+type OAuthConfig struct {
+	GitHub OAuthGitHubConfig `yaml:"github,omitempty"`
+	Custom OAuthCustomConfig `yaml:"custom,omitempty"`
+}
+
+// AuthConfig contains authentication configuration
+type AuthConfig struct {
+	DefaultMethod string      `yaml:"default_method,omitempty"` // "pin", "oauth", "both", "none"
+	OAuth         OAuthConfig `yaml:"oauth,omitempty"`
+}
+
+// Config represents the nokey configuration
+type Config struct {
+	// DefaultBackend is the keyring backend to use by default
+	DefaultBackend string `yaml:"default_backend,omitempty"`
+
+	// RedactByDefault enables output redaction by default in exec mode
+	RedactByDefault bool `yaml:"redact_by_default,omitempty"`
+
+	// ServiceName is the custom service name for keyring entries
+	ServiceName string `yaml:"service_name,omitempty"`
+
+	// RequireAuth requires human authentication before accessing any secrets
+	// DEPRECATED: Use Auth.DefaultMethod instead. Kept for backward compatibility.
+	// This creates a zero-trust model where AI assistants cannot access secrets
+	// without explicit human interaction (PIN/password entry)
+	RequireAuth bool `yaml:"require_auth,omitempty"`
+
+	// Audit contains audit logging configuration
+	Audit AuditConfig `yaml:"audit,omitempty"`
+
+	// Auth contains authentication configuration
+	Auth AuthConfig `yaml:"auth,omitempty"`
+}
+
+// DefaultConfig returns a config with sensible defaults
+func DefaultConfig() *Config {
+	return &Config{
+		DefaultBackend:  "", // Empty means use keyring's default
+		RedactByDefault: false,
+		ServiceName:     "nokey",
+		RequireAuth:     false,
+		Audit: AuditConfig{
+			Enabled:       false,
+			MaxEntries:    1000,
+			RetentionDays: 90,
+		},
+		Auth: AuthConfig{
+			DefaultMethod: "", // Empty means auto-detect (PIN if configured, else none)
+		},
+	}
+}
+
+// ConfigPath returns the path to the config file
+func ConfigPath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("failed to get user home directory: %w", err)
+	}
+
+	configDir := filepath.Join(homeDir, ".config", "nokey")
+	return filepath.Join(configDir, "config.yaml"), nil
+}
+
+// Load reads the config file, or returns default config if it doesn't exist
+func Load() (*Config, error) {
+	path, err := ConfigPath()
+	if err != nil {
+		return nil, err
+	}
+
+	// If config doesn't exist, return default
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		return DefaultConfig(), nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	cfg := DefaultConfig()
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return cfg, nil
+}
+
+// Save writes the config to disk
+func Save(cfg *Config) error {
+	path, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+
+	// Create config directory if it doesn't exist
+	configDir := filepath.Dir(path)
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+
+	return nil
+}

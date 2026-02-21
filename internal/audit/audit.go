@@ -1,0 +1,352 @@
+package audit
+
+import (
+	"crypto/rand"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/user"
+	"sort"
+	"time"
+
+	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
+	"golang.org/x/crypto/nacl/secretbox"
+)
+
+const (
+	// AuditLogKey is the keyring key where encrypted audit log is stored
+	AuditLogKey = "__nokey_audit_log__"
+
+	// AuditEncryptionKeyKey is where the encryption key for audit logs is stored
+	AuditEncryptionKeyKey = "__nokey_audit_encryption_key__"
+)
+
+// AuditEntry represents a single audit log entry
+type AuditEntry struct {
+	Timestamp    time.Time `json:"timestamp"`     // UTC timestamp
+	SecretNames  []string  `json:"secret_names"`  // Names of secrets accessed (never values)
+	Command      string    `json:"command"`       // Command executed
+	AuthMethod   string    `json:"auth_method"`   // "pin", "oauth", "both", "none"
+	Success      bool      `json:"success"`       // Whether operation succeeded
+	User         string    `json:"user"`          // OS username
+	Hostname     string    `json:"hostname"`      // Machine hostname
+	PID          int       `json:"pid"`           // Process ID
+	ErrorMessage string    `json:"error,omitempty"` // Error message if failed
+	Operation    string    `json:"operation"`     // "exec", "set", "delete", "import", "auth"
+}
+
+// AuditLog contains all audit entries
+type AuditLog struct {
+	Entries []AuditEntry `json:"entries"`
+}
+
+// NewAuditEntry creates a new audit entry with system info populated
+func NewAuditEntry(operation, command, authMethod string, secretNames []string, success bool, errorMsg string) *AuditEntry {
+	// Get system information
+	username := "unknown"
+	if u, err := user.Current(); err == nil {
+		username = u.Username
+	}
+
+	hostname := "unknown"
+	if h, err := os.Hostname(); err == nil {
+		hostname = h
+	}
+
+	return &AuditEntry{
+		Timestamp:    time.Now().UTC(),
+		SecretNames:  secretNames,
+		Command:      command,
+		AuthMethod:   authMethod,
+		Success:      success,
+		User:         username,
+		Hostname:     hostname,
+		PID:          os.Getpid(),
+		ErrorMessage: errorMsg,
+		Operation:    operation,
+	}
+}
+
+// Load retrieves the audit log from the keyring
+func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
+	// Get encryption key
+	key, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get encryption key: %w", err)
+	}
+
+	// Try to load audit log
+	encryptedData, err := store.Get(AuditLogKey)
+	if err != nil {
+		if err.Error() == fmt.Sprintf("secret not found: %s", AuditLogKey) {
+			// No audit log exists yet, return empty log
+			return &AuditLog{Entries: []AuditEntry{}}, nil
+		}
+		return nil, fmt.Errorf("failed to load audit log: %w", err)
+	}
+
+	// Decrypt
+	decrypted, err := decrypt([]byte(encryptedData), key)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt audit log: %w", err)
+	}
+
+	// Parse JSON
+	var log AuditLog
+	if err := json.Unmarshal(decrypted, &log); err != nil {
+		return nil, fmt.Errorf("failed to parse audit log: %w", err)
+	}
+
+	return &log, nil
+}
+
+// Save stores the audit log to the keyring
+func (a *AuditLog) Save(store *nokeyKeyring.Store) error {
+	// Get encryption key
+	key, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		return fmt.Errorf("failed to get encryption key: %w", err)
+	}
+
+	// Serialize to JSON
+	data, err := json.Marshal(a)
+	if err != nil {
+		return fmt.Errorf("failed to serialize audit log: %w", err)
+	}
+
+	// Encrypt
+	encrypted, err := encrypt(data, key)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt audit log: %w", err)
+	}
+
+	// Store in keyring
+	if err := store.Set(AuditLogKey, string(encrypted)); err != nil {
+		return fmt.Errorf("failed to save audit log: %w", err)
+	}
+
+	return nil
+}
+
+// Record adds a new entry to the audit log
+func Record(store *nokeyKeyring.Store, entry *AuditEntry) error {
+	log, err := Load(store)
+	if err != nil {
+		return err
+	}
+
+	log.Entries = append(log.Entries, *entry)
+
+	// Apply retention policy (keep max 1000 entries, 90 days)
+	log.ApplyRetentionPolicy(1000, 90)
+
+	return log.Save(store)
+}
+
+// ApplyRetentionPolicy removes old entries based on count and age
+func (a *AuditLog) ApplyRetentionPolicy(maxEntries int, retentionDays int) {
+	if len(a.Entries) == 0 {
+		return
+	}
+
+	// Sort by timestamp (oldest first)
+	sort.Slice(a.Entries, func(i, j int) bool {
+		return a.Entries[i].Timestamp.Before(a.Entries[j].Timestamp)
+	})
+
+	// Remove entries older than retention period
+	cutoffDate := time.Now().UTC().AddDate(0, 0, -retentionDays)
+	validEntries := make([]AuditEntry, 0, len(a.Entries))
+	for _, entry := range a.Entries {
+		if entry.Timestamp.After(cutoffDate) {
+			validEntries = append(validEntries, entry)
+		}
+	}
+
+	// Keep only the most recent maxEntries
+	if len(validEntries) > maxEntries {
+		validEntries = validEntries[len(validEntries)-maxEntries:]
+	}
+
+	a.Entries = validEntries
+}
+
+// Filter returns entries matching the criteria
+type FilterOptions struct {
+	Since      *time.Time
+	SecretName string
+	Command    string
+	Operation  string
+	Limit      int
+}
+
+func (a *AuditLog) Filter(opts FilterOptions) []AuditEntry {
+	filtered := make([]AuditEntry, 0)
+
+	for _, entry := range a.Entries {
+		// Filter by time
+		if opts.Since != nil && entry.Timestamp.Before(*opts.Since) {
+			continue
+		}
+
+		// Filter by secret name
+		if opts.SecretName != "" {
+			found := false
+			for _, name := range entry.SecretNames {
+				if name == opts.SecretName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				continue
+			}
+		}
+
+		// Filter by command
+		if opts.Command != "" && entry.Command != opts.Command {
+			continue
+		}
+
+		// Filter by operation
+		if opts.Operation != "" && entry.Operation != opts.Operation {
+			continue
+		}
+
+		filtered = append(filtered, entry)
+	}
+
+	// Sort by timestamp (most recent first)
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Timestamp.After(filtered[j].Timestamp)
+	})
+
+	// Apply limit
+	if opts.Limit > 0 && len(filtered) > opts.Limit {
+		filtered = filtered[:opts.Limit]
+	}
+
+	return filtered
+}
+
+// ExportJSON exports the audit log as JSON
+func (a *AuditLog) ExportJSON(entries []AuditEntry) ([]byte, error) {
+	return json.MarshalIndent(entries, "", "  ")
+}
+
+// ExportCSV exports the audit log as CSV
+func (a *AuditLog) ExportCSV(entries []AuditEntry) ([]byte, error) {
+	// CSV header
+	csv := "Timestamp,Operation,Command,Secrets,AuthMethod,Success,User,Hostname,PID,Error\n"
+
+	for _, entry := range entries {
+		secretsStr := ""
+		if len(entry.SecretNames) > 0 {
+			secretsJSON, _ := json.Marshal(entry.SecretNames)
+			secretsStr = string(secretsJSON)
+		}
+
+		csv += fmt.Sprintf("%s,%s,%s,%s,%s,%t,%s,%s,%d,%s\n",
+			entry.Timestamp.Format(time.RFC3339),
+			entry.Operation,
+			csvEscape(entry.Command),
+			csvEscape(secretsStr),
+			entry.AuthMethod,
+			entry.Success,
+			csvEscape(entry.User),
+			csvEscape(entry.Hostname),
+			entry.PID,
+			csvEscape(entry.ErrorMessage),
+		)
+	}
+
+	return []byte(csv), nil
+}
+
+// csvEscape escapes a string for CSV output
+func csvEscape(s string) string {
+	// If contains comma, quote, or newline, wrap in quotes and escape quotes
+	needsQuotes := false
+	for _, c := range s {
+		if c == ',' || c == '"' || c == '\n' {
+			needsQuotes = true
+			break
+		}
+	}
+
+	if !needsQuotes {
+		return s
+	}
+
+	// Escape quotes by doubling them
+	escaped := ""
+	for _, c := range s {
+		if c == '"' {
+			escaped += "\"\""
+		} else {
+			escaped += string(c)
+		}
+	}
+
+	return "\"" + escaped + "\""
+}
+
+// getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
+func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
+	// Try to load existing key
+	keyStr, err := store.Get(AuditEncryptionKeyKey)
+	if err == nil {
+		// Key exists, decode it
+		if len(keyStr) != 32 {
+			return nil, fmt.Errorf("invalid encryption key length")
+		}
+		var key [32]byte
+		copy(key[:], []byte(keyStr))
+		return &key, nil
+	}
+
+	// Key doesn't exist, create new one
+	var key [32]byte
+	if _, err := rand.Read(key[:]); err != nil {
+		return nil, fmt.Errorf("failed to generate encryption key: %w", err)
+	}
+
+	// Store it
+	if err := store.Set(AuditEncryptionKeyKey, string(key[:])); err != nil {
+		return nil, fmt.Errorf("failed to store encryption key: %w", err)
+	}
+
+	return &key, nil
+}
+
+// encrypt encrypts data using NaCl secretbox
+func encrypt(data []byte, key *[32]byte) ([]byte, error) {
+	// Generate random nonce
+	var nonce [24]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return nil, err
+	}
+
+	// Encrypt
+	encrypted := secretbox.Seal(nonce[:], data, &nonce, key)
+	return encrypted, nil
+}
+
+// decrypt decrypts data using NaCl secretbox
+func decrypt(data []byte, key *[32]byte) ([]byte, error) {
+	if len(data) < 24 {
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+
+	// Extract nonce
+	var nonce [24]byte
+	copy(nonce[:], data[:24])
+
+	// Decrypt
+	decrypted, ok := secretbox.Open(nil, data[24:], &nonce, key)
+	if !ok {
+		return nil, fmt.Errorf("decryption failed")
+	}
+
+	return decrypted, nil
+}
