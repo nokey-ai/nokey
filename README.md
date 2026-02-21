@@ -143,7 +143,7 @@ nokey auth disable
 ```
 
 **How it works:**
-- PIN is hashed (SHA-256) and stored in OS keyring
+- PIN is hashed (Argon2id with salt) and stored in OS keyring
 - Every secret access requires PIN entry
 - Cannot be bypassed programmatically
 - AI assistants cannot enter the PIN
@@ -168,7 +168,7 @@ nokey auth oauth setup --provider github \
   --client-id YOUR_GITHUB_CLIENT_ID \
   --client-secret YOUR_GITHUB_CLIENT_SECRET
 
-# Set up custom OAuth provider
+# Set up custom OAuth provider (--provider generic or --provider custom)
 nokey auth oauth setup --provider generic \
   --auth-url https://provider.com/oauth/authorize \
   --token-url https://provider.com/oauth/token \
@@ -224,8 +224,7 @@ Continue? [y/N]:
 ```
 
 **Skip confirmation:**
-- Use `--yes` flag
-- Use `--only` to select specific secrets (no prompt needed)
+- Use `--yes` flag to skip the confirmation prompt
 
 ### 4. Selective Secret Injection
 
@@ -323,14 +322,14 @@ Audit Entries (3):
     Command:   claude
     Secrets:   OPENAI_API_KEY, GITHUB_TOKEN
     Auth:      pin
-    User:      josh@macbook (PID: 12345)
+    User:      user@hostname (PID: 12345)
 
 [2] ✗ 2025-01-15 14:20:12 UTC
     Operation: exec
     Command:   python script.py
     Secrets:   DATABASE_PASSWORD
     Auth:      pin
-    User:      josh@macbook (PID: 12340)
+    User:      user@hostname (PID: 12340)
     Error:     authentication failed: incorrect PIN
 
 [3] ✓ 2025-01-15 14:15:33 UTC
@@ -338,7 +337,7 @@ Audit Entries (3):
     Command:   set
     Secrets:   NEW_API_KEY
     Auth:      none
-    User:      josh@macbook (PID: 12320)
+    User:      user@hostname (PID: 12320)
 ```
 
 ---
@@ -621,11 +620,12 @@ Uses [`99designs/keyring`](https://github.com/99designs/keyring) library to inte
 ### 2. Authentication
 
 **PIN Authentication:**
-1. PIN is hashed using SHA-256
+1. PIN is hashed using Argon2id (with random salt and key-stretching)
 2. Hash stored in OS keyring under `__nokey_pin_hash__`
 3. When accessing secrets, user is prompted for PIN
-4. Entered PIN is hashed and compared
+4. Entered PIN is hashed and verified using constant-time comparison
 5. Must run in interactive terminal (cannot be automated)
+6. Legacy SHA-256 hashes are detected and users are prompted to upgrade
 
 **OAuth Authentication:**
 1. Local HTTP server started on random port
@@ -643,7 +643,7 @@ When you run `nokey exec`:
 1. Authenticate (PIN or OAuth if required)
 2. Retrieve secrets from keyring
 3. Filter secrets based on `--only` or `--except` flags
-4. Show confirmation prompt (unless `--yes` or `--only`)
+4. Show confirmation prompt (unless `--yes`)
 5. Spawn subprocess with secrets merged into environment
 6. Forward stdin/stdout/stderr
 7. Handle signals (Ctrl+C, etc.) properly

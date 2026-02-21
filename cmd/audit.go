@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/audit"
+	"github.com/nokey-ai/nokey/internal/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -233,7 +234,7 @@ func runAuditClear(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Fprintln(os.Stderr, "Clearing audit log requires authentication")
-		if err := authenticatePIN(storedHash); err != nil {
+		if err := auth.Authenticate(storedHash); err != nil {
 			return err
 		}
 	}
@@ -295,15 +296,4 @@ func parseSince(since string) (time.Time, error) {
 	default:
 		return time.Time{}, fmt.Errorf("invalid time unit: %s (use: h, d, w, m)", unit)
 	}
-}
-
-// authenticatePIN prompts for PIN and verifies it
-func authenticatePIN(storedHash string) error {
-	// Import auth package inline to avoid circular dependency
-	// This is a simplified version - in production, refactor to avoid duplication
-	fmt.Fprintf(os.Stderr, "\n🔐 Authentication Required\n")
-	fmt.Fprintf(os.Stderr, "Enter your nokey PIN: ")
-
-	// This is a placeholder - in the real implementation, import and use auth.Authenticate
-	return fmt.Errorf("authentication not yet implemented for audit clear")
 }

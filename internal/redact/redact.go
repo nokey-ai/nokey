@@ -2,6 +2,7 @@ package redact
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/creack/pty"
+	"github.com/nokey-ai/nokey/internal/env"
 	"golang.org/x/term"
 )
 
@@ -24,7 +26,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	cmd := exec.Command(command, args...)
 
 	// Merge secrets into environment
-	cmd.Env = mergeEnvironment(os.Environ(), secrets)
+	cmd.Env = env.MergeEnvironment(os.Environ(), secrets)
 
 	// Start command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -71,9 +73,16 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	// Build redactor
 	redactor := newRedactor(secrets)
 
-	// Copy stdin to PTY
+	// Copy stdin to PTY with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	go func() {
-		io.Copy(ptmx, os.Stdin)
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			io.Copy(ptmx, os.Stdin)
+		}
 	}()
 
 	// Copy PTY output to stdout with redaction
@@ -84,6 +93,9 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 
 	// Wait for command to complete
 	err = cmd.Wait()
+
+	// Cancel stdin copy goroutine
+	cancel()
 
 	// Get exit code
 	exitCode := 0
@@ -136,49 +148,8 @@ type redactingReader struct {
 func (r *redactingReader) Read(p []byte) (n int, err error) {
 	n, err = r.reader.Read(p)
 	if n > 0 {
-		// Redact the data in place
 		redacted := r.redactor.redact(p[:n])
-		copy(p, redacted)
-		n = len(redacted)
+		n = copy(p, redacted)
 	}
 	return n, err
-}
-
-// mergeEnvironment merges secrets into the current environment
-// Secrets take precedence over existing environment variables
-func mergeEnvironment(currentEnv []string, secrets map[string]string) []string {
-	// Start with current environment
-	env := make([]string, 0, len(currentEnv)+len(secrets))
-
-	// Create a map to track which keys we've seen from secrets
-	secretKeys := make(map[string]bool, len(secrets))
-	for key := range secrets {
-		secretKeys[key] = true
-	}
-
-	// Add current env vars, skipping any that will be overridden by secrets
-	for _, envVar := range currentEnv {
-		// Parse env var to get key
-		key := getEnvKey(envVar)
-		if !secretKeys[key] {
-			env = append(env, envVar)
-		}
-	}
-
-	// Add secrets
-	for key, value := range secrets {
-		env = append(env, fmt.Sprintf("%s=%s", key, value))
-	}
-
-	return env
-}
-
-// getEnvKey extracts the key from an environment variable string (KEY=value)
-func getEnvKey(envVar string) string {
-	for i := 0; i < len(envVar); i++ {
-		if envVar[i] == '=' {
-			return envVar[:i]
-		}
-	}
-	return envVar
 }

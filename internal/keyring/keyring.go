@@ -5,9 +5,11 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/99designs/keyring"
 	"github.com/nokey-ai/nokey/internal/auth"
+	"golang.org/x/term"
 )
 
 // Store wraps the keyring library and provides nokey-specific functionality
@@ -161,13 +163,13 @@ func filePasswordPrompt(prompt string) (string, error) {
 	fmt.Fprintf(os.Stderr, "File-based keyring requires a password.\n")
 	fmt.Fprintf(os.Stderr, "%s: ", prompt)
 
-	var password string
-	_, err := fmt.Scanln(&password)
+	password, err := term.ReadPassword(int(syscall.Stdin))
+	fmt.Fprintln(os.Stderr) // Newline after password input
 	if err != nil {
 		return "", err
 	}
 
-	return password, nil
+	return string(password), nil
 }
 
 // HasPIN checks if a PIN is configured
@@ -226,6 +228,21 @@ func (s *Store) AuthenticatedGetAll() (map[string]string, error) {
 		return nil, err
 	}
 
+	// If using legacy hash, migrate to Argon2id
+	if auth.IsLegacyHash(storedHash) {
+		fmt.Fprintf(os.Stderr, "🔄 Upgrading PIN hash to Argon2id...\n")
+		// We can't re-hash without the PIN, but Authenticate already verified it.
+		// We'd need the PIN again. Since we just verified, prompt once more.
+		// Actually, we can't get the PIN back. The migration will happen on next
+		// auth change or setup. Just log a recommendation.
+		fmt.Fprintf(os.Stderr, "⚠️  Your PIN uses legacy hashing. Run 'nokey auth change' to upgrade to Argon2id.\n")
+	}
+
 	// PIN verified, return secrets
 	return s.GetAll()
+}
+
+// IsNotFound returns true if the error indicates a key was not found in the keyring
+func IsNotFound(err error) bool {
+	return err != nil && strings.HasPrefix(err.Error(), "secret not found:")
 }

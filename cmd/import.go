@@ -76,8 +76,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 
-		// Remove quotes if present
-		value = strings.Trim(value, "\"'")
+		// Remove matched-pair quotes if present
+		if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
+			(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+			value = value[1 : len(value)-1]
+		}
 
 		if key == "" {
 			fmt.Fprintf(os.Stderr, "Warning: skipping line %d with empty key\n", lineNum)

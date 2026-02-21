@@ -6,6 +6,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/keyring"
+	"github.com/nokey-ai/nokey/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -32,11 +33,20 @@ func Execute() {
 	}
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version of nokey",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("nokey %s\n", version.Version)
+	},
+}
+
 func init() {
 	cobra.OnInitialize(initConfig)
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&backend, "backend", "", "Keyring backend (default: system default)")
+	rootCmd.AddCommand(versionCmd)
 }
 
 // initConfig reads in config file and ENV variables if set

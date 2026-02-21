@@ -96,7 +96,7 @@ var authOAuthSetupCmd = &cobra.Command{
 
 Supported providers:
   - github: GitHub OAuth (requires GitHub OAuth App)
-  - generic: Custom OAuth 2.0 provider
+  - generic (or custom): Custom OAuth 2.0 provider
 
 Examples:
   # Set up GitHub OAuth
@@ -104,8 +104,8 @@ Examples:
     --client-id YOUR_CLIENT_ID \
     --client-secret YOUR_CLIENT_SECRET
 
-  # Set up custom OAuth provider
-  nokey auth oauth setup --provider custom \
+  # Set up custom OAuth provider (--provider generic or --provider custom)
+  nokey auth oauth setup --provider generic \
     --auth-url https://provider.com/oauth/authorize \
     --token-url https://provider.com/oauth/token \
     --userinfo-url https://provider.com/oauth/userinfo \
@@ -151,7 +151,7 @@ func init() {
 	authOAuthCmd.AddCommand(authOAuthLogoutCmd)
 
 	// OAuth setup flags
-	authOAuthSetupCmd.Flags().StringVar(&oauthProvider, "provider", "", "OAuth provider (github, generic)")
+	authOAuthSetupCmd.Flags().StringVar(&oauthProvider, "provider", "", "OAuth provider (github, generic/custom)")
 	authOAuthSetupCmd.Flags().StringVar(&oauthClientID, "client-id", "", "OAuth client ID")
 	authOAuthSetupCmd.Flags().StringVar(&oauthClientSecret, "client-secret", "", "OAuth client secret")
 	authOAuthSetupCmd.Flags().StringVar(&oauthAuthURL, "auth-url", "", "OAuth authorization URL (for generic provider)")
@@ -355,7 +355,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 		fmt.Println("\n✅ GitHub OAuth authentication configured successfully")
 		fmt.Printf("\nToken expires: %s\n", token.Expiry.Format(time.RFC3339))
 
-	case "generic":
+	case "custom", "generic":
 		if oauthAuthURL == "" || oauthTokenURL == "" {
 			return fmt.Errorf("--auth-url and --token-url are required for generic provider")
 		}
@@ -440,7 +440,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 		fmt.Printf("\nToken expires: %s\n", token.Expiry.Format(time.RFC3339))
 
 	default:
-		return fmt.Errorf("unsupported provider: %s (supported: github, generic)", oauthProvider)
+		return fmt.Errorf("unsupported provider: %s (supported: github, generic/custom)", oauthProvider)
 	}
 
 	fmt.Println("\nTo use OAuth authentication with exec:")

@@ -2,11 +2,13 @@ package audit
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
 	"sort"
+	"strings"
 	"time"
 
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
@@ -23,16 +25,16 @@ const (
 
 // AuditEntry represents a single audit log entry
 type AuditEntry struct {
-	Timestamp    time.Time `json:"timestamp"`     // UTC timestamp
-	SecretNames  []string  `json:"secret_names"`  // Names of secrets accessed (never values)
-	Command      string    `json:"command"`       // Command executed
-	AuthMethod   string    `json:"auth_method"`   // "pin", "oauth", "both", "none"
-	Success      bool      `json:"success"`       // Whether operation succeeded
-	User         string    `json:"user"`          // OS username
-	Hostname     string    `json:"hostname"`      // Machine hostname
-	PID          int       `json:"pid"`           // Process ID
+	Timestamp    time.Time `json:"timestamp"`       // UTC timestamp
+	SecretNames  []string  `json:"secret_names"`    // Names of secrets accessed (never values)
+	Command      string    `json:"command"`         // Command executed
+	AuthMethod   string    `json:"auth_method"`     // "pin", "oauth", "both", "none"
+	Success      bool      `json:"success"`         // Whether operation succeeded
+	User         string    `json:"user"`            // OS username
+	Hostname     string    `json:"hostname"`        // Machine hostname
+	PID          int       `json:"pid"`             // Process ID
 	ErrorMessage string    `json:"error,omitempty"` // Error message if failed
-	Operation    string    `json:"operation"`     // "exec", "set", "delete", "import", "auth"
+	Operation    string    `json:"operation"`       // "exec", "set", "delete", "import", "auth"
 }
 
 // AuditLog contains all audit entries
@@ -78,7 +80,7 @@ func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
 	// Try to load audit log
 	encryptedData, err := store.Get(AuditLogKey)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("secret not found: %s", AuditLogKey) {
+		if nokeyKeyring.IsNotFound(err) {
 			// No audit log exists yet, return empty log
 			return &AuditLog{Entries: []AuditEntry{}}, nil
 		}
@@ -236,8 +238,10 @@ func (a *AuditLog) ExportJSON(entries []AuditEntry) ([]byte, error) {
 
 // ExportCSV exports the audit log as CSV
 func (a *AuditLog) ExportCSV(entries []AuditEntry) ([]byte, error) {
+	var b strings.Builder
+
 	// CSV header
-	csv := "Timestamp,Operation,Command,Secrets,AuthMethod,Success,User,Hostname,PID,Error\n"
+	b.WriteString("Timestamp,Operation,Command,Secrets,AuthMethod,Success,User,Hostname,PID,Error\n")
 
 	for _, entry := range entries {
 		secretsStr := ""
@@ -246,7 +250,7 @@ func (a *AuditLog) ExportCSV(entries []AuditEntry) ([]byte, error) {
 			secretsStr = string(secretsJSON)
 		}
 
-		csv += fmt.Sprintf("%s,%s,%s,%s,%s,%t,%s,%s,%d,%s\n",
+		fmt.Fprintf(&b, "%s,%s,%s,%s,%s,%t,%s,%s,%d,%s\n",
 			entry.Timestamp.Format(time.RFC3339),
 			entry.Operation,
 			csvEscape(entry.Command),
@@ -260,7 +264,7 @@ func (a *AuditLog) ExportCSV(entries []AuditEntry) ([]byte, error) {
 		)
 	}
 
-	return []byte(csv), nil
+	return []byte(b.String()), nil
 }
 
 // csvEscape escapes a string for CSV output
@@ -279,16 +283,19 @@ func csvEscape(s string) string {
 	}
 
 	// Escape quotes by doubling them
-	escaped := ""
+	var b strings.Builder
+	b.Grow(len(s) + 2)
+	b.WriteByte('"')
 	for _, c := range s {
 		if c == '"' {
-			escaped += "\"\""
+			b.WriteString("\"\"")
 		} else {
-			escaped += string(c)
+			b.WriteRune(c)
 		}
 	}
+	b.WriteByte('"')
 
-	return "\"" + escaped + "\""
+	return b.String()
 }
 
 // getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
@@ -296,13 +303,24 @@ func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 	// Try to load existing key
 	keyStr, err := store.Get(AuditEncryptionKeyKey)
 	if err == nil {
-		// Key exists, decode it
-		if len(keyStr) != 32 {
-			return nil, fmt.Errorf("invalid encryption key length")
+		// Key exists — try base64 decode first (new format)
+		decoded, decErr := base64.StdEncoding.DecodeString(keyStr)
+		if decErr == nil && len(decoded) == 32 {
+			var key [32]byte
+			copy(key[:], decoded)
+			return &key, nil
 		}
-		var key [32]byte
-		copy(key[:], []byte(keyStr))
-		return &key, nil
+
+		// Fall back to raw bytes (legacy format — may have null-byte issues)
+		if len(keyStr) == 32 {
+			var key [32]byte
+			copy(key[:], []byte(keyStr))
+			// Re-store as base64 for future safety
+			_ = store.Set(AuditEncryptionKeyKey, base64.StdEncoding.EncodeToString(key[:]))
+			return &key, nil
+		}
+
+		return nil, fmt.Errorf("invalid encryption key length")
 	}
 
 	// Key doesn't exist, create new one
@@ -311,8 +329,8 @@ func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 		return nil, fmt.Errorf("failed to generate encryption key: %w", err)
 	}
 
-	// Store it
-	if err := store.Set(AuditEncryptionKeyKey, string(key[:])); err != nil {
+	// Store as base64 to prevent null-byte truncation
+	if err := store.Set(AuditEncryptionKeyKey, base64.StdEncoding.EncodeToString(key[:])); err != nil {
 		return nil, fmt.Errorf("failed to store encryption key: %w", err)
 	}
 

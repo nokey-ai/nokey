@@ -80,8 +80,8 @@ func runExport(cmd *cobra.Command, args []string) error {
 		}
 	case "fish":
 		for key, value := range secrets {
-			// Escape single quotes in the value
-			escapedValue := strings.ReplaceAll(value, "'", "\\'")
+			// Escape single quotes: end string, add escaped quote, restart
+			escapedValue := strings.ReplaceAll(value, "'", "'\\''")
 			fmt.Printf("set -gx %s '%s'\n", key, escapedValue)
 		}
 	case "powershell", "pwsh":

@@ -30,7 +30,7 @@ var execCmd = &cobra.Command{
 	Long: `Execute a command with stored secrets injected as environment variables.
 
 By default, you will be prompted to confirm which secrets to inject (security feature).
-Use --yes to skip confirmation, or --only/--except to selectively inject secrets.
+Use --yes to skip confirmation, or --only/--except to selectively filter secrets.
 
 Security Options:
   --only          Only inject specific secrets (comma-separated)
@@ -154,15 +154,14 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Show confirmation prompt unless --yes is used or --only is specified
-	if !skipConfirm && onlySecrets == "" {
+	// Show confirmation prompt unless --yes is used
+	if !skipConfirm {
 		confirmed, err := confirmSecrets(secrets, args[0])
 		if err != nil {
 			return err
 		}
 		if !confirmed {
-			fmt.Fprintln(os.Stderr, "Aborted.")
-			os.Exit(1)
+			return fmt.Errorf("aborted")
 		}
 	}
 

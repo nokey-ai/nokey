@@ -1,0 +1,14 @@
+linters:
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosec
+
+issues:
+  exclude-rules:
+    # Allow unchecked errors on fmt.Fprint* to stderr (informational output)
+    - linters:
+        - errcheck
+      source: "fmt\\.Fprint"
