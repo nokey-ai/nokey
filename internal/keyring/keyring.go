@@ -36,7 +36,7 @@ func New(backend, serviceName string) (*Store, error) {
 	config := keyring.Config{
 		ServiceName:              serviceName,
 		AllowedBackends:          []keyring.BackendType{backendType},
-		KeychainTrustApplication: true,
+		KeychainTrustApplication: false,
 		FileDir:                  getFileBackendDir(),
 		FilePasswordFunc:         filePasswordPrompt,
 	}
@@ -64,8 +64,9 @@ func (s *Store) Set(key, value string) error {
 	}
 
 	item := keyring.Item{
-		Key:  key,
-		Data: []byte(value),
+		Key:   key,
+		Data:  []byte(value),
+		Label: "nokey: " + key,
 	}
 
 	if err := s.ring.Set(item); err != nil {
@@ -193,8 +194,9 @@ func (s *Store) GetPINHash() (string, error) {
 // SetPINHash stores the PIN hash
 func (s *Store) SetPINHash(hash string) error {
 	item := keyring.Item{
-		Key:  auth.PINHashKey,
-		Data: []byte(hash),
+		Key:   auth.PINHashKey,
+		Data:  []byte(hash),
+		Label: "nokey: PIN hash",
 	}
 	if err := s.ring.Set(item); err != nil {
 		return fmt.Errorf("failed to store PIN hash: %w", err)
