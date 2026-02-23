@@ -137,6 +137,16 @@ func (r *redactor) redact(data []byte) []byte {
 	return result
 }
 
+// RedactBytes replaces all secret values in data with [REDACTED:KEY_NAME].
+// Empty secret values are skipped. Returns nil if data is nil.
+func RedactBytes(data []byte, secrets map[string]string) []byte {
+	if data == nil {
+		return nil
+	}
+	r := newRedactor(secrets)
+	return r.redact(data)
+}
+
 // redactingReader wraps an io.Reader and redacts secrets from the data
 type redactingReader struct {
 	reader   io.Reader
