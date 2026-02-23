@@ -55,6 +55,59 @@ func TestLoad(t *testing.T) {
 `,
 			wantErr: true,
 		},
+		{
+			name: "valid global approval always",
+			content: `approval: always
+rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`,
+			wantRules: 1,
+		},
+		{
+			name: "valid global approval never",
+			content: `approval: never
+rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`,
+			wantRules: 1,
+		},
+		{
+			name: "valid per-rule approval",
+			content: `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+    approval: always
+`,
+			wantRules: 1,
+		},
+		{
+			name: "missing approval is backward compatible",
+			content: `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`,
+			wantRules: 1,
+		},
+		{
+			name: "invalid global approval rejected",
+			content: `approval: sometimes
+rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`,
+			wantErr: true,
+		},
+		{
+			name: "invalid per-rule approval rejected",
+			content: `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+    approval: maybe
+`,
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -233,6 +286,136 @@ func TestDenialError(t *testing.T) {
 	want := `policy denied: command "gh" is not allowed to access secret "GITHUB_TOKEN"`
 	if got := d.Error(); got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestRequiresApproval(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      *Policy
+		command     string
+		secretNames []string
+		want        bool
+	}{
+		{
+			name:        "nil policy never requires approval",
+			policy:      nil,
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name:        "empty secrets never requires approval",
+			policy:      &Policy{Approval: ApprovalAlways},
+			command:     "gh",
+			secretNames: []string{},
+			want:        false,
+		},
+		{
+			name: "global never — no approval needed",
+			policy: &Policy{
+				Approval: ApprovalNever,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				},
+			},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name: "global always — approval needed",
+			policy: &Policy{
+				Approval: ApprovalAlways,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				},
+			},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        true,
+		},
+		{
+			name: "per-rule override: rule never overrides global always",
+			policy: &Policy{
+				Approval: ApprovalAlways,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}, Approval: ApprovalNever},
+				},
+			},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name: "per-rule override: rule always overrides global never",
+			policy: &Policy{
+				Approval: ApprovalNever,
+				Rules: []Rule{
+					{Commands: []string{"curl"}, Secrets: []string{"*"}, Approval: ApprovalAlways},
+				},
+			},
+			command:     "curl",
+			secretNames: []string{"API_KEY"},
+			want:        true,
+		},
+		{
+			name: "mixed rules: one needs approval, one does not",
+			policy: &Policy{
+				Approval: ApprovalAlways,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}, Approval: ApprovalNever},
+					{Commands: []string{"gh"}, Secrets: []string{"DEPLOY_KEY"}},
+				},
+			},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN", "DEPLOY_KEY"},
+			want:        true,
+		},
+		{
+			name: "no matching rule — fail closed",
+			policy: &Policy{
+				Approval: ApprovalNever,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				},
+			},
+			command:     "curl",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        true,
+		},
+		{
+			name: "global default empty — treated as never",
+			policy: &Policy{
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				},
+			},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name: "full path stripped to base",
+			policy: &Policy{
+				Approval: ApprovalAlways,
+				Rules: []Rule{
+					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				},
+			},
+			command:     "/usr/local/bin/gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.policy.RequiresApproval(tt.command, tt.secretNames)
+			if got != tt.want {
+				t.Errorf("RequiresApproval() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

@@ -9,16 +9,26 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ApprovalMode controls whether user approval is required before secret injection.
+type ApprovalMode string
+
+const (
+	ApprovalAlways ApprovalMode = "always"
+	ApprovalNever  ApprovalMode = "never"
+)
+
 // Rule maps a set of command patterns to the secret patterns they may access.
 type Rule struct {
-	Commands []string `yaml:"commands"`
-	Secrets  []string `yaml:"secrets"`
+	Commands []string     `yaml:"commands"`
+	Secrets  []string     `yaml:"secrets"`
+	Approval ApprovalMode `yaml:"approval,omitempty"`
 }
 
 // Policy is a set of rules loaded from the policy file.
 // A nil Policy allows everything (backward compatible).
 type Policy struct {
-	Rules []Rule `yaml:"rules"`
+	Approval ApprovalMode `yaml:"approval,omitempty"`
+	Rules    []Rule       `yaml:"rules"`
 }
 
 // Denial is returned when a command is not allowed to access a secret.
@@ -50,6 +60,11 @@ func Load(configDir string) (*Policy, error) {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
 	}
 
+	// Validate global approval mode
+	if err := validateApproval(pol.Approval, "global"); err != nil {
+		return nil, err
+	}
+
 	// Validate rules
 	for i, rule := range pol.Rules {
 		if len(rule.Commands) == 0 {
@@ -58,9 +73,58 @@ func Load(configDir string) (*Policy, error) {
 		if len(rule.Secrets) == 0 {
 			return nil, fmt.Errorf("policy rule %d: secrets must not be empty", i)
 		}
+		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
+			return nil, err
+		}
 	}
 
 	return &pol, nil
+}
+
+func validateApproval(mode ApprovalMode, context string) error {
+	switch mode {
+	case "", ApprovalNever, ApprovalAlways:
+		return nil
+	default:
+		return fmt.Errorf("policy %s: invalid approval mode %q (must be %q, %q, or omitted)", context, mode, ApprovalAlways, ApprovalNever)
+	}
+}
+
+// RequiresApproval returns true if any of the requested secrets require user
+// approval for the given command. A nil Policy never requires approval.
+func (p *Policy) RequiresApproval(command string, secretNames []string) bool {
+	if p == nil {
+		return false
+	}
+	if len(secretNames) == 0 {
+		return false
+	}
+
+	base := filepath.Base(command)
+
+	for _, secret := range secretNames {
+		if p.secretRequiresApproval(base, secret) {
+			return true
+		}
+	}
+	return false
+}
+
+// secretRequiresApproval checks a single secret against the rules.
+// Returns true if the effective approval mode is "always".
+// Fail-closed: if no matching rule is found, returns true.
+func (p *Policy) secretRequiresApproval(command, secret string) bool {
+	for _, rule := range p.Rules {
+		if matchesAny(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+			mode := rule.Approval
+			if mode == "" {
+				mode = p.Approval
+			}
+			return mode == ApprovalAlways
+		}
+	}
+	// No matching rule — fail closed
+	return true
 }
 
 // Check verifies that the given command is allowed to access all requested secrets.

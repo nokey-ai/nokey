@@ -6,7 +6,7 @@ Incremental improvements to Nokey's MCP server, ordered from quick wins to ambit
 |---|------------|--------|------------|--------|
 | 1 | Secret Placeholders (`exec_with_secrets`) | Done | Low | Medium |
 | 2 | Scoped Policies / Per-Tool Allowlists | Done | Low-Medium | High |
-| 3 | Approval Gateway / Interactive Consent | Planned | Medium | High |
+| 3 | Approval Gateway / Interactive Consent | Done | Medium | High |
 | 4 | Proxy Mode (HTTP/HTTPS Intercept) | Planned | High | Very High |
 | 5 | Pre-Built Integrations / Secret-Aware Tools | Planned | High per integration | Very High |
 | 6 | Time-Bounded / One-Shot Tokens | Planned | Medium | Very High |
@@ -21,9 +21,9 @@ Replace raw secret values with `{{NOKEY:alias}}` placeholders in tool arguments.
 
 Let users declare which secrets a given MCP tool is allowed to access and which commands it can run. A simple TOML/YAML policy file (e.g. `~/.nokey/policies.toml`) maps tool names to permitted secret aliases and command patterns. Prevents a compromised or misbehaving tool from requesting secrets it shouldn't have.
 
-## 3. Approval Gateway / Interactive Consent
+## 3. Approval Gateway / Interactive Consent — Done
 
-Prompt the user for explicit approval before any secret is injected into a command. The MCP server pauses execution, displays what secret is being requested and by which tool, and waits for a yes/no response (via TTY or a local UI). Gives users a real-time veto over every secret access without breaking the AI workflow.
+Prompt the user for explicit approval before any secret is injected into a command. Uses MCP elicitation to pause execution and display which command is requesting which secrets. The user approves or denies via their MCP client (Claude Code, Cursor, etc.). Controlled by the `approval` field in `policies.yaml` — set globally or per-rule. Fail-closed: if the client doesn't support elicitation, the request is denied.
 
 ## 4. Proxy Mode (HTTP/HTTPS Intercept)
 
