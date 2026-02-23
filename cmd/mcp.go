@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	osexec "os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/env"
+	"github.com/nokey-ai/nokey/internal/placeholder"
+	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/version"
 	"github.com/spf13/cobra"
@@ -22,6 +25,8 @@ const (
 	defaultTimeoutSecs = 30
 	maxTimeoutSecs     = 300
 )
+
+var pol *policy.Policy
 
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
@@ -62,6 +67,16 @@ func init() {
 }
 
 func runMCPServe(cmd *cobra.Command, args []string) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+	configDir := filepath.Join(homeDir, ".config", "nokey")
+	pol, err = policy.Load(configDir)
+	if err != nil {
+		return fmt.Errorf("failed to load policy: %w", err)
+	}
+
 	s := server.NewMCPServer("nokey", version.Version,
 		server.WithToolCapabilities(false),
 	)
@@ -101,6 +116,33 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 			),
 		),
 		handleExec,
+	)
+
+	// exec_with_secrets — placeholder-based secret injection, output always redacted
+	s.AddTool(
+		mcp.NewTool("exec_with_secrets",
+			mcp.WithDescription(
+				"Execute a command with secret values resolved from placeholders. "+
+					"Use ${{NOKEY:SECRET_NAME}} in args to reference secrets by name. "+
+					"Only referenced secrets are fetched. Secrets are never placed in "+
+					"environment variables. Output is automatically redacted.",
+			),
+			mcp.WithString("command",
+				mcp.Required(),
+				mcp.Description("Command to run (must not contain placeholders)"),
+			),
+			mcp.WithArray("args",
+				mcp.WithStringItems(),
+				mcp.Description(
+					"Command arguments. Use ${{NOKEY:SECRET_NAME}} to inject a secret "+
+						"value at that position.",
+				),
+			),
+			mcp.WithNumber("timeout_seconds",
+				mcp.Description(fmt.Sprintf("Command timeout in seconds (default: %d, max: %d)", defaultTimeoutSecs, maxTimeoutSecs)),
+			),
+		),
+		handleExecWithSecrets,
 	)
 
 	return server.ServeStdio(s)
@@ -164,6 +206,16 @@ func handleExec(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 		return mcp.NewToolResultError(fmt.Sprintf("failed to filter secrets: %s", err)), nil
 	}
 
+	// Enforce scoped policy
+	secretNames := make([]string, 0, len(secrets))
+	for name := range secrets {
+		secretNames = append(secretNames, name)
+	}
+	if err := pol.Check(command, secretNames); err != nil {
+		recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	// Execute command with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSecs)*time.Second)
 	defer cancel()
@@ -195,15 +247,105 @@ func handleExec(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolRe
 	}
 
 	// Record audit
-	secretNames := make([]string, 0, len(secrets))
-	for name := range secrets {
-		secretNames = append(secretNames, name)
-	}
 	errMsg := ""
 	if execErr != nil {
 		errMsg = execErr.Error()
 	}
 	recordAudit("mcp:exec", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
+
+	resultText := string(output)
+	if exitCode != 0 {
+		resultText = fmt.Sprintf("[exit code: %d]\n%s", exitCode, resultText)
+	}
+
+	return mcp.NewToolResultText(resultText), nil
+}
+
+func handleExecWithSecrets(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	command := request.GetString("command", "")
+	if command == "" {
+		return mcp.NewToolResultError("parameter 'command' is required"), nil
+	}
+
+	// Reject placeholders in command — secret values must not control which binary runs
+	if placeholder.ContainsPlaceholder(command) {
+		return mcp.NewToolResultError("placeholders are not allowed in 'command' — use them only in 'args'"), nil
+	}
+
+	args := request.GetStringSlice("args", nil)
+
+	timeoutSecs := request.GetInt("timeout_seconds", defaultTimeoutSecs)
+	if timeoutSecs <= 0 {
+		timeoutSecs = defaultTimeoutSecs
+	}
+	if timeoutSecs > maxTimeoutSecs {
+		timeoutSecs = maxTimeoutSecs
+	}
+
+	// Extract referenced secret names from args
+	secretNames := placeholder.Extract("", args)
+
+	// Enforce scoped policy before touching the keyring
+	if err := pol.Check(command, secretNames); err != nil {
+		recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	store, err := getKeyring()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
+	}
+
+	// Fetch only the secrets that are actually referenced
+	secrets := make(map[string]string, len(secretNames))
+	for _, name := range secretNames {
+		val, err := store.Get(name)
+		if err != nil {
+			recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get secret %q: %s", name, err)), nil
+		}
+		secrets[name] = val
+	}
+
+	// Resolve placeholders in args
+	resolvedArgs, err := placeholder.Resolve(args, secrets)
+	if err != nil {
+		recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to resolve placeholders: %s", err)), nil
+	}
+
+	// Execute with clean environment (no secrets in env vars)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSecs)*time.Second)
+	defer cancel()
+
+	cmd := osexec.CommandContext(ctx, command, resolvedArgs...)
+	cmd.Env = os.Environ()
+	cmd.Stdin = nil
+
+	output, execErr := cmd.CombinedOutput()
+
+	// Always redact output
+	output = redact.RedactBytes(output, secrets)
+	output = truncateOutput(output, maxOutputBytes)
+
+	exitCode := 0
+	if execErr != nil {
+		if exitError, ok := execErr.(*osexec.ExitError); ok {
+			exitCode = exitError.ExitCode()
+		} else if ctx.Err() == context.DeadlineExceeded {
+			recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, "timeout")
+			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs)), nil
+		} else {
+			recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, execErr.Error())
+			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", execErr)), nil
+		}
+	}
+
+	errMsg := ""
+	if execErr != nil {
+		errMsg = execErr.Error()
+	}
+	recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
 
 	resultText := string(output)
 	if exitCode != 0 {

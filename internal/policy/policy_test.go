@@ -1,0 +1,262 @@
+package policy
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoad(t *testing.T) {
+	tests := []struct {
+		name      string
+		content   string // empty means no file
+		wantNil   bool
+		wantErr   bool
+		wantRules int
+	}{
+		{
+			name:    "no file returns nil policy",
+			wantNil: true,
+		},
+		{
+			name: "valid policy",
+			content: `rules:
+  - commands: ["gh", "git"]
+    secrets: ["GITHUB_TOKEN"]
+  - commands: ["aws"]
+    secrets: ["AWS_*"]
+`,
+			wantRules: 2,
+		},
+		{
+			name: "empty rules list is valid",
+			content: `rules: []
+`,
+			wantRules: 0,
+		},
+		{
+			name:    "malformed YAML",
+			content: `rules: [invalid yaml`,
+			wantErr: true,
+		},
+		{
+			name: "empty commands rejected",
+			content: `rules:
+  - commands: []
+    secrets: ["TOKEN"]
+`,
+			wantErr: true,
+		},
+		{
+			name: "empty secrets rejected",
+			content: `rules:
+  - commands: ["gh"]
+    secrets: []
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			if tt.content != "" {
+				if err := os.WriteFile(filepath.Join(dir, "policies.yaml"), []byte(tt.content), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			pol, err := Load(dir)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if tt.wantNil {
+				if pol != nil {
+					t.Fatal("expected nil policy")
+				}
+				return
+			}
+
+			if pol == nil {
+				t.Fatal("expected non-nil policy")
+			}
+			if len(pol.Rules) != tt.wantRules {
+				t.Errorf("got %d rules, want %d", len(pol.Rules), tt.wantRules)
+			}
+		})
+	}
+}
+
+func TestCheck(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      *Policy
+		command     string
+		secretNames []string
+		wantErr     bool
+		wantSecret  string // expected denied secret, if any
+	}{
+		{
+			name:        "nil policy allows everything",
+			policy:      nil,
+			command:     "anything",
+			secretNames: []string{"ANY_SECRET"},
+		},
+		{
+			name:        "empty secrets always allowed",
+			policy:      &Policy{Rules: []Rule{}},
+			command:     "anything",
+			secretNames: []string{},
+		},
+		{
+			name: "exact match allowed",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+		},
+		{
+			name: "glob secret pattern",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"aws"}, Secrets: []string{"AWS_*"}},
+			}},
+			command:     "aws",
+			secretNames: []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"},
+		},
+		{
+			name: "wildcard allows all secrets",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"curl"}, Secrets: []string{"*"}},
+			}},
+			command:     "curl",
+			secretNames: []string{"ANYTHING", "ELSE"},
+		},
+		{
+			name: "command not in any rule",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "curl",
+			secretNames: []string{"GITHUB_TOKEN"},
+			wantErr:     true,
+			wantSecret:  "GITHUB_TOKEN",
+		},
+		{
+			name: "secret not in any rule",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"AWS_KEY"},
+			wantErr:     true,
+			wantSecret:  "AWS_KEY",
+		},
+		{
+			name: "partial match denies on missing secret",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN", "AWS_KEY"},
+			wantErr:     true,
+			wantSecret:  "AWS_KEY",
+		},
+		{
+			name: "full path stripped to base",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "/usr/local/bin/gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+		},
+		{
+			name: "command glob pattern",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"git*"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "git-lfs",
+			secretNames: []string{"GITHUB_TOKEN"},
+		},
+		{
+			name:        "empty rules deny all secrets",
+			policy:      &Policy{Rules: []Rule{}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			wantErr:     true,
+			wantSecret:  "GITHUB_TOKEN",
+		},
+		{
+			name: "multiple rules checked",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+				{Commands: []string{"aws"}, Secrets: []string{"AWS_*"}},
+			}},
+			command:     "aws",
+			secretNames: []string{"AWS_ACCESS_KEY_ID"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.policy.Check(tt.command, tt.secretNames)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				denial, ok := err.(*Denial)
+				if !ok {
+					t.Fatalf("expected *Denial, got %T", err)
+				}
+				if denial.Secret != tt.wantSecret {
+					t.Errorf("denied secret = %q, want %q", denial.Secret, tt.wantSecret)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestDenialError(t *testing.T) {
+	d := &Denial{Command: "gh", Secret: "GITHUB_TOKEN"}
+	want := `policy denied: command "gh" is not allowed to access secret "GITHUB_TOKEN"`
+	if got := d.Error(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestMatchesAny(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		patterns []string
+		want     bool
+	}{
+		{"exact match", "gh", []string{"gh"}, true},
+		{"glob star", "AWS_KEY", []string{"AWS_*"}, true},
+		{"wildcard", "anything", []string{"*"}, true},
+		{"no match", "curl", []string{"gh", "git"}, false},
+		{"malformed pattern treated as no match", "value", []string{"["}, false},
+		{"character class", "git", []string{"gi[st]"}, true},
+		{"question mark", "gh", []string{"g?"}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesAny(tt.value, tt.patterns); got != tt.want {
+				t.Errorf("matchesAny(%q, %v) = %v, want %v", tt.value, tt.patterns, got, tt.want)
+			}
+		})
+	}
+}
