@@ -16,6 +16,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/env"
 	"github.com/nokey-ai/nokey/internal/placeholder"
 	"github.com/nokey-ai/nokey/internal/policy"
+	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/version"
 	"github.com/spf13/cobra"
@@ -29,6 +30,7 @@ const (
 
 var pol *policy.Policy
 var mcpSrv *server.MCPServer
+var proxyServer *proxy.Server
 
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
@@ -149,7 +151,108 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		handleExecWithSecrets,
 	)
 
+	// start_proxy — start the local HTTP/HTTPS proxy
+	s.AddTool(
+		mcp.NewTool("start_proxy",
+			mcp.WithDescription(
+				"Start a local HTTP/HTTPS proxy that injects secrets into request headers "+
+					"based on proxy rules in policies.yaml. Returns the proxy address. "+
+					"Set http_proxy and https_proxy to route requests through it.",
+			),
+			mcp.WithString("addr",
+				mcp.Description("Address to listen on (default: 127.0.0.1:0 for random port)"),
+			),
+		),
+		handleStartProxy,
+	)
+
+	// stop_proxy — stop the running proxy
+	s.AddTool(
+		mcp.NewTool("stop_proxy",
+			mcp.WithDescription("Stop the running local HTTP/HTTPS proxy."),
+		),
+		handleStopProxy,
+	)
+
 	return server.ServeStdio(s)
+}
+
+func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// If already running, return the address.
+	if proxyServer != nil {
+		addr := proxyServer.Addr()
+		if addr != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("Proxy already running on %s", addr)), nil
+		}
+	}
+
+	configDir := filepath.Join(homeDir(), ".config", "nokey")
+
+	// Load proxy rules from the already-loaded policy.
+	rules := pol.ProxyRules()
+	if len(rules) == 0 {
+		return mcp.NewToolResultError("no proxy rules found in policies.yaml — add a proxy: section with rules"), nil
+	}
+
+	// Load or create CA.
+	ca, err := proxy.LoadOrCreateCA(configDir)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to load/create CA: %s", err)), nil
+	}
+
+	// Fetch referenced secrets.
+	secretNames := proxy.CollectSecretNames(rules)
+	store, err := getKeyring()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
+	}
+
+	secrets := make(map[string]string, len(secretNames))
+	for _, name := range secretNames {
+		val, err := store.Get(name)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get secret %q: %s", name, err)), nil
+		}
+		secrets[name] = val
+	}
+
+	addr := request.GetString("addr", "127.0.0.1:0")
+
+	srv := proxy.NewServer(ca, rules, secrets, pol, func(op, host, secretList string, ok bool, errMsg string) {
+		recordAudit(op, host, secretList, ok, errMsg)
+	})
+
+	actualAddr, err := srv.Start(addr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to start proxy: %s", err)), nil
+	}
+
+	proxyServer = srv
+	recordAudit("mcp:start_proxy", "proxy", strings.Join(secretNames, ","), true, "")
+
+	return mcp.NewToolResultText(fmt.Sprintf(
+		"Proxy started on %s\n\nSet environment variables:\n  export http_proxy=http://%s\n  export https_proxy=http://%s\n\nCA cert: %s",
+		actualAddr, actualAddr, actualAddr, filepath.Join(configDir, "ca", "ca-cert.pem"),
+	)), nil
+}
+
+func handleStopProxy(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if proxyServer == nil {
+		return mcp.NewToolResultText("No proxy running."), nil
+	}
+
+	if err := proxyServer.Stop(context.Background()); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to stop proxy: %s", err)), nil
+	}
+
+	proxyServer = nil
+	recordAudit("mcp:stop_proxy", "proxy", "", true, "")
+	return mcp.NewToolResultText("Proxy stopped."), nil
+}
+
+func homeDir() string {
+	h, _ := os.UserHomeDir()
+	return h
 }
 
 func handleListSecrets(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {

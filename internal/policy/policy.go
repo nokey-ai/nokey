@@ -29,6 +29,7 @@ type Rule struct {
 type Policy struct {
 	Approval ApprovalMode `yaml:"approval,omitempty"`
 	Rules    []Rule       `yaml:"rules"`
+	Proxy    *ProxyPolicy `yaml:"proxy,omitempty"`
 }
 
 // Denial is returned when a command is not allowed to access a secret.
@@ -74,6 +75,13 @@ func Load(configDir string) (*Policy, error) {
 			return nil, fmt.Errorf("policy rule %d: secrets must not be empty", i)
 		}
 		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
+			return nil, err
+		}
+	}
+
+	// Validate proxy rules if present
+	if pol.Proxy != nil {
+		if err := ValidateProxyRules(pol.Proxy); err != nil {
 			return nil, err
 		}
 	}

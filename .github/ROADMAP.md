@@ -7,7 +7,7 @@ Incremental improvements to Nokey's MCP server, ordered from quick wins to ambit
 | 1 | Secret Placeholders (`exec_with_secrets`) | Done | Low | Medium |
 | 2 | Scoped Policies / Per-Tool Allowlists | Done | Low-Medium | High |
 | 3 | Approval Gateway / Interactive Consent | Done | Medium | High |
-| 4 | Proxy Mode (HTTP/HTTPS Intercept) | Planned | High | Very High |
+| 4 | Proxy Mode (HTTP/HTTPS Intercept) | Done | High | Very High |
 | 5 | Pre-Built Integrations / Secret-Aware Tools | Planned | High per integration | Very High |
 | 6 | Time-Bounded / One-Shot Tokens | Planned | Medium | Very High |
 
@@ -25,9 +25,9 @@ Let users declare which secrets a given MCP tool is allowed to access and which 
 
 Prompt the user for explicit approval before any secret is injected into a command. Uses MCP elicitation to pause execution and display which command is requesting which secrets. The user approves or denies via their MCP client (Claude Code, Cursor, etc.). Controlled by the `approval` field in `policies.yaml` — set globally or per-rule. Fail-closed: if the client doesn't support elicitation, the request is denied.
 
-## 4. Proxy Mode (HTTP/HTTPS Intercept)
+## 4. Proxy Mode (HTTP/HTTPS Intercept) — Done
 
-Run a local HTTP(S) proxy that intercepts outbound API calls and injects secrets into request headers or bodies on the fly. The AI agent points its HTTP client at the proxy and never handles credentials directly. Supports any HTTP-based API without per-integration code, though HTTPS interception requires a local CA cert.
+Run a local HTTP(S) proxy that intercepts outbound API calls and injects secrets into request headers on the fly. The AI agent points its HTTP client at the proxy and never handles credentials directly. Supports any HTTP-based API without per-integration code. HTTPS interception uses a local CA cert (MITM). Configured via a `proxy:` section in `policies.yaml`. Available as `nokey proxy start` CLI command and `start_proxy`/`stop_proxy` MCP tools.
 
 ## 5. Pre-Built Integrations / Secret-Aware Tools
 
