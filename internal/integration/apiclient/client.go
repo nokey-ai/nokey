@@ -12,6 +12,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/redact"
+	"github.com/nokey-ai/nokey/internal/token"
 )
 
 // Client performs HTTP requests with automatic secret injection, policy
@@ -55,11 +56,21 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 		return "", 0, err
 	}
 
-	// 2. Approval gateway.
-	if c.deps.Policy.RequiresApproval(command, secretNames) {
-		if err := requestApproval(ctx, c.deps.Requester, command, secretNames); err != nil {
+	// 2. Token or approval gateway.
+	tokenUsed := false
+	if tokenID, ok := token.TokenIDFromContext(ctx); ok && c.deps.UseToken != nil {
+		if err := c.deps.UseToken(tokenID, secretNames); err != nil {
 			c.audit(target, secretNames, false, err.Error())
-			return "", 0, err
+			return "", 0, fmt.Errorf("token invalid: %w", err)
+		}
+		tokenUsed = true
+	}
+	if !tokenUsed {
+		if c.deps.Policy.RequiresApproval(command, secretNames) {
+			if err := requestApproval(ctx, c.deps.Requester, command, secretNames); err != nil {
+				c.audit(target, secretNames, false, err.Error())
+				return "", 0, err
+			}
 		}
 	}
 

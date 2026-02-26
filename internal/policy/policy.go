@@ -19,9 +19,10 @@ const (
 
 // Rule maps a set of command patterns to the secret patterns they may access.
 type Rule struct {
-	Commands []string     `yaml:"commands"`
-	Secrets  []string     `yaml:"secrets"`
-	Approval ApprovalMode `yaml:"approval,omitempty"`
+	Commands      []string     `yaml:"commands"`
+	Secrets       []string     `yaml:"secrets"`
+	Approval      ApprovalMode `yaml:"approval,omitempty"`
+	TokenRequired bool         `yaml:"token_required,omitempty"`
 }
 
 // Policy is a set of rules loaded from the policy file.
@@ -133,6 +134,38 @@ func (p *Policy) secretRequiresApproval(command, secret string) bool {
 	}
 	// No matching rule — fail closed
 	return true
+}
+
+// RequiresToken returns true if any of the requested secrets require a valid
+// access token for the given command. A nil Policy never requires a token.
+func (p *Policy) RequiresToken(command string, secretNames []string) bool {
+	if p == nil {
+		return false
+	}
+	if len(secretNames) == 0 {
+		return false
+	}
+
+	base := filepath.Base(command)
+
+	for _, secret := range secretNames {
+		if p.secretRequiresToken(base, secret) {
+			return true
+		}
+	}
+	return false
+}
+
+// secretRequiresToken checks a single secret against the rules.
+// Returns true if a matching rule has token_required: true.
+// No matching rule returns false (backward compatible — tokens are opt-in).
+func (p *Policy) secretRequiresToken(command, secret string) bool {
+	for _, rule := range p.Rules {
+		if matchesAny(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+			return rule.TokenRequired
+		}
+	}
+	return false
 }
 
 // Check verifies that the given command is allowed to access all requested secrets.

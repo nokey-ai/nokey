@@ -20,6 +20,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
+	"github.com/nokey-ai/nokey/internal/token"
 	"github.com/nokey-ai/nokey/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -33,6 +34,7 @@ const (
 var pol *policy.Policy
 var mcpSrv *server.MCPServer
 var proxyServer *proxy.Server
+var tokenStore *token.Store
 
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
@@ -83,6 +85,8 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
 
+	tokenStore = token.NewStore()
+
 	s := server.NewMCPServer("nokey", version.Version,
 		server.WithToolCapabilities(false),
 		server.WithElicitation(),
@@ -122,6 +126,9 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 			mcp.WithNumber("timeout_seconds",
 				mcp.Description(fmt.Sprintf("Command timeout in seconds (default: %d, max: %d)", defaultTimeoutSecs, maxTimeoutSecs)),
 			),
+			mcp.WithString("token",
+				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
+			),
 		),
 		handleExec,
 	)
@@ -149,8 +156,61 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 			mcp.WithNumber("timeout_seconds",
 				mcp.Description(fmt.Sprintf("Command timeout in seconds (default: %d, max: %d)", defaultTimeoutSecs, maxTimeoutSecs)),
 			),
+			mcp.WithString("token",
+				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
+			),
 		),
 		handleExecWithSecrets,
+	)
+
+	// mint_token — create an access lease
+	s.AddTool(
+		mcp.NewTool("mint_token",
+			mcp.WithDescription(
+				"Mint a short-lived access lease token for one or more secrets. "+
+					"The token can be passed to exec or exec_with_secrets to skip per-call approval. "+
+					"Always requires user approval at mint time. Max TTL: 3600 seconds.",
+			),
+			mcp.WithArray("secrets",
+				mcp.Required(),
+				mcp.WithStringItems(),
+				mcp.Description("Secret names this token authorizes"),
+			),
+			mcp.WithNumber("ttl_seconds",
+				mcp.Required(),
+				mcp.Description("Token lifetime in seconds (max 3600)"),
+			),
+			mcp.WithNumber("max_uses",
+				mcp.Description("Maximum number of uses (0 or omit for unlimited, TTL-only)"),
+			),
+			mcp.WithString("for",
+				mcp.Description("Command pattern this token is for (default: * for any)"),
+			),
+		),
+		handleMintToken,
+	)
+
+	// revoke_token — revoke an access lease
+	s.AddTool(
+		mcp.NewTool("revoke_token",
+			mcp.WithDescription("Revoke an access lease token by ID."),
+			mcp.WithString("token_id",
+				mcp.Required(),
+				mcp.Description("The token ID to revoke"),
+			),
+		),
+		handleRevokeToken,
+	)
+
+	// list_tokens — list active access leases
+	s.AddTool(
+		mcp.NewTool("list_tokens",
+			mcp.WithDescription("List all active access lease tokens."),
+			mcp.WithToolAnnotation(mcp.ToolAnnotation{
+				ReadOnlyHint: &readOnly,
+			}),
+		),
+		handleListTokens,
 	)
 
 	// start_proxy — start the local HTTP/HTTPS proxy
@@ -188,6 +248,13 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		Policy:    pol,
 		Requester: s,
 		AuditFn:   recordAudit,
+		UseToken: func(id string, secrets []string) error {
+			result := tokenStore.Use(id, secrets)
+			if !result.Valid {
+				return fmt.Errorf("token invalid: %s", result.Reason)
+			}
+			return nil
+		},
 	}
 	for _, integ := range integration.All() {
 		s.AddTools(integ.Tools(deps)...)
@@ -342,13 +409,11 @@ func handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Approval gateway — prompt user before touching secrets
-	if pol.RequiresApproval(command, secretNames) {
-		if err := requestApproval(ctx, mcpSrv, command, secretNames); err != nil {
-			recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), true, "")
+	// Token or approval gateway
+	tokenID := request.GetString("token", "")
+	if err := checkTokenOrApproval(ctx, tokenID, command, secretNames); err != nil {
+		recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Execute command with timeout
@@ -426,13 +491,11 @@ func handleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Approval gateway — prompt user before touching secrets
-	if pol.RequiresApproval(command, secretNames) {
-		if err := requestApproval(ctx, mcpSrv, command, secretNames); err != nil {
-			recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), true, "")
+	// Token or approval gateway
+	tokenID := request.GetString("token", "")
+	if err := checkTokenOrApproval(ctx, tokenID, command, secretNames); err != nil {
+		recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	store, err := getKeyring()
@@ -547,6 +610,122 @@ func requestApproval(ctx context.Context, requester elicitationRequester, comman
 	default:
 		return fmt.Errorf("unexpected elicitation response: %s", result.Action)
 	}
+}
+
+func handleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	secrets := request.GetStringSlice("secrets", nil)
+	if len(secrets) == 0 {
+		return mcp.NewToolResultError("parameter 'secrets' is required and must be non-empty"), nil
+	}
+
+	ttlSecs := request.GetInt("ttl_seconds", 0)
+	maxUses := request.GetInt("max_uses", 0)
+	mintedFor := request.GetString("for", "*")
+
+	// Minting always requires approval — this is the one-time consent gate.
+	if err := requestApproval(ctx, mcpSrv, "mint_token", secrets); err != nil {
+		recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), true, "")
+
+	tok, err := tokenStore.Mint(token.MintRequest{
+		Secrets:   secrets,
+		TTLSecs:   ttlSecs,
+		MaxUses:   maxUses,
+		MintedFor: mintedFor,
+	})
+	if err != nil {
+		recordAudit("mcp:mint_token", "mint_token", strings.Join(secrets, ","), false, err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to mint token: %s", err)), nil
+	}
+
+	recordAudit("mcp:mint_token", "mint_token", strings.Join(secrets, ","), true, "")
+
+	usesStr := "unlimited"
+	if tok.MaxUses > 0 {
+		usesStr = fmt.Sprintf("%d", tok.MaxUses)
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf(
+		"Token minted.\n  ID: %s\n  Secrets: %s\n  TTL: %ds (expires %s)\n  Max uses: %s\n  For: %s",
+		tok.ID,
+		strings.Join(tok.Secrets, ", "),
+		ttlSecs,
+		tok.ExpiresAt.Format(time.RFC3339),
+		usesStr,
+		tok.MintedFor,
+	)), nil
+}
+
+func handleRevokeToken(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	tokenID := request.GetString("token_id", "")
+	if tokenID == "" {
+		return mcp.NewToolResultError("parameter 'token_id' is required"), nil
+	}
+
+	if tokenStore.Revoke(tokenID) {
+		recordAudit("mcp:revoke_token", "revoke_token", tokenID, true, "")
+		return mcp.NewToolResultText("Token revoked."), nil
+	}
+
+	recordAudit("mcp:revoke_token", "revoke_token", tokenID, false, "not found")
+	return mcp.NewToolResultError("token not found"), nil
+}
+
+func handleListTokens(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	tokens := tokenStore.List()
+
+	if len(tokens) == 0 {
+		return mcp.NewToolResultText("No active tokens."), nil
+	}
+
+	var sb strings.Builder
+	for i, tok := range tokens {
+		if i > 0 {
+			sb.WriteString("\n---\n")
+		}
+		usesStr := "unlimited"
+		if tok.MaxUses > 0 {
+			usesStr = fmt.Sprintf("%d/%d", tok.UsesLeft, tok.MaxUses)
+		}
+		fmt.Fprintf(&sb, "ID: %s\nSecrets: %s\nUses: %s\nExpires: %s\nFor: %s",
+			tok.ID,
+			strings.Join(tok.Secrets, ", "),
+			usesStr,
+			tok.ExpiresAt.Format(time.RFC3339),
+			tok.MintedFor,
+		)
+	}
+
+	return mcp.NewToolResultText(sb.String()), nil
+}
+
+// checkTokenOrApproval validates a token if provided, enforces token_required policy,
+// or falls through to the existing approval gateway.
+func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNames []string) error {
+	if tokenID != "" {
+		result := tokenStore.Use(tokenID, secretNames)
+		if result.Valid {
+			recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
+			return nil
+		}
+		return fmt.Errorf("token invalid: %s", result.Reason)
+	}
+
+	// No token provided — check if policy requires one.
+	if pol.RequiresToken(command, secretNames) {
+		return fmt.Errorf("token required by policy — use mint_token to create an access lease")
+	}
+
+	// Fall through to existing approval gateway.
+	if pol.RequiresApproval(command, secretNames) {
+		if err := requestApproval(ctx, mcpSrv, command, secretNames); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // truncateOutput truncates output to maxBytes, appending a truncation notice.

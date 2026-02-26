@@ -9,7 +9,7 @@ Incremental improvements to Nokey's MCP server, ordered from quick wins to ambit
 | 3 | Approval Gateway / Interactive Consent | Done | Medium | High |
 | 4 | Proxy Mode (HTTP/HTTPS Intercept) | Done | High | Very High |
 | 5 | Pre-Built Integrations / Secret-Aware Tools | Done | High per integration | Very High |
-| 6 | Time-Bounded / One-Shot Tokens | Planned | Medium | Very High |
+| 6 | Time-Bounded / One-Shot Tokens | Done | Medium | Very High |
 
 ---
 
@@ -37,9 +37,11 @@ The framework includes a shared API client (`internal/integration/apiclient`) th
 
 **GitHub integration** ships 6 tools: `github_api` (flexible, any endpoint), `github_create_issue`, `github_create_pr`, `github_list_issues`, `github_list_prs`, `github_get_file`. Uses `GITHUB_TOKEN` from the keyring with `Authorization: Bearer` header injection. Policy command: `nokey:integration:github`.
 
-## 6. Time-Bounded / One-Shot Tokens
+## 6. Time-Bounded / One-Shot Tokens — Done
 
-Issue short-lived or single-use tokens derived from stored secrets. A token expires after N seconds or after one use, whichever comes first. Limits blast radius if a token leaks during an AI session — even if intercepted, it's already dead. Requires a lightweight token-minting layer on top of the keyring.
+Issue short-lived access lease tokens that authorize secret access for a limited time or number of uses. A token expires after N seconds or after N uses, whichever comes first. Limits blast radius if a token leaks during an AI session — even if intercepted, it's already dead.
+
+Tokens are session-scoped (in-memory, die with the MCP process) and minted via the `mint_token` tool, which always requires user approval via elicitation. Once minted, the token ID can be passed to `exec`, `exec_with_secrets`, or integration tools to skip per-call approval. Tokens are managed via `revoke_token` and `list_tokens` tools. Policy rules can require tokens via the `token_required: true` field.
 
 ---
 

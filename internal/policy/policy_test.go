@@ -419,6 +419,77 @@ func TestRequiresApproval(t *testing.T) {
 	}
 }
 
+func TestRequiresToken(t *testing.T) {
+	tests := []struct {
+		name        string
+		policy      *Policy
+		command     string
+		secretNames []string
+		want        bool
+	}{
+		{
+			name:        "nil policy never requires token",
+			policy:      nil,
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name:        "empty secrets never requires token",
+			policy:      &Policy{Rules: []Rule{{Commands: []string{"gh"}, Secrets: []string{"*"}, TokenRequired: true}}},
+			command:     "gh",
+			secretNames: []string{},
+			want:        false,
+		},
+		{
+			name: "matching rule with token_required true",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"nokey:integration:github"}, Secrets: []string{"GITHUB_TOKEN"}, TokenRequired: true},
+			}},
+			command:     "nokey:integration:github",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        true,
+		},
+		{
+			name: "matching rule without token_required",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name: "no matching rule — backward compatible false",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}, TokenRequired: true},
+			}},
+			command:     "curl",
+			secretNames: []string{"GITHUB_TOKEN"},
+			want:        false,
+		},
+		{
+			name: "mixed secrets: one requires token, one does not",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}, TokenRequired: true},
+				{Commands: []string{"gh"}, Secrets: []string{"DEPLOY_KEY"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN", "DEPLOY_KEY"},
+			want:        true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.policy.RequiresToken(tt.command, tt.secretNames)
+			if got != tt.want {
+				t.Errorf("RequiresToken() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMatchesAny(t *testing.T) {
 	tests := []struct {
 		name     string
