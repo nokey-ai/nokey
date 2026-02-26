@@ -14,6 +14,8 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/env"
+	"github.com/nokey-ai/nokey/internal/integration"
+	_ "github.com/nokey-ai/nokey/internal/integration/github"
 	"github.com/nokey-ai/nokey/internal/placeholder"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
@@ -173,6 +175,23 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		),
 		handleStopProxy,
 	)
+
+	// Register pre-built integrations (GitHub, etc.)
+	deps := integration.Deps{
+		GetSecret: func(name string) (string, error) {
+			store, err := getKeyring()
+			if err != nil {
+				return "", err
+			}
+			return store.Get(name)
+		},
+		Policy:    pol,
+		Requester: s,
+		AuditFn:   recordAudit,
+	}
+	for _, integ := range integration.All() {
+		s.AddTools(integ.Tools(deps)...)
+	}
 
 	return server.ServeStdio(s)
 }
