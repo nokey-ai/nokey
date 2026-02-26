@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/env"
 	"github.com/nokey-ai/nokey/internal/integration"
@@ -562,56 +562,6 @@ func handleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(resultText), nil
 }
 
-// elicitationRequester abstracts elicitation so handlers can be tested with a mock.
-type elicitationRequester interface {
-	RequestElicitation(ctx context.Context, request mcp.ElicitationRequest) (*mcp.ElicitationResult, error)
-}
-
-// requestApproval sends an MCP elicitation prompt asking the user to approve
-// secret access for the given command. Returns nil if approved, an error otherwise.
-// Fail-closed: if the client does not support elicitation, access is denied.
-func requestApproval(ctx context.Context, requester elicitationRequester, command string, secretNames []string) error {
-	msg := fmt.Sprintf(
-		"nokey: %q wants to access secret(s): %s\n\nDo you approve?",
-		command, strings.Join(secretNames, ", "),
-	)
-
-	result, err := requester.RequestElicitation(ctx, mcp.ElicitationRequest{
-		Params: mcp.ElicitationParams{
-			Message: msg,
-			RequestedSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"approve": map[string]any{
-						"type":        "boolean",
-						"description": "Approve secret access",
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		if errors.Is(err, server.ErrElicitationNotSupported) {
-			return fmt.Errorf("approval required but client does not support elicitation prompts")
-		}
-		if errors.Is(err, server.ErrNoActiveSession) {
-			return fmt.Errorf("approval required but no active MCP session")
-		}
-		return fmt.Errorf("approval request failed: %w", err)
-	}
-
-	switch result.Action {
-	case mcp.ElicitationResponseActionAccept:
-		return nil
-	case mcp.ElicitationResponseActionDecline:
-		return fmt.Errorf("user declined secret access for %q", command)
-	case mcp.ElicitationResponseActionCancel:
-		return fmt.Errorf("user cancelled secret access for %q", command)
-	default:
-		return fmt.Errorf("unexpected elicitation response: %s", result.Action)
-	}
-}
-
 func handleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	secrets := request.GetStringSlice("secrets", nil)
 	if len(secrets) == 0 {
@@ -623,7 +573,7 @@ func handleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	mintedFor := request.GetString("for", "*")
 
 	// Minting always requires approval — this is the one-time consent gate.
-	if err := requestApproval(ctx, mcpSrv, "mint_token", secrets); err != nil {
+	if err := approval.Request(ctx, mcpSrv, "mint_token", secrets); err != nil {
 		recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -720,7 +670,7 @@ func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNa
 
 	// Fall through to existing approval gateway.
 	if pol.RequiresApproval(command, secretNames) {
-		if err := requestApproval(ctx, mcpSrv, command, secretNames); err != nil {
+		if err := approval.Request(ctx, mcpSrv, command, secretNames); err != nil {
 			return err
 		}
 	}

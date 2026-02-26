@@ -2,7 +2,6 @@ package oauth
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -112,31 +111,4 @@ func (p *GenericProvider) GetProviderName() string {
 		return p.Name
 	}
 	return "custom"
-}
-
-// GetUserInfo fetches the authenticated user's information
-func (p *GenericProvider) GetUserInfo(ctx context.Context, token *Token) (map[string]interface{}, error) {
-	if p.UserInfoURL == "" {
-		return nil, fmt.Errorf("user info URL not configured for this provider")
-	}
-
-	client := p.config.Client(ctx, token.ToOAuth2Token())
-
-	resp, err := client.Get(p.UserInfoURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch user info (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var user map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return nil, fmt.Errorf("failed to parse user info: %w", err)
-	}
-
-	return user, nil
 }

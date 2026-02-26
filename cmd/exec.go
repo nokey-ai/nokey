@@ -347,29 +347,8 @@ func validateOAuthToken(store *keyring.Store) error {
 			return fmt.Errorf("OAuth token expired but client credentials not found\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", providerName)
 		}
 
-		// Create provider based on stored credentials
-		var provider oauth.Provider
+		provider := newOAuthProvider(providerName, creds, "http://localhost:0/callback")
 		ctx := context.Background()
-
-		switch providerName {
-		case "github":
-			provider = oauth.NewGitHubProvider(creds.ClientID, creds.ClientSecret, "http://localhost:0/callback")
-
-		case "generic":
-			provider = oauth.NewGenericProvider(
-				"generic",
-				creds.AuthURL,
-				creds.TokenURL,
-				creds.UserInfoURL,
-				creds.ClientID,
-				creds.ClientSecret,
-				creds.Scopes,
-				"http://localhost:0/callback",
-			)
-
-		default:
-			return fmt.Errorf("unsupported OAuth provider: %s", providerName)
-		}
 
 		// Refresh the token
 		fmt.Fprintf(os.Stderr, "🔄 Refreshing expired OAuth token for %s...\n", providerName)

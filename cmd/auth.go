@@ -286,145 +286,25 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 
 	var provider oauth.Provider
 	var providerName string
+	var creds *oauth.ClientCredentials
+	var label string
 
 	switch oauthProvider {
 	case "github":
-		// Create callback server
-		callbackServer, err := oauth.NewCallbackServer()
-		if err != nil {
-			return fmt.Errorf("failed to create callback server: %w", err)
-		}
-		defer func() { _ = callbackServer.Shutdown(context.Background()) }()
-
-		redirectURL := callbackServer.GetRedirectURL()
 		providerName = "github"
-
-		// Create GitHub provider
-		provider = oauth.NewGitHubProvider(oauthClientID, oauthClientSecret, redirectURL)
-
-		// Start callback server
-		if err := callbackServer.Start(); err != nil {
-			return fmt.Errorf("failed to start callback server: %w", err)
-		}
-
-		// Get authorization URL
-		authURL := provider.GetAuthURL(callbackServer.GetState())
-
-		fmt.Println("🔐 Setting up GitHub OAuth authentication")
-		fmt.Println("\nOpening browser for GitHub authorization...")
-		fmt.Printf("\nIf the browser doesn't open, visit this URL:\n%s\n\n", authURL)
-
-		// Open browser
-		if err := browser.OpenURL(authURL); err != nil {
-			fmt.Printf("⚠️  Could not open browser: %v\n", err)
-		}
-
-		// Wait for callback (5 minute timeout)
-		fmt.Println("Waiting for authorization callback...")
-		code, err := callbackServer.WaitForCode(5 * time.Minute)
-		if err != nil {
-			return fmt.Errorf("authorization failed: %w", err)
-		}
-
-		// Exchange code for token
-		ctx := context.Background()
-		token, err := provider.ExchangeCode(ctx, code)
-		if err != nil {
-			return fmt.Errorf("failed to exchange authorization code: %w", err)
-		}
-
-		// Validate token
-		if err := provider.ValidateToken(ctx, token); err != nil {
-			return fmt.Errorf("token validation failed: %w", err)
-		}
-
-		// Save token
-		if err := oauth.SaveToken(store, providerName, token); err != nil {
-			return fmt.Errorf("failed to save token: %w", err)
-		}
-
-		// Save client credentials for token refresh
-		creds := &oauth.ClientCredentials{
+		label = "GitHub OAuth"
+		creds = &oauth.ClientCredentials{
 			ClientID:     oauthClientID,
 			ClientSecret: oauthClientSecret,
 		}
-		if err := oauth.SaveClientCredentials(store, providerName, creds); err != nil {
-			return fmt.Errorf("failed to save client credentials: %w", err)
-		}
-
-		fmt.Println("\n✅ GitHub OAuth authentication configured successfully")
-		fmt.Printf("\nToken expires: %s\n", token.Expiry.Format(time.RFC3339))
 
 	case "custom", "generic":
 		if oauthAuthURL == "" || oauthTokenURL == "" {
 			return fmt.Errorf("--auth-url and --token-url are required for generic provider")
 		}
-
-		// Create callback server
-		callbackServer, err := oauth.NewCallbackServer()
-		if err != nil {
-			return fmt.Errorf("failed to create callback server: %w", err)
-		}
-		defer func() { _ = callbackServer.Shutdown(context.Background()) }()
-
-		redirectURL := callbackServer.GetRedirectURL()
 		providerName = "generic"
-
-		// Create generic provider
-		provider = oauth.NewGenericProvider(
-			"generic",
-			oauthAuthURL,
-			oauthTokenURL,
-			oauthUserInfoURL,
-			oauthClientID,
-			oauthClientSecret,
-			oauthScopes,
-			redirectURL,
-		)
-
-		// Start callback server
-		if err := callbackServer.Start(); err != nil {
-			return fmt.Errorf("failed to start callback server: %w", err)
-		}
-
-		// Get authorization URL
-		authURL := provider.GetAuthURL(callbackServer.GetState())
-
-		fmt.Println("🔐 Setting up OAuth authentication")
-		fmt.Println("\nOpening browser for authorization...")
-		fmt.Printf("\nIf the browser doesn't open, visit this URL:\n%s\n\n", authURL)
-
-		// Open browser
-		if err := browser.OpenURL(authURL); err != nil {
-			fmt.Printf("⚠️  Could not open browser: %v\n", err)
-		}
-
-		// Wait for callback (5 minute timeout)
-		fmt.Println("Waiting for authorization callback...")
-		code, err := callbackServer.WaitForCode(5 * time.Minute)
-		if err != nil {
-			return fmt.Errorf("authorization failed: %w", err)
-		}
-
-		// Exchange code for token
-		ctx := context.Background()
-		token, err := provider.ExchangeCode(ctx, code)
-		if err != nil {
-			return fmt.Errorf("failed to exchange authorization code: %w", err)
-		}
-
-		// Validate token
-		if err := provider.ValidateToken(ctx, token); err != nil {
-			return fmt.Errorf("token validation failed: %w", err)
-		}
-
-		// Save token
-		if err := oauth.SaveToken(store, providerName, token); err != nil {
-			return fmt.Errorf("failed to save token: %w", err)
-		}
-
-		// Save client credentials for token refresh
-		creds := &oauth.ClientCredentials{
+		label = "OAuth"
+		creds = &oauth.ClientCredentials{
 			ClientID:     oauthClientID,
 			ClientSecret: oauthClientSecret,
 			AuthURL:      oauthAuthURL,
@@ -432,21 +312,83 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 			UserInfoURL:  oauthUserInfoURL,
 			Scopes:       oauthScopes,
 		}
-		if err := oauth.SaveClientCredentials(store, providerName, creds); err != nil {
-			return fmt.Errorf("failed to save client credentials: %w", err)
-		}
-
-		fmt.Println("\n✅ OAuth authentication configured successfully")
-		fmt.Printf("\nToken expires: %s\n", token.Expiry.Format(time.RFC3339))
 
 	default:
 		return fmt.Errorf("unsupported provider: %s (supported: github, generic/custom)", oauthProvider)
 	}
 
+	// Create callback server.
+	callbackServer, err := oauth.NewCallbackServer()
+	if err != nil {
+		return fmt.Errorf("failed to create callback server: %w", err)
+	}
+	defer func() { _ = callbackServer.Shutdown(context.Background()) }()
+
+	redirectURL := callbackServer.GetRedirectURL()
+
+	// Create provider.
+	provider = newOAuthProvider(providerName, creds, redirectURL)
+
+	// Start callback server.
+	if err := callbackServer.Start(); err != nil {
+		return fmt.Errorf("failed to start callback server: %w", err)
+	}
+
+	// Browser-based authorization flow.
+	authURL := provider.GetAuthURL(callbackServer.GetState())
+	fmt.Printf("🔐 Setting up %s authentication\n", label)
+	fmt.Println("\nOpening browser for authorization...")
+	fmt.Printf("\nIf the browser doesn't open, visit this URL:\n%s\n\n", authURL)
+
+	if err := browser.OpenURL(authURL); err != nil {
+		fmt.Printf("⚠️  Could not open browser: %v\n", err)
+	}
+
+	fmt.Println("Waiting for authorization callback...")
+	code, err := callbackServer.WaitForCode(5 * time.Minute)
+	if err != nil {
+		return fmt.Errorf("authorization failed: %w", err)
+	}
+
+	// Exchange, validate, and persist.
+	ctx := context.Background()
+	token, err := provider.ExchangeCode(ctx, code)
+	if err != nil {
+		return fmt.Errorf("failed to exchange authorization code: %w", err)
+	}
+	if err := provider.ValidateToken(ctx, token); err != nil {
+		return fmt.Errorf("token validation failed: %w", err)
+	}
+	if err := oauth.SaveToken(store, providerName, token); err != nil {
+		return fmt.Errorf("failed to save token: %w", err)
+	}
+	if err := oauth.SaveClientCredentials(store, providerName, creds); err != nil {
+		return fmt.Errorf("failed to save client credentials: %w", err)
+	}
+
+	fmt.Printf("\n✅ %s authentication configured successfully\n", label)
+	fmt.Printf("\nToken expires: %s\n", token.Expiry.Format(time.RFC3339))
 	fmt.Println("\nTo use OAuth authentication with exec:")
 	fmt.Println("  Set auth.default_method to 'oauth' in ~/.config/nokey/config.yaml")
 
 	return nil
+}
+
+// newOAuthProvider constructs the appropriate OAuth provider from stored credentials.
+func newOAuthProvider(providerName string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
+	if providerName == "github" {
+		return oauth.NewGitHubProvider(creds.ClientID, creds.ClientSecret, redirectURL)
+	}
+	return oauth.NewGenericProvider(
+		"generic",
+		creds.AuthURL,
+		creds.TokenURL,
+		creds.UserInfoURL,
+		creds.ClientID,
+		creds.ClientSecret,
+		creds.Scopes,
+		redirectURL,
+	)
 }
 
 func runAuthOAuthStatus(cmd *cobra.Command, args []string) error {
@@ -519,29 +461,8 @@ func runAuthOAuthRefresh(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("client credentials not found for provider %s (re-run: nokey auth oauth setup --provider %s): %w", oauthProvider, oauthProvider, err)
 	}
 
-	// Create provider based on stored credentials
-	var provider oauth.Provider
+	provider := newOAuthProvider(oauthProvider, creds, "http://localhost:0/callback")
 	ctx := context.Background()
-
-	switch oauthProvider {
-	case "github":
-		provider = oauth.NewGitHubProvider(creds.ClientID, creds.ClientSecret, "http://localhost:0/callback")
-
-	case "generic":
-		provider = oauth.NewGenericProvider(
-			"generic",
-			creds.AuthURL,
-			creds.TokenURL,
-			creds.UserInfoURL,
-			creds.ClientID,
-			creds.ClientSecret,
-			creds.Scopes,
-			"http://localhost:0/callback",
-		)
-
-	default:
-		return fmt.Errorf("unsupported provider: %s", oauthProvider)
-	}
 
 	// Refresh the token
 	fmt.Printf("Refreshing OAuth token for provider '%s'...\n", oauthProvider)

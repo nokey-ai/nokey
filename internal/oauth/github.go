@@ -101,26 +101,3 @@ func (p *GitHubProvider) ValidateToken(ctx context.Context, token *Token) error 
 func (p *GitHubProvider) GetProviderName() string {
 	return "github"
 }
-
-// GetUserInfo fetches the authenticated user's information
-func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *Token) (map[string]interface{}, error) {
-	client := p.config.Client(ctx, token.ToOAuth2Token())
-
-	resp, err := client.Get("https://api.github.com/user")
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch user info: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to fetch user info (status %d): %s", resp.StatusCode, string(body))
-	}
-
-	var user map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
-		return nil, fmt.Errorf("failed to parse user info: %w", err)
-	}
-
-	return user, nil
-}

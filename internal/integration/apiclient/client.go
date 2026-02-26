@@ -2,14 +2,12 @@ package apiclient
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
-	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/token"
@@ -67,7 +65,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	}
 	if !tokenUsed {
 		if c.deps.Policy.RequiresApproval(command, secretNames) {
-			if err := requestApproval(ctx, c.deps.Requester, command, secretNames); err != nil {
+			if err := approval.Request(ctx, c.deps.Requester, command, secretNames); err != nil {
 				c.audit(target, secretNames, false, err.Error())
 				return "", 0, err
 			}
@@ -141,49 +139,5 @@ func (c *Client) audit(target string, secretNames []string, ok bool, errMsg stri
 			ok,
 			errMsg,
 		)
-	}
-}
-
-// requestApproval sends an MCP elicitation prompt asking the user to approve
-// secret access. Returns nil if approved, an error otherwise.
-func requestApproval(ctx context.Context, requester *server.MCPServer, command string, secretNames []string) error {
-	msg := fmt.Sprintf(
-		"nokey: %q wants to access secret(s): %s\n\nDo you approve?",
-		command, strings.Join(secretNames, ", "),
-	)
-
-	result, err := requester.RequestElicitation(ctx, mcp.ElicitationRequest{
-		Params: mcp.ElicitationParams{
-			Message: msg,
-			RequestedSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"approve": map[string]any{
-						"type":        "boolean",
-						"description": "Approve secret access",
-					},
-				},
-			},
-		},
-	})
-	if err != nil {
-		if errors.Is(err, server.ErrElicitationNotSupported) {
-			return fmt.Errorf("approval required but client does not support elicitation prompts")
-		}
-		if errors.Is(err, server.ErrNoActiveSession) {
-			return fmt.Errorf("approval required but no active MCP session")
-		}
-		return fmt.Errorf("approval request failed: %w", err)
-	}
-
-	switch result.Action {
-	case mcp.ElicitationResponseActionAccept:
-		return nil
-	case mcp.ElicitationResponseActionDecline:
-		return fmt.Errorf("user declined secret access for %q", command)
-	case mcp.ElicitationResponseActionCancel:
-		return fmt.Errorf("user cancelled secret access for %q", command)
-	default:
-		return fmt.Errorf("unexpected elicitation response: %s", result.Action)
 	}
 }
