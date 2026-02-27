@@ -3,11 +3,16 @@ package redact
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
+	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -15,9 +20,14 @@ import (
 	"golang.org/x/term"
 )
 
-// Run executes a command with PTY output redaction
-// Any occurrence of a secret value in stdout/stderr will be replaced with [REDACTED:KEY_NAME]
-func Run(command string, args []string, secrets map[string]string) (int, error) {
+// minSecretLenForVariants is the minimum secret length to generate encoding
+// variants. Shorter secrets produce too many false positives.
+const minSecretLenForVariants = 8
+
+// Run executes a command with PTY output redaction.
+// Any occurrence of a secret value in stdout/stderr will be replaced with [REDACTED:KEY_NAME].
+// Optional extraEnv entries (e.g. proxy vars) are appended after the merge.
+func Run(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
 	if command == "" {
 		return 1, fmt.Errorf("command cannot be empty")
 	}
@@ -26,7 +36,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	cmd := exec.Command(command, args...)
 
 	// Merge secrets into environment
-	cmd.Env = env.MergeEnvironment(os.Environ(), secrets)
+	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 
 	// Start command with a PTY
 	ptmx, err := pty.Start(cmd)
@@ -111,6 +121,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 // redactor handles the actual redaction logic
 type redactor struct {
 	replacements map[string]string // value -> replacement
+	sortedKeys   []string          // longest first for greedy matching
 }
 
 func newRedactor(secrets map[string]string) *redactor {
@@ -119,20 +130,69 @@ func newRedactor(secrets map[string]string) *redactor {
 	}
 
 	for key, value := range secrets {
-		// Only redact non-empty values
-		if value != "" {
-			r.replacements[value] = fmt.Sprintf("[REDACTED:%s]", key)
+		if value == "" {
+			continue
+		}
+		label := fmt.Sprintf("[REDACTED:%s]", key)
+		r.replacements[value] = label
+
+		if len(value) < minSecretLenForVariants {
+			continue
+		}
+
+		// Generate encoding variants, all mapping to the same label.
+		variants := encodingVariants(value)
+		for _, v := range variants {
+			if _, exists := r.replacements[v]; !exists {
+				r.replacements[v] = label
+			}
 		}
 	}
 
+	// Precompute sorted keys (longest first) so longer matches win.
+	r.sortedKeys = make([]string, 0, len(r.replacements))
+	for k := range r.replacements {
+		r.sortedKeys = append(r.sortedKeys, k)
+	}
+	sort.Slice(r.sortedKeys, func(i, j int) bool {
+		return len(r.sortedKeys[i]) > len(r.sortedKeys[j])
+	})
+
 	return r
+}
+
+// encodingVariants returns deduplicated encoded forms of value.
+func encodingVariants(value string) []string {
+	raw := []byte(value)
+	seen := make(map[string]bool)
+	seen[value] = true // the literal is already in replacements
+	var out []string
+
+	add := func(s string) {
+		if s != "" && !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+
+	add(base64.StdEncoding.EncodeToString(raw))
+	add(base64.URLEncoding.EncodeToString(raw))
+	add(base64.RawStdEncoding.EncodeToString(raw))
+	add(base64.RawURLEncoding.EncodeToString(raw))
+	add(url.QueryEscape(value))
+	hexLower := hex.EncodeToString(raw)
+	add(hexLower)
+	hexUpper := strings.ToUpper(hexLower)
+	add(hexUpper)
+
+	return out
 }
 
 // redact replaces secret values in the data
 func (r *redactor) redact(data []byte) []byte {
 	result := data
-	for secret, replacement := range r.replacements {
-		result = bytes.ReplaceAll(result, []byte(secret), []byte(replacement))
+	for _, secret := range r.sortedKeys {
+		result = bytes.ReplaceAll(result, []byte(secret), []byte(r.replacements[secret]))
 	}
 	return result
 }
@@ -151,13 +211,28 @@ func RedactBytes(data []byte, secrets map[string]string) []byte {
 type redactingReader struct {
 	reader   io.Reader
 	redactor *redactor
+	buf      []byte
 }
 
 func (r *redactingReader) Read(p []byte) (n int, err error) {
-	n, err = r.reader.Read(p)
-	if n > 0 {
-		redacted := r.redactor.redact(p[:n])
+	// If we have leftover data in our buffer, serve it first
+	if len(r.buf) > 0 {
+		n = copy(p, r.buf)
+		r.buf = r.buf[n:]
+		return n, nil
+	}
+
+	// Otherwise, read new data from the underlying reader
+	readBuf := make([]byte, len(p))
+	nRead, err := r.reader.Read(readBuf)
+	if nRead > 0 {
+		redacted := r.redactor.redact(readBuf[:nRead])
 		n = copy(p, redacted)
+
+		// If redacted output is larger than p, store the rest in our buffer
+		if n < len(redacted) {
+			r.buf = append(r.buf, redacted[n:]...)
+		}
 	}
 	return n, err
 }
