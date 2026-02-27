@@ -17,6 +17,7 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/nokey-ai/nokey/internal/env"
+	"github.com/nokey-ai/nokey/internal/sensitive"
 	"golang.org/x/term"
 )
 
@@ -80,6 +81,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 
 	// Build redactor
 	redactor := newRedactor(secrets)
+	defer redactor.Clear()
 
 	// Copy stdin to PTY with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -186,6 +188,18 @@ func encodingVariants(value string) []string {
 	add(hexUpper)
 
 	return out
+}
+
+// Clear zeros the sensitive data held by the redactor. Keys in the
+// replacements map are secret values (and their encoded variants);
+// sortedKeys holds the same data.
+func (r *redactor) Clear() {
+	for k := range r.replacements {
+		sensitive.ClearString(k)
+		delete(r.replacements, k)
+	}
+	sensitive.ClearSlice(r.sortedKeys)
+	r.sortedKeys = nil
 }
 
 // redact replaces secret values in the data

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/audit"
+	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/spf13/cobra"
 )
 
@@ -64,6 +65,8 @@ func runExport(cmd *cobra.Command, args []string) error {
 		}
 		authMethod = "none"
 	}
+
+	defer sensitive.ClearMap(secrets)
 
 	if len(secrets) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: no secrets stored")

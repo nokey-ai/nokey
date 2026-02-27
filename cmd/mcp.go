@@ -20,6 +20,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
+	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/nokey-ai/nokey/internal/token"
 	"github.com/nokey-ai/nokey/internal/version"
 	"github.com/spf13/cobra"
@@ -307,6 +308,7 @@ func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.Call
 	addr := request.GetString("addr", "127.0.0.1:0")
 
 	srv := proxy.NewServer(ca, rules, secrets, pol, recordAudit)
+	secrets = nil // Server owns the map now; Stop() handles cleanup.
 
 	actualAddr, err := srv.Start(addr)
 	if err != nil {
@@ -386,6 +388,7 @@ func handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 		recordAudit("mcp:exec", command, "all", false, err.Error())
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get secrets: %s", err)), nil
 	}
+	defer sensitive.ClearMap(allSecrets)
 
 	// Filter secrets based on only/except
 	secrets, err := filterSecrets(allSecrets, only, except)
@@ -508,6 +511,7 @@ func handleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*m
 		}
 		secrets[name] = val
 	}
+	defer sensitive.ClearMap(secrets)
 
 	// Resolve placeholders in args
 	resolvedArgs, err := placeholder.Resolve(args, secrets)

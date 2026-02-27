@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/nokey-ai/nokey/internal/sensitive"
 	"golang.org/x/crypto/argon2"
 	"golang.org/x/term"
 )
@@ -49,6 +50,7 @@ func Authenticate(storedHash string) error {
 	}
 
 	pinStr := string(pin)
+	defer sensitive.ClearString(pinStr)
 
 	// Clear PIN from memory
 	for i := range pin {
@@ -171,28 +173,25 @@ func SetupPIN() (string, error) {
 		return "", fmt.Errorf("failed to read PIN: %w", err)
 	}
 
-	// Verify they match
-	if string(pin1) != string(pin2) {
-		// Clear PINs from memory
-		for i := range pin1 {
-			pin1[i] = 0
-		}
-		for i := range pin2 {
-			pin2[i] = 0
-		}
-		return "", fmt.Errorf("PINs do not match")
-	}
-
-	// Hash the PIN with Argon2id
-	hash, err := HashPINArgon2id(string(pin1))
-
-	// Clear PINs from memory
+	// Convert to strings once, then zero the byte slices and defer string cleanup.
+	pinStr1 := string(pin1)
+	pinStr2 := string(pin2)
+	defer sensitive.ClearString(pinStr1)
+	defer sensitive.ClearString(pinStr2)
 	for i := range pin1 {
 		pin1[i] = 0
 	}
 	for i := range pin2 {
 		pin2[i] = 0
 	}
+
+	// Verify they match
+	if pinStr1 != pinStr2 {
+		return "", fmt.Errorf("PINs do not match")
+	}
+
+	// Hash the PIN with Argon2id
+	hash, err := HashPINArgon2id(pinStr1)
 
 	if err != nil {
 		return "", err

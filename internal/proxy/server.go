@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/policy"
+	"github.com/nokey-ai/nokey/internal/sensitive"
 )
 
 // AuditFunc is called after each proxied request with operation details.
@@ -96,6 +97,8 @@ func (s *Server) Stop(ctx context.Context) error {
 		return nil
 	}
 	s.running = false
+	sensitive.ClearMap(s.secrets)
+	s.secrets = nil
 	return s.server.Shutdown(ctx)
 }
 

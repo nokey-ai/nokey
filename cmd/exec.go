@@ -15,6 +15,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
+	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -180,6 +181,8 @@ func runExec(cmd *cobra.Command, args []string) error {
 	default:
 		return fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", authMethodConfig)
 	}
+
+	defer sensitive.ClearMap(allSecrets)
 
 	if len(allSecrets) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: no secrets stored")
