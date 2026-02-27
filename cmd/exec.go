@@ -12,12 +12,16 @@ import (
 	"github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
+	"github.com/nokey-ai/nokey/internal/policy"
+	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
+	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
 
 var (
 	enableRedact  bool
+	enableIsolate bool
 	onlySecrets   string
 	exceptSecrets string
 	skipConfirm   bool
@@ -37,6 +41,7 @@ Security Options:
   --except        Exclude specific secrets (comma-separated)
   --yes           Skip confirmation prompt (use with caution)
   --auth-method   Override authentication method (pin, oauth, both, none)
+  --isolate       Block network egress to hosts without a proxy rule
 
 Examples:
   # Confirm before injecting (default - shows what will be injected)
@@ -58,7 +63,10 @@ Examples:
   nokey exec --auth-method oauth -- command
 
   # Require both PIN and OAuth (2FA)
-  nokey exec --auth-method both -- command`,
+  nokey exec --auth-method both -- command
+
+  # Block egress to hosts without a proxy rule
+  nokey exec --isolate -- curl https://api.openai.com/v1/models`,
 	Args:                  cobra.MinimumNArgs(1),
 	DisableFlagsInUseLine: true,
 	RunE:                  runExec,
@@ -71,6 +79,7 @@ func init() {
 	execCmd.Flags().StringVar(&exceptSecrets, "except", "", "Exclude these secrets (comma-separated)")
 	execCmd.Flags().BoolVar(&skipConfirm, "yes", false, "Skip confirmation prompt (inject all secrets without asking)")
 	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Override authentication method (pin, oauth, both, none)")
+	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Block network egress to hosts without a proxy rule")
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
@@ -99,10 +108,27 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Parse session TTL for PIN caching.
+	sessionTTL, err := session.ParseTTL(cfg.Auth.SessionTTL)
+	if err != nil {
+		return fmt.Errorf("config error: %w", err)
+	}
+
 	switch authMethodConfig {
 	case "pin":
-		// PIN authentication only
-		allSecrets, err = store.AuthenticatedGetAll()
+		// PIN authentication only — with session caching
+		storedHash, hashErr := store.GetPINHash()
+		if hashErr != nil {
+			return fmt.Errorf("PIN authentication failed: %w", hashErr)
+		}
+		if session.Valid(storedHash, sessionTTL) {
+			allSecrets, err = store.GetAll()
+		} else {
+			allSecrets, err = store.AuthenticatedGetAll()
+			if err == nil {
+				_ = session.Create(storedHash)
+			}
+		}
 		if err != nil {
 			return fmt.Errorf("PIN authentication failed: %w", err)
 		}
@@ -125,8 +151,19 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if err := validateOAuthToken(store); err != nil {
 			return fmt.Errorf("OAuth authentication failed: %w", err)
 		}
-		// Then require PIN
-		allSecrets, err = store.AuthenticatedGetAll()
+		// Then require PIN — with session caching
+		storedHash, hashErr := store.GetPINHash()
+		if hashErr != nil {
+			return fmt.Errorf("PIN authentication failed: %w", hashErr)
+		}
+		if session.Valid(storedHash, sessionTTL) {
+			allSecrets, err = store.GetAll()
+		} else {
+			allSecrets, err = store.AuthenticatedGetAll()
+			if err == nil {
+				_ = session.Create(storedHash)
+			}
+		}
 		if err != nil {
 			return fmt.Errorf("PIN authentication failed: %w", err)
 		}
@@ -174,13 +211,24 @@ func runExec(cmd *cobra.Command, args []string) error {
 		enableRedact = cfg.RedactByDefault
 	}
 
+	// Set up egress-filtering proxy if --isolate is enabled.
+	var proxyEnv []string
+	if enableIsolate {
+		env, cleanup, err := setupIsolationProxy(secrets)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		proxyEnv = env
+	}
+
 	// Execute the command
 	var exitCode int
 	var execErr error
 	if enableRedact {
-		exitCode, execErr = redact.Run(args[0], args[1:], secrets)
+		exitCode, execErr = redact.Run(args[0], args[1:], secrets, proxyEnv...)
 	} else {
-		exitCode, execErr = exec.Run(args[0], args[1:], secrets)
+		exitCode, execErr = exec.Run(args[0], args[1:], secrets, proxyEnv...)
 	}
 
 	// Record audit entry if audit logging is enabled
@@ -311,6 +359,62 @@ func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 
 	response = strings.ToLower(strings.TrimSpace(response))
 	return response == "y" || response == "yes", nil
+}
+
+// setupIsolationProxy starts a local proxy that blocks egress to hosts without
+// a matching proxy rule. Returns env vars to inject and a cleanup function.
+func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
+	noop := func() {}
+
+	// Determine config directory.
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, noop, fmt.Errorf("failed to get home directory: %w", err)
+	}
+	configDir := fmt.Sprintf("%s/.config/nokey", homeDir)
+
+	// Load policy to get proxy rules.
+	pol, err := policy.Load(configDir)
+	if err != nil {
+		return nil, noop, fmt.Errorf("failed to load policy: %w", err)
+	}
+	rules := pol.ProxyRules()
+	if len(rules) == 0 {
+		return nil, noop, fmt.Errorf("--isolate requires at least one proxy rule in %s/policies.yaml", configDir)
+	}
+
+	// Load or create the local CA.
+	ca, err := proxy.LoadOrCreateCA(configDir)
+	if err != nil {
+		return nil, noop, fmt.Errorf("failed to load CA: %w", err)
+	}
+
+	srv := proxy.NewServer(ca, rules, secrets, pol, nil)
+	srv.SetBlockUnmatched(true)
+
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		return nil, noop, fmt.Errorf("failed to start isolation proxy: %w", err)
+	}
+
+	cleanup := func() {
+		_ = srv.Stop(context.Background())
+	}
+
+	proxyURL := "http://" + addr
+	certFile := configDir + "/ca/ca-cert.pem"
+
+	envVars := []string{
+		"http_proxy=" + proxyURL,
+		"https_proxy=" + proxyURL,
+		"HTTP_PROXY=" + proxyURL,
+		"HTTPS_PROXY=" + proxyURL,
+		"SSL_CERT_FILE=" + certFile,
+		"NODE_EXTRA_CA_CERTS=" + certFile,
+		"REQUESTS_CA_BUNDLE=" + certFile,
+	}
+
+	return envVars, cleanup, nil
 }
 
 // validateOAuthToken validates that a valid OAuth token exists for the configured provider

@@ -41,6 +41,7 @@ type OAuthConfig struct {
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
 	DefaultMethod string      `yaml:"default_method,omitempty"` // "pin", "oauth", "both", "none"
+	SessionTTL    string      `yaml:"session_ttl,omitempty"`    // duration string, e.g. "5m" (default), max "1h"
 	OAuth         OAuthConfig `yaml:"oauth,omitempty"`
 }
 

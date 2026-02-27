@@ -8,6 +8,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/auth"
 	"github.com/nokey-ai/nokey/internal/oauth"
+	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/pkg/browser"
 	"github.com/spf13/cobra"
 )
@@ -221,6 +222,9 @@ func runAuthChange(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Invalidate any active session ticket.
+	_ = session.Clear()
+
 	fmt.Println("\n✅ PIN changed successfully")
 	return nil
 }
@@ -247,6 +251,9 @@ func runAuthDisable(cmd *cobra.Command, args []string) error {
 	if err := store.DeletePINHash(); err != nil {
 		return err
 	}
+
+	// Remove any active session ticket.
+	_ = session.Clear()
 
 	fmt.Println("\n✅ PIN authentication disabled")
 	fmt.Println("⚠️  Secrets can now be accessed without PIN verification")
