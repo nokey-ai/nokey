@@ -230,13 +230,8 @@ func (s *Store) AuthenticatedGetAll() (map[string]string, error) {
 		return nil, err
 	}
 
-	// If using legacy hash, migrate to Argon2id
+	// Warn if using legacy SHA-256 hash — can't auto-migrate without the raw PIN
 	if auth.IsLegacyHash(storedHash) {
-		fmt.Fprintf(os.Stderr, "🔄 Upgrading PIN hash to Argon2id...\n")
-		// We can't re-hash without the PIN, but Authenticate already verified it.
-		// We'd need the PIN again. Since we just verified, prompt once more.
-		// Actually, we can't get the PIN back. The migration will happen on next
-		// auth change or setup. Just log a recommendation.
 		fmt.Fprintf(os.Stderr, "⚠️  Your PIN uses legacy hashing. Run 'nokey auth change' to upgrade to Argon2id.\n")
 	}
 

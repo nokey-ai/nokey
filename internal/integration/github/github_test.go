@@ -64,7 +64,7 @@ func TestGitHubAPI_GET(t *testing.T) {
 		gotAuth = r.Header.Get("Authorization")
 		gotAccept = r.Header.Get("Accept")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"login":"octocat"}`))
+		_, _ = w.Write([]byte(`{"login":"octocat"}`))
 	}))
 	defer ts.Close()
 
@@ -105,7 +105,7 @@ func TestGitHubAPI_POST(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":1}`))
+		_, _ = w.Write([]byte(`{"id":1}`))
 	}))
 	defer ts.Close()
 
@@ -158,7 +158,7 @@ func TestGitHubAPI_MissingPath(t *testing.T) {
 func TestGitHubAPI_Non2xxReturnsError(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte(`{"message":"Not Found"}`))
+		_, _ = w.Write([]byte(`{"message":"Not Found"}`))
 	}))
 	defer ts.Close()
 
@@ -182,7 +182,7 @@ func TestGitHubAPI_Non2xxReturnsError(t *testing.T) {
 func TestGitHubAPI_RedactsToken(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Echo back the token in the response to test redaction.
-		w.Write([]byte(`{"token":"test-token-value"}`))
+		_, _ = w.Write([]byte(`{"token":"test-token-value"}`))
 	}))
 	defer ts.Close()
 
@@ -212,9 +212,9 @@ func TestCreateIssue(t *testing.T) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
 		b, _ := io.ReadAll(r.Body)
-		json.Unmarshal(b, &gotPayload)
+		_ = json.Unmarshal(b, &gotPayload)
 		w.WriteHeader(201)
-		w.Write([]byte(`{"number":42}`))
+		_, _ = w.Write([]byte(`{"number":42}`))
 	}))
 	defer ts.Close()
 
@@ -268,9 +268,9 @@ func TestCreatePR(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		b, _ := io.ReadAll(r.Body)
-		json.Unmarshal(b, &gotPayload)
+		_ = json.Unmarshal(b, &gotPayload)
 		w.WriteHeader(201)
-		w.Write([]byte(`{"number":1}`))
+		_, _ = w.Write([]byte(`{"number":1}`))
 	}))
 	defer ts.Close()
 
@@ -320,7 +320,7 @@ func TestListIssues(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery
-		w.Write([]byte(`[{"number":1}]`))
+		_, _ = w.Write([]byte(`[{"number":1}]`))
 	}))
 	defer ts.Close()
 
@@ -368,7 +368,7 @@ func TestListPRs(t *testing.T) {
 	var gotPath string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		w.Write([]byte(`[{"number":1}]`))
+		_, _ = w.Write([]byte(`[{"number":1}]`))
 	}))
 	defer ts.Close()
 
@@ -395,7 +395,7 @@ func TestGetFile(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotQuery = r.URL.RawQuery
-		w.Write([]byte(`{"name":"README.md","content":"aGVsbG8="}`))
+		_, _ = w.Write([]byte(`{"name":"README.md","content":"aGVsbG8="}`))
 	}))
 	defer ts.Close()
 

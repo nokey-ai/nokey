@@ -77,8 +77,8 @@ func runImport(cmd *cobra.Command, args []string) error {
 		value := strings.TrimSpace(parts[1])
 
 		// Remove matched-pair quotes if present
-		if (strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
-			(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'")) {
+		if len(value) >= 2 && ((strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"")) ||
+			(strings.HasPrefix(value, "'") && strings.HasSuffix(value, "'"))) {
 			value = value[1 : len(value)-1]
 		}
 

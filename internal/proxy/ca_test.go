@@ -146,6 +146,7 @@ func TestGenerateHostCert_TLSUsable(t *testing.T) {
 	// Ensure the cert can be used in a TLS config.
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{*cert},
+		MinVersion:   tls.VersionTLS12,
 	}
 	if len(tlsCfg.Certificates) != 1 {
 		t.Error("expected one certificate in TLS config")

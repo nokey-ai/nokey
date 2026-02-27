@@ -14,7 +14,7 @@ import (
 
 const (
 	baseURL    = "https://api.github.com"
-	secretName = "GITHUB_TOKEN"
+	secretName = "GITHUB_TOKEN" //nolint:gosec // Not a hardcoded credential, just an env var name
 )
 
 var secretMappings = []integration.SecretMapping{{

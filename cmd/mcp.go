@@ -75,11 +75,10 @@ func init() {
 }
 
 func runMCPServe(cmd *cobra.Command, args []string) error {
-	homeDir, err := os.UserHomeDir()
+	configDir, err := getConfigDir()
 	if err != nil {
-		return fmt.Errorf("failed to get home directory: %w", err)
+		return err
 	}
-	configDir := filepath.Join(homeDir, ".config", "nokey")
 	pol, err = policy.Load(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
@@ -272,7 +271,10 @@ func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.Call
 		}
 	}
 
-	configDir := filepath.Join(homeDir(), ".config", "nokey")
+	configDir, err := getConfigDir()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get config directory: %s", err)), nil
+	}
 
 	// Load proxy rules from the already-loaded policy.
 	rules := pol.ProxyRules()
@@ -304,9 +306,7 @@ func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 	addr := request.GetString("addr", "127.0.0.1:0")
 
-	srv := proxy.NewServer(ca, rules, secrets, pol, func(op, host, secretList string, ok bool, errMsg string) {
-		recordAudit(op, host, secretList, ok, errMsg)
-	})
+	srv := proxy.NewServer(ca, rules, secrets, pol, recordAudit)
 
 	actualAddr, err := srv.Start(addr)
 	if err != nil {
@@ -334,11 +334,6 @@ func handleStopProxy(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolRes
 	proxyServer = nil
 	recordAudit("mcp:stop_proxy", "proxy", "", true, "")
 	return mcp.NewToolResultText("Proxy stopped."), nil
-}
-
-func homeDir() string {
-	h, _ := os.UserHomeDir()
-	return h
 }
 
 func handleListSecrets(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -417,7 +412,7 @@ func handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 	}
 
 	// Execute command with timeout
-	execCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSecs)*time.Second)
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
 	defer cancel()
 
 	cmd := osexec.CommandContext(execCtx, command, args...)
@@ -522,7 +517,7 @@ func handleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	// Execute with clean environment (no secrets in env vars)
-	execCtx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSecs)*time.Second)
+	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
 	defer cancel()
 
 	cmd := osexec.CommandContext(execCtx, command, resolvedArgs...)

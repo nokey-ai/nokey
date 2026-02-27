@@ -226,8 +226,8 @@ func TestListFiltersExpired(t *testing.T) {
 	now := time.Now()
 	s := newTestStore(now)
 
-	s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60})
-	s.Mint(MintRequest{Secrets: []string{"B"}, TTLSecs: 10})
+	_, _ = s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60})
+	_, _ = s.Mint(MintRequest{Secrets: []string{"B"}, TTLSecs: 10})
 
 	// Advance past the short-lived token
 	s.now = func() time.Time { return now.Add(15 * time.Second) }

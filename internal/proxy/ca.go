@@ -51,7 +51,7 @@ func LoadOrCreateCA(configDir string) (*CA, error) {
 	if err := os.WriteFile(keyPath, ca.keyPEM, 0600); err != nil {
 		return nil, fmt.Errorf("failed to write CA key: %w", err)
 	}
-	if err := os.WriteFile(certPath, ca.CertPEM, 0644); err != nil {
+	if err := os.WriteFile(certPath, ca.CertPEM, 0600); err != nil {
 		return nil, fmt.Errorf("failed to write CA cert: %w", err)
 	}
 

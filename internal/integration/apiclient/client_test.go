@@ -40,7 +40,7 @@ func TestDo_InjectsAuthHeaders(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		w.WriteHeader(200)
-		w.Write([]byte(`{"ok":true}`))
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer upstream.Close()
 
@@ -72,7 +72,7 @@ func TestDo_InjectsAuthHeaders(t *testing.T) {
 
 func TestDo_RedactsResponseBody(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`token is secret-abc-123 and more`))
+		_, _ = w.Write([]byte(`token is secret-abc-123 and more`))
 	}))
 	defer upstream.Close()
 
@@ -196,7 +196,7 @@ func TestDo_AuditCalledOnSuccess(t *testing.T) {
 func TestDo_AuditCalledOnNon2xx(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
-		w.Write([]byte("error"))
+		_, _ = w.Write([]byte("error"))
 	}))
 	defer upstream.Close()
 
@@ -232,7 +232,7 @@ func TestDo_PostWithBody(t *testing.T) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
 		w.WriteHeader(201)
-		w.Write([]byte(`{"id":1}`))
+		_, _ = w.Write([]byte(`{"id":1}`))
 	}))
 	defer upstream.Close()
 

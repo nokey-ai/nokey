@@ -130,9 +130,7 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and start server.
-	srv := proxy.NewServer(ca, rules, secrets, pol, func(op, host, secretList string, ok bool, errMsg string) {
-		recordAudit(op, host, secretList, ok, errMsg)
-	})
+	srv := proxy.NewServer(ca, rules, secrets, pol, recordAudit)
 
 	addr, err := srv.Start(proxyAddr)
 	if err != nil {
