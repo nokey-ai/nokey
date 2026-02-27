@@ -10,9 +10,10 @@ import (
 	"github.com/nokey-ai/nokey/internal/env"
 )
 
-// Run executes a command with the provided secrets merged into the environment
-// It handles signal forwarding and returns the exit code of the child process
-func Run(command string, args []string, secrets map[string]string) (int, error) {
+// Run executes a command with the provided secrets merged into the environment.
+// It handles signal forwarding and returns the exit code of the child process.
+// Optional extraEnv entries (e.g. proxy vars) are appended after the merge.
+func Run(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
 	if command == "" {
 		return 1, fmt.Errorf("command cannot be empty")
 	}
@@ -21,7 +22,7 @@ func Run(command string, args []string, secrets map[string]string) (int, error) 
 	cmd := exec.Command(command, args...)
 
 	// Merge secrets into environment
-	cmd.Env = env.MergeEnvironment(os.Environ(), secrets)
+	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 
 	// Connect standard streams
 	cmd.Stdin = os.Stdin

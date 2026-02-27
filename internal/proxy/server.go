@@ -21,16 +21,17 @@ type AuditFunc func(operation, host, secrets string, ok bool, errMsg string)
 // Server is a local HTTP/HTTPS forward proxy that injects secrets into
 // request headers based on policy proxy rules.
 type Server struct {
-	ca        *CA
-	rules     []policy.ProxyRule
-	secrets   map[string]string
-	pol       *policy.Policy
-	auditFn   AuditFunc
-	listener  net.Listener
-	server    *http.Server
-	certCache sync.Map // host → *tls.Certificate
-	mu        sync.Mutex
-	running   bool
+	ca             *CA
+	rules          []policy.ProxyRule
+	secrets        map[string]string
+	pol            *policy.Policy
+	auditFn        AuditFunc
+	listener       net.Listener
+	server         *http.Server
+	certCache      sync.Map // host → *tls.Certificate
+	mu             sync.Mutex
+	running        bool
+	blockUnmatched bool // if true, reject requests to hosts with no matching proxy rule
 }
 
 // NewServer creates a new proxy server. Secrets are held in memory for the
@@ -43,6 +44,12 @@ func NewServer(ca *CA, rules []policy.ProxyRule, secrets map[string]string, pol 
 		pol:     pol,
 		auditFn: auditFn,
 	}
+}
+
+// SetBlockUnmatched enables egress filtering: requests to hosts with no
+// matching proxy rule are rejected with 403 instead of being forwarded.
+func (s *Server) SetBlockUnmatched(block bool) {
+	s.blockUnmatched = block
 }
 
 // Start begins listening on addr (e.g. "127.0.0.1:0") and returns the actual
@@ -116,6 +123,13 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 	host := stripPort(r.Host)
 	matched := MatchRules(host, s.rules)
 
+	// Egress filtering: block requests to hosts with no matching rule.
+	if len(matched) == 0 && s.blockUnmatched {
+		s.audit("proxy:http:blocked", host, nil, false, "no matching proxy rule (egress blocked)")
+		http.Error(w, "nokey proxy: egress blocked — no proxy rule matches this host", http.StatusForbidden)
+		return
+	}
+
 	secretNames := CollectSecretNames(matched)
 
 	// Approval check: proxy runs outside MCP session context, so if approval
@@ -163,6 +177,14 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	hostPort := r.Host
 	host := stripPort(hostPort)
 
+	// Egress filtering: reject CONNECT to hosts with no matching rule before
+	// establishing the tunnel.
+	if s.blockUnmatched && len(MatchRules(host, s.rules)) == 0 {
+		s.audit("proxy:https:blocked", host, nil, false, "no matching proxy rule (egress blocked)")
+		http.Error(w, "nokey proxy: egress blocked — no proxy rule matches this host", http.StatusForbidden)
+		return
+	}
+
 	// Hijack the connection.
 	hj, ok := w.(http.Hijacker)
 	if !ok {
@@ -177,6 +199,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	defer clientConn.Close()
 
+	// Clear deadlines for the tunneled connection
+	_ = clientConn.SetDeadline(time.Time{})
+
 	// Send 200 Connection Established.
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
@@ -190,6 +215,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	tlsConn := tls.Server(clientConn, &tls.Config{
 		Certificates: []tls.Certificate{*cert},
 		NextProtos:   []string{"http/1.1"}, // Force HTTP/1.1
+		MinVersion:   tls.VersionTLS12,
 	})
 	if err := tlsConn.Handshake(); err != nil {
 		return

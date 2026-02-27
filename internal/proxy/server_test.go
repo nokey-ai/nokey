@@ -69,7 +69,7 @@ func TestHTTPProxyForwardsAndInjectsHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer srv.Stop(context.Background())
+	defer func() { _ = srv.Stop(context.Background()) }()
 
 	client := &http.Client{Transport: proxyTransport(addr)}
 
@@ -123,7 +123,7 @@ func TestHTTPProxyNoMatchPassesThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer srv.Stop(context.Background())
+	defer func() { _ = srv.Stop(context.Background()) }()
 
 	client := &http.Client{Transport: proxyTransport(addr)}
 
@@ -172,7 +172,7 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer srv.Stop(context.Background())
+	defer func() { _ = srv.Stop(context.Background()) }()
 
 	// The proxy's CONNECT handler dials the upstream using http.DefaultTransport.
 	// Override it to trust the test server's self-signed cert.
@@ -186,7 +186,8 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 
 	http.DefaultTransport = &http.Transport{
 		TLSClientConfig: &tls.Config{
-			RootCAs: upstreamPool,
+			RootCAs:    upstreamPool,
+			MinVersion: tls.VersionTLS12,
 		},
 	}
 	defer func() { http.DefaultTransport = origTransport }()
@@ -200,7 +201,8 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
 			TLSClientConfig: &tls.Config{
-				RootCAs: proxyPool,
+				RootCAs:    proxyPool,
+				MinVersion: tls.VersionTLS12,
 			},
 		},
 	}
@@ -258,7 +260,7 @@ func TestApprovalDeniesRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	defer srv.Stop(context.Background())
+	defer func() { _ = srv.Stop(context.Background()) }()
 
 	client := &http.Client{Transport: proxyTransport(addr)}
 
@@ -293,6 +295,131 @@ func TestGracefulShutdown(t *testing.T) {
 	// Stop again should be a no-op.
 	if err := srv.Stop(context.Background()); err != nil {
 		t.Fatalf("second Stop: %v", err)
+	}
+}
+
+func TestBlockUnmatchedHTTP(t *testing.T) {
+	// Upstream should never be reached when egress is blocked.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request should not reach upstream")
+	}))
+	defer upstream.Close()
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:   []string{"allowed.example.com"},
+			Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
+			Secrets: []string{"TOKEN"},
+		},
+	}
+	secrets := map[string]string{"TOKEN": "sk-test-123"}
+
+	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv.SetBlockUnmatched(true)
+
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	client := &http.Client{Transport: proxyTransport(addr)}
+
+	resp, err := client.Get(upstream.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestBlockUnmatchedAllowsMatchedHost(t *testing.T) {
+	var receivedHeaders http.Header
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:   []string{stripPort(upstreamHost)},
+			Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
+			Secrets: []string{"TOKEN"},
+		},
+	}
+	secrets := map[string]string{"TOKEN": "sk-test-123"}
+
+	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv.SetBlockUnmatched(true)
+
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	client := &http.Client{Transport: proxyTransport(addr)}
+
+	resp, err := client.Get(upstream.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "ok" {
+		t.Errorf("body = %q, want %q", body, "ok")
+	}
+	if got := receivedHeaders.Get("Authorization"); got != "Bearer sk-test-123" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer sk-test-123")
+	}
+}
+
+func TestBlockUnmatchedCONNECT(t *testing.T) {
+	// Try to CONNECT to a host with no matching rule. The proxy should
+	// reject with 403 before establishing the tunnel.
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:   []string{"allowed.example.com"},
+			Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
+			Secrets: []string{"TOKEN"},
+		},
+	}
+
+	srv := NewServer(ca, rules, map[string]string{"TOKEN": "sk-123"}, nil, nil)
+	srv.SetBlockUnmatched(true)
+
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	// CONNECT to an unmatched host via the proxy.
+	proxyURL, _ := url.Parse("http://" + addr)
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+		},
+	}
+
+	// Use HTTPS to trigger a CONNECT request.
+	_, err = client.Get("https://evil.example.com/steal")
+	if err == nil {
+		t.Fatal("expected error for blocked CONNECT, got nil")
+	}
+	// The error message should indicate the request was forbidden.
+	errStr := err.Error()
+	if !strings.Contains(errStr, "403") && !strings.Contains(errStr, "Forbidden") {
+		t.Errorf("expected 403/Forbidden in error, got: %v", err)
 	}
 }
 
