@@ -40,3 +40,4 @@ config.yaml
 
 # Local planning and notes
 next-steps.md
+tmp/
