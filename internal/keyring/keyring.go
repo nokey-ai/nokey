@@ -18,6 +18,15 @@ type Store struct {
 	serviceName string
 }
 
+// NewWithRing creates a Store backed by an existing keyring.Keyring implementation.
+// Primarily useful for testing with in-memory or mock backends.
+func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
+	if serviceName == "" {
+		serviceName = "nokey"
+	}
+	return &Store{ring: ring, serviceName: serviceName}
+}
+
 // New creates a new keyring store with the specified backend and service name
 // If backend is empty, the default backend for the platform is used
 func New(backend, serviceName string) (*Store, error) {
