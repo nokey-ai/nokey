@@ -37,6 +37,9 @@ var mcpSrv *server.MCPServer
 var proxyServer *proxy.Server
 var tokenStore *token.Store
 
+// approvalRequestFn is injectable for testing.
+var approvalRequestFn = approval.Request
+
 var mcpCmd = &cobra.Command{
 	Use:   "mcp",
 	Short: "Model Context Protocol (MCP) server for AI tool integration",
@@ -572,7 +575,7 @@ func handleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.Cal
 	mintedFor := request.GetString("for", "*")
 
 	// Minting always requires approval — this is the one-time consent gate.
-	if err := approval.Request(ctx, mcpSrv, "mint_token", secrets); err != nil {
+	if err := approvalRequestFn(ctx, mcpSrv, "mint_token", secrets); err != nil {
 		recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -669,7 +672,7 @@ func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNa
 
 	// Fall through to existing approval gateway.
 	if pol.RequiresApproval(command, secretNames) {
-		if err := approval.Request(ctx, mcpSrv, command, secretNames); err != nil {
+		if err := approvalRequestFn(ctx, mcpSrv, command, secretNames); err != nil {
 			return err
 		}
 	}

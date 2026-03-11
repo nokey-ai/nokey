@@ -87,9 +87,13 @@ func DefaultConfig() *Config {
 	}
 }
 
+// userHomeDirFn is the function used to get the user's home directory.
+// Overridable for testing.
+var userHomeDirFn = os.UserHomeDir
+
 // ConfigPath returns the path to the config file
 func ConfigPath() (string, error) {
-	homeDir, err := os.UserHomeDir()
+	homeDir, err := userHomeDirFn()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}

@@ -69,7 +69,8 @@ func initConfig() {
 	}
 }
 
-// getKeyring returns a keyring store using the current configuration
-func getKeyring() (*keyring.Store, error) {
+// getKeyring returns a keyring store using the current configuration.
+// It is a variable so tests can override it.
+var getKeyring = func() (*keyring.Store, error) {
 	return keyring.New(cfg.DefaultBackend, cfg.ServiceName)
 }

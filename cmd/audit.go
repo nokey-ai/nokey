@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/audit"
-	"github.com/nokey-ai/nokey/internal/auth"
 	"github.com/spf13/cobra"
 )
 
@@ -234,7 +233,7 @@ func runAuditClear(cmd *cobra.Command, args []string) error {
 		}
 
 		fmt.Fprintln(os.Stderr, "Clearing audit log requires authentication")
-		if err := auth.Authenticate(storedHash); err != nil {
+		if err := authAuthenticateFn(storedHash); err != nil {
 			return err
 		}
 	}

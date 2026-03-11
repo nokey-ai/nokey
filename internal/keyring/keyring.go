@@ -55,7 +55,7 @@ func New(backend, serviceName string) (*Store, error) {
 		config.AllowedBackends = nil
 	}
 
-	ring, err := keyring.Open(config)
+	ring, err := keyringOpenFn(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open keyring: %w", err)
 	}
@@ -224,6 +224,12 @@ func (s *Store) DeletePINHash() error {
 	return nil
 }
 
+// keyringOpenFn is the function used to open a keyring backend. Overridable for testing.
+var keyringOpenFn = keyring.Open
+
+// authenticateFn is the function used to verify PIN auth. Overridable for testing.
+var authenticateFn = auth.Authenticate
+
 // AuthenticatedGetAll retrieves all secrets after authenticating with PIN
 // This provides zero-trust security: even if Claude runs this command,
 // it cannot access secrets without a human entering the PIN
@@ -235,7 +241,7 @@ func (s *Store) AuthenticatedGetAll() (map[string]string, error) {
 	}
 
 	// Require human to enter PIN
-	if err := auth.Authenticate(storedHash); err != nil {
+	if err := authenticateFn(storedHash); err != nil {
 		return nil, err
 	}
 

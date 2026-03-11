@@ -168,6 +168,14 @@ func init() {
 	authOAuthLogoutCmd.Flags().StringVar(&oauthProvider, "provider", "github", "OAuth provider name")
 }
 
+// Injectable auth functions for testing.
+var (
+	authSetupPINFn     = auth.SetupPIN
+	authChangePINFn    = auth.ChangePIN
+	authAuthenticateFn = auth.Authenticate
+	newOAuthProviderFn = newOAuthProvider
+)
+
 func runAuthSetup(cmd *cobra.Command, args []string) error {
 	store, err := getKeyring()
 	if err != nil {
@@ -180,7 +188,7 @@ func runAuthSetup(cmd *cobra.Command, args []string) error {
 	}
 
 	// Set up new PIN
-	hash, err := auth.SetupPIN()
+	hash, err := authSetupPINFn()
 	if err != nil {
 		return err
 	}
@@ -212,7 +220,7 @@ func runAuthChange(cmd *cobra.Command, args []string) error {
 	}
 
 	// Change PIN (verifies old PIN first)
-	newHash, err := auth.ChangePIN(oldHash)
+	newHash, err := authChangePINFn(oldHash)
 	if err != nil {
 		return err
 	}
@@ -243,7 +251,7 @@ func runAuthDisable(cmd *cobra.Command, args []string) error {
 
 	// Verify current PIN before disabling
 	fmt.Println("To disable PIN authentication, verify your current PIN:")
-	if err := auth.Authenticate(storedHash); err != nil {
+	if err := authAuthenticateFn(storedHash); err != nil {
 		return err
 	}
 
@@ -334,7 +342,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 	redirectURL := callbackServer.GetRedirectURL()
 
 	// Create provider.
-	provider = newOAuthProvider(providerName, creds, redirectURL)
+	provider = newOAuthProviderFn(providerName, creds, redirectURL)
 
 	// Start callback server.
 	if err := callbackServer.Start(); err != nil {
@@ -468,7 +476,7 @@ func runAuthOAuthRefresh(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("client credentials not found for provider %s (re-run: nokey auth oauth setup --provider %s): %w", oauthProvider, oauthProvider, err)
 	}
 
-	provider := newOAuthProvider(oauthProvider, creds, "http://localhost:0/callback")
+	provider := newOAuthProviderFn(oauthProvider, creds, "http://localhost:0/callback")
 	ctx := context.Background()
 
 	// Refresh the token

@@ -2,6 +2,7 @@ package apiclient
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/policy"
+	"github.com/nokey-ai/nokey/internal/token"
 )
 
 // auditRecord captures a single audit call.
@@ -263,5 +265,228 @@ func TestDo_PostWithBody(t *testing.T) {
 	}
 	if body != `{"id":1}` {
 		t.Fatalf("unexpected response body: %s", body)
+	}
+}
+
+// --- Additional coverage tests ---
+
+func TestDo_SecretFetchError(t *testing.T) {
+	deps := integration.Deps{
+		GetSecret: func(name string) (string, error) {
+			return "", fmt.Errorf("secret not found: %s", name)
+		},
+		Policy: nil,
+	}
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "MISSING",
+		HeaderName: "Authorization",
+		HeaderTmpl: "Bearer %s",
+	}}
+
+	c := New("test", "http://unused", mappings, deps)
+	_, _, err := c.Do(context.Background(), "GET", "/", nil, nil)
+	if err == nil {
+		t.Fatal("expected error for missing secret")
+	}
+	if !strings.Contains(err.Error(), "failed to get secret") {
+		t.Fatalf("expected 'failed to get secret' error, got: %v", err)
+	}
+}
+
+func TestDo_HTTPTransportError(t *testing.T) {
+	deps, _ := testDeps(map[string]string{"TK": "val"})
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	// Use an invalid URL that will cause a transport error
+	c := New("test", "http://127.0.0.1:1", mappings, deps)
+	_, _, err := c.Do(context.Background(), "GET", "/fail", nil, nil)
+	if err == nil {
+		t.Fatal("expected transport error")
+	}
+	if !strings.Contains(err.Error(), "HTTP request failed") {
+		t.Fatalf("expected HTTP request failed error, got: %v", err)
+	}
+}
+
+func TestDo_NoAuditFunction(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	deps := integration.Deps{
+		GetSecret: func(name string) (string, error) { return "val", nil },
+		Policy:    nil,
+		AuditFn:   nil, // No audit function
+	}
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", upstream.URL, mappings, deps)
+	_, code, err := c.Do(context.Background(), "GET", "/", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 200 {
+		t.Fatalf("expected 200, got %d", code)
+	}
+}
+
+func TestDo_TokenBasedAuth(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+	}))
+	defer upstream.Close()
+
+	deps, audits := testDeps(map[string]string{"TK": "val"})
+	deps.UseToken = func(tokenID string, secretNames []string) error {
+		if tokenID != "test-token-id" {
+			return fmt.Errorf("unexpected token: %s", tokenID)
+		}
+		return nil
+	}
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", upstream.URL, mappings, deps)
+	ctx := token.WithTokenID(context.Background(), "test-token-id")
+	_, code, err := c.Do(ctx, "GET", "/", nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if code != 200 {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	if len(*audits) != 1 || !(*audits)[0].Ok {
+		t.Fatalf("expected 1 successful audit, got: %+v", *audits)
+	}
+}
+
+func TestDo_RequestBuildError(t *testing.T) {
+	deps, audits := testDeps(map[string]string{"TK": "val"})
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", "http://valid", mappings, deps)
+	// Use an invalid HTTP method to trigger NewRequestWithContext error
+	_, _, err := c.Do(context.Background(), "BAD METHOD", "/path", nil, nil)
+	if err == nil {
+		t.Fatal("expected error for invalid method")
+	}
+	if !strings.Contains(err.Error(), "failed to build request") {
+		t.Fatalf("expected 'failed to build request' error, got: %v", err)
+	}
+	// Audit should have been called with the error
+	if len(*audits) != 1 || (*audits)[0].Ok {
+		t.Fatalf("expected one failed audit entry, got: %+v", *audits)
+	}
+}
+
+func TestDo_ApprovalRequired(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`ok`))
+	}))
+	defer upstream.Close()
+
+	// Create a policy where "nokey:integration:test" is allowed with approval required.
+	pol := &policy.Policy{
+		Rules: []policy.Rule{{
+			Commands: []string{"nokey:integration:test"},
+			Secrets:  []string{"TK"},
+			Approval: policy.ApprovalAlways,
+		}},
+	}
+
+	deps, audits := testDeps(map[string]string{"TK": "val"})
+	deps.Policy = pol
+	// No Requester set, so approval.Request will fail
+	deps.Requester = nil
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", upstream.URL, mappings, deps)
+	_, _, err := c.Do(context.Background(), "GET", "/", nil, nil)
+	// approval.Request with nil requester should fail
+	if err == nil {
+		t.Fatal("expected approval error")
+	}
+	if len(*audits) < 1 || (*audits)[0].Ok {
+		t.Fatalf("expected failed audit entry, got: %+v", *audits)
+	}
+}
+
+func TestDo_SecretFetchErrorWithAudit(t *testing.T) {
+	var audits []auditRecord
+	deps := integration.Deps{
+		GetSecret: func(name string) (string, error) {
+			return "", fmt.Errorf("keyring locked")
+		},
+		Policy: nil,
+		AuditFn: func(op, target, secretList string, ok bool, errMsg string) {
+			audits = append(audits, auditRecord{op, target, secretList, ok, errMsg})
+		},
+	}
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", "http://unused", mappings, deps)
+	_, _, err := c.Do(context.Background(), "GET", "/api", nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	// Verify audit was called with failure
+	if len(audits) != 1 || audits[0].Ok {
+		t.Fatalf("expected failed audit, got: %+v", audits)
+	}
+	if audits[0].Target != "GET /api" {
+		t.Fatalf("expected target 'GET /api', got %q", audits[0].Target)
+	}
+}
+
+func TestDo_TokenAuthFailure(t *testing.T) {
+	deps, _ := testDeps(map[string]string{"TK": "val"})
+	deps.UseToken = func(tokenID string, secretNames []string) error {
+		return fmt.Errorf("token expired")
+	}
+
+	mappings := []integration.SecretMapping{{
+		SecretName: "TK",
+		HeaderName: "Authorization",
+		HeaderTmpl: "token %s",
+	}}
+
+	c := New("test", "http://unused", mappings, deps)
+	ctx := token.WithTokenID(context.Background(), "bad-token")
+	_, _, err := c.Do(ctx, "GET", "/", nil, nil)
+	if err == nil {
+		t.Fatal("expected token error")
+	}
+	if !strings.Contains(err.Error(), "token invalid") {
+		t.Fatalf("expected 'token invalid' error, got: %v", err)
 	}
 }

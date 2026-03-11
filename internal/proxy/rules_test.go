@@ -110,6 +110,29 @@ func TestResolveHeaders(t *testing.T) {
 	}
 }
 
+func TestResolveTemplate_BareDollar(t *testing.T) {
+	// A bare $ at end of string or followed by a non-identifier char should
+	// be kept as-is.
+	secrets := map[string]string{"A": "val"}
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"price is $", "price is $"},
+		{"cost $5", "cost $5"},
+		{"$A and $", "val and $"},
+	}
+	for _, tt := range tests {
+		got, err := resolveTemplate(tt.input, secrets)
+		if err != nil {
+			t.Fatalf("resolveTemplate(%q): %v", tt.input, err)
+		}
+		if got != tt.want {
+			t.Errorf("resolveTemplate(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
 func TestCollectSecretNames(t *testing.T) {
 	rules := []policy.ProxyRule{
 		{Secrets: []string{"TOKEN", "KEY"}},

@@ -25,6 +25,12 @@ import (
 // variants. Shorter secrets produce too many false positives.
 const minSecretLenForVariants = 8
 
+// ptyStartFn is the function used to start a command with a PTY. Overridable for testing.
+var ptyStartFn = pty.Start
+
+// ptyInheritSizeFn is the function used to inherit terminal size. Overridable for testing.
+var ptyInheritSizeFn = pty.InheritSize
+
 // Run executes a command with PTY output redaction.
 // Any occurrence of a secret value in stdout/stderr will be replaced with [REDACTED:KEY_NAME].
 // Optional extraEnv entries (e.g. proxy vars) are appended after the merge.
@@ -40,7 +46,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 
 	// Start command with a PTY
-	ptmx, err := pty.Start(cmd)
+	ptmx, err := ptyStartFn(cmd)
 	if err != nil {
 		return 1, fmt.Errorf("failed to start command with PTY: %w", err)
 	}
@@ -51,7 +57,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	signal.Notify(ch, syscall.SIGWINCH)
 	go func() {
 		for range ch {
-			_ = pty.InheritSize(os.Stdin, ptmx)
+			_ = ptyInheritSizeFn(os.Stdin, ptmx)
 		}
 	}()
 	ch <- syscall.SIGWINCH // Initial resize
@@ -194,9 +200,15 @@ func encodingVariants(value string) []string {
 // replacements map are secret values (and their encoded variants);
 // sortedKeys holds the same data.
 func (r *redactor) Clear() {
+	// Collect keys before clearing — ClearString mutates the backing bytes,
+	// which corrupts map hashes and prevents subsequent deletes.
+	keys := make([]string, 0, len(r.replacements))
 	for k := range r.replacements {
-		sensitive.ClearString(k)
+		keys = append(keys, k)
+	}
+	for _, k := range keys {
 		delete(r.replacements, k)
+		sensitive.ClearString(k)
 	}
 	sensitive.ClearSlice(r.sortedKeys)
 	r.sortedKeys = nil

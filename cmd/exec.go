@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/audit"
-	"github.com/nokey-ai/nokey/internal/exec"
+	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -18,6 +18,13 @@ import (
 	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
+)
+
+// Injectable function vars for testing.
+var (
+	execRunFn   = iexec.Run
+	redactRunFn = redact.Run
+	osExitFn    = os.Exit
 )
 
 var (
@@ -229,9 +236,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var exitCode int
 	var execErr error
 	if enableRedact {
-		exitCode, execErr = redact.Run(args[0], args[1:], secrets, proxyEnv...)
+		exitCode, execErr = redactRunFn(args[0], args[1:], secrets, proxyEnv...)
 	} else {
-		exitCode, execErr = exec.Run(args[0], args[1:], secrets, proxyEnv...)
+		exitCode, execErr = execRunFn(args[0], args[1:], secrets, proxyEnv...)
 	}
 
 	// Record audit entry if audit logging is enabled
@@ -266,7 +273,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	// Exit with the same code as the subprocess
-	os.Exit(exitCode)
+	osExitFn(exitCode)
 	return nil
 }
 
@@ -454,7 +461,7 @@ func validateOAuthToken(store *keyring.Store) error {
 			return fmt.Errorf("OAuth token expired but client credentials not found\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", providerName)
 		}
 
-		provider := newOAuthProvider(providerName, creds, "http://localhost:0/callback")
+		provider := newOAuthProviderFn(providerName, creds, "http://localhost:0/callback")
 		ctx := context.Background()
 
 		// Refresh the token

@@ -423,6 +423,272 @@ func TestBlockUnmatchedCONNECT(t *testing.T) {
 	}
 }
 
+func TestStartAlreadyRunning(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+	addr1, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	// Start again should return same address.
+	addr2, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("second Start: %v", err)
+	}
+	if addr1 != addr2 {
+		t.Errorf("second Start returned different addr: %s vs %s", addr1, addr2)
+	}
+}
+
+func TestAddrNotRunning(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+	if addr := srv.Addr(); addr != "" {
+		t.Errorf("Addr before Start should be empty, got %q", addr)
+	}
+}
+
+func TestStripPort(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"example.com:443", "example.com"},
+		{"example.com", "example.com"},
+		{"127.0.0.1:8080", "127.0.0.1"},
+	}
+	for _, tt := range tests {
+		if got := stripPort(tt.input); got != tt.want {
+			t.Errorf("stripPort(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestCopyHeaders(t *testing.T) {
+	src := http.Header{
+		"Content-Type": []string{"application/json"},
+		"X-Custom":     []string{"val1", "val2"},
+	}
+	dst := make(http.Header)
+	copyHeaders(dst, src)
+	if got := dst.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", got, "application/json")
+	}
+	if got := dst.Values("X-Custom"); len(got) != 2 {
+		t.Errorf("X-Custom values = %v, want 2 values", got)
+	}
+}
+
+func TestHTTPProxyHeaderResolveError(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach upstream")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:   []string{stripPort(upstreamHost)},
+			Headers: map[string]string{"Authorization": "Bearer $MISSING_SECRET"},
+			Secrets: []string{"MISSING_SECRET"},
+		},
+	}
+	// secrets map is missing the required secret.
+	secrets := map[string]string{}
+
+	srv := NewServer(ca, rules, secrets, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	client := &http.Client{Transport: proxyTransport(addr)}
+	resp, err := client.Get(upstream.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
+func TestGetOrCreateCert_Cache(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+
+	cert1, err := srv.getOrCreateCert("example.com")
+	if err != nil {
+		t.Fatalf("first getOrCreateCert: %v", err)
+	}
+	cert2, err := srv.getOrCreateCert("example.com")
+	if err != nil {
+		t.Fatalf("second getOrCreateCert: %v", err)
+	}
+	if cert1 != cert2 {
+		t.Error("expected same cert pointer from cache")
+	}
+}
+
+func TestStartDefaultAddr(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+	addr, err := srv.Start("")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+	if addr == "" {
+		t.Error("expected non-empty address")
+	}
+}
+
+func TestHTTPSConnectApprovalDenied(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request should not reach upstream")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
+	host := stripPort(upstreamHost)
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:    []string{host},
+			Headers:  map[string]string{"Authorization": "Bearer $TOKEN"},
+			Secrets:  []string{"TOKEN"},
+			Approval: policy.ApprovalAlways,
+		},
+	}
+	secrets := map[string]string{"TOKEN": "sk-123"}
+	pol := &policy.Policy{
+		Proxy: &policy.ProxyPolicy{
+			Approval: policy.ApprovalAlways,
+			Rules:    rules,
+		},
+	}
+
+	srv := NewServer(ca, rules, secrets, pol, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	// Override DefaultTransport to trust the upstream TLS cert.
+	origTransport := http.DefaultTransport
+	upstreamPool := x509.NewCertPool()
+	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatalf("parse upstream cert: %v", err)
+	}
+	upstreamPool.AddCert(upstreamCert)
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:    upstreamPool,
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	defer func() { http.DefaultTransport = origTransport }()
+
+	// Client trusts the proxy CA for the MITM cert.
+	proxyPool := x509.NewCertPool()
+	proxyPool.AddCert(ca.Cert)
+
+	proxyURL, _ := url.Parse("http://" + addr)
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				RootCAs:    proxyPool,
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+
+	resp, err := client.Get(upstream.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestHTTPSConnectHeaderResolveError(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("should not reach upstream")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
+	host := stripPort(upstreamHost)
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{
+		{
+			Hosts:   []string{host},
+			Headers: map[string]string{"Authorization": "Bearer $MISSING_SECRET"},
+			Secrets: []string{"MISSING_SECRET"},
+		},
+	}
+	// Secrets map is empty — resolve will fail.
+	secrets := map[string]string{}
+
+	srv := NewServer(ca, rules, secrets, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	// Override DefaultTransport to trust the upstream TLS cert.
+	origTransport := http.DefaultTransport
+	upstreamPool := x509.NewCertPool()
+	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatalf("parse upstream cert: %v", err)
+	}
+	upstreamPool.AddCert(upstreamCert)
+	http.DefaultTransport = &http.Transport{
+		TLSClientConfig: &tls.Config{
+			RootCAs:    upstreamPool,
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	defer func() { http.DefaultTransport = origTransport }()
+
+	// Client trusts the proxy CA for the MITM cert.
+	proxyPool := x509.NewCertPool()
+	proxyPool.AddCert(ca.Cert)
+
+	proxyURL, _ := url.Parse("http://" + addr)
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyURL(proxyURL),
+			TLSClientConfig: &tls.Config{
+				RootCAs:    proxyPool,
+				MinVersion: tls.VersionTLS12,
+			},
+		},
+	}
+
+	resp, err := client.Get(upstream.URL + "/test")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status = %d, want 502", resp.StatusCode)
+	}
+}
+
 type auditEntry struct {
 	op      string
 	host    string

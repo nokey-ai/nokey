@@ -152,3 +152,68 @@ func TestGenerateHostCert_TLSUsable(t *testing.T) {
 		t.Error("expected one certificate in TLS config")
 	}
 }
+
+func TestParseCA_InvalidCertPEM(t *testing.T) {
+	_, err := parseCA([]byte("not-a-pem"), []byte("also-not-pem"))
+	if err == nil {
+		t.Error("expected error for invalid cert PEM")
+	}
+}
+
+func TestParseCA_InvalidKeyPEM(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA: %v", err)
+	}
+	_, err = parseCA(ca.CertPEM, []byte("not-a-pem"))
+	if err == nil {
+		t.Error("expected error for invalid key PEM")
+	}
+}
+
+func TestParseCA_ValidCertButInvalidKeyDER(t *testing.T) {
+	dir := t.TempDir()
+	ca, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA: %v", err)
+	}
+	// Valid PEM block wrapping garbage DER data
+	fakeKeyPEM := []byte("-----BEGIN EC PRIVATE KEY-----\nYWJj\n-----END EC PRIVATE KEY-----\n")
+	_, err = parseCA(ca.CertPEM, fakeKeyPEM)
+	if err == nil {
+		t.Error("expected error for invalid key DER inside valid PEM block")
+	}
+}
+
+func TestLoadOrCreateCA_ReadOnlyDir(t *testing.T) {
+	dir := t.TempDir()
+	// Create a file where the "ca" directory should be, so MkdirAll fails.
+	caPath := filepath.Join(dir, "ca")
+	if err := os.WriteFile(caPath, []byte("block"), 0600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	_, err := LoadOrCreateCA(dir)
+	if err == nil {
+		t.Error("expected error when ca dir cannot be created")
+	}
+}
+
+func TestLoadOrCreateCA_CertOnlyNoKey(t *testing.T) {
+	dir := t.TempDir()
+	caDir := filepath.Join(dir, "ca")
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Write only the cert file, no key file — should trigger new CA generation.
+	if err := os.WriteFile(filepath.Join(caDir, "ca-cert.pem"), []byte("whatever"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ca, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA: %v", err)
+	}
+	if ca.Cert == nil {
+		t.Error("expected valid CA even with partial files")
+	}
+}

@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -412,5 +413,132 @@ func TestRecord(t *testing.T) {
 	}
 	if len(log.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(log.Entries))
+	}
+}
+
+func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
+	store := newTestStore()
+	key, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+	if key == nil {
+		t.Fatal("expected non-nil key")
+	}
+	// Key should be stored and retrievable
+	key2, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if *key != *key2 {
+		t.Error("expected same key on second call")
+	}
+}
+
+func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
+	store := newTestStore()
+	// Store a legacy 32-byte raw key
+	raw32 := strings.Repeat("A", 32)
+	_ = store.Set(AuditEncryptionKeyKey, raw32)
+
+	key, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+	if key == nil {
+		t.Fatal("expected non-nil key")
+	}
+	// Should have migrated to base64
+	val, _ := store.Get(AuditEncryptionKeyKey)
+	if val == raw32 {
+		t.Error("expected key to be migrated to base64")
+	}
+}
+
+func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
+	store := newTestStore()
+	// Store an invalid key (not 32 bytes, not valid base64 of 32 bytes)
+	_ = store.Set(AuditEncryptionKeyKey, "too-short")
+
+	_, err := getOrCreateEncryptionKey(store)
+	if err == nil {
+		t.Error("expected error for invalid key length")
+	}
+}
+
+func TestLoad_CorruptedAuditLog(t *testing.T) {
+	store := newTestStore()
+	// First create a valid encryption key
+	key, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+	// Store encrypted but invalid JSON
+	encrypted, err := encrypt([]byte("not-json{{{"), key)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+	_ = store.Set(AuditLogKey, string(encrypted))
+
+	_, err = Load(store)
+	if err == nil {
+		t.Error("expected error for corrupted JSON")
+	}
+	if !strings.Contains(err.Error(), "parse audit log") {
+		t.Errorf("error should mention parsing, got: %v", err)
+	}
+}
+
+func TestLoad_DecryptionFailure(t *testing.T) {
+	store := newTestStore()
+	// Create encryption key
+	_, _ = getOrCreateEncryptionKey(store)
+	// Store garbage (not valid encrypted data but long enough to have a nonce)
+	_ = store.Set(AuditLogKey, strings.Repeat("x", 50))
+
+	_, err := Load(store)
+	if err == nil {
+		t.Error("expected error for decryption failure")
+	}
+	if !strings.Contains(err.Error(), "decrypt") {
+		t.Errorf("error should mention decryption, got: %v", err)
+	}
+}
+
+func TestRecord_MultipleEntries(t *testing.T) {
+	store := newTestStore()
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
+		if err := Record(store, entry); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 3 {
+		t.Errorf("expected 3 entries, got %d", len(log.Entries))
+	}
+}
+
+func TestCsvEscape_Quotes(t *testing.T) {
+	got := csvEscape(`say "hello"`)
+	if !strings.Contains(got, `""hello""`) {
+		t.Errorf("expected doubled quotes, got: %s", got)
+	}
+}
+
+func TestCsvEscape_Newline(t *testing.T) {
+	got := csvEscape("line1\nline2")
+	if got[0] != '"' {
+		t.Errorf("expected quoted output for string with newline, got: %s", got)
+	}
+}
+
+func TestCsvEscape_NoSpecialChars(t *testing.T) {
+	got := csvEscape("simple")
+	if got != "simple" {
+		t.Errorf("expected unchanged string, got: %s", got)
 	}
 }
