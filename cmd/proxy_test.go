@@ -360,3 +360,36 @@ func TestRunProxyStart_NoRules(t *testing.T) {
 		t.Errorf("error = %v, want 'no proxy rules'", err)
 	}
 }
+
+func TestRunProxyStart_CACreateError(t *testing.T) {
+	dir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+	os.Setenv("HOME", dir)
+
+	configDir := filepath.Join(dir, ".config", "nokey")
+	os.MkdirAll(configDir, 0700)
+
+	// Write valid proxy rules so we pass the "no proxy rules" check.
+	polYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $SECRET"
+`
+	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
+
+	// Make the CA directory a file so LoadOrCreateCA can't write there.
+	caPath := filepath.Join(configDir, "ca")
+	if err := os.WriteFile(caPath, []byte("not-a-dir"), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	err := runProxyStart(nil, nil)
+	if err == nil {
+		t.Fatal("expected error when CA dir is a file")
+	}
+	if !strings.Contains(err.Error(), "failed to load/create CA") {
+		t.Errorf("error = %v, want 'failed to load/create CA'", err)
+	}
+}

@@ -340,3 +340,30 @@ func TestMatchesAnyHost(t *testing.T) {
 		}
 	}
 }
+
+func TestProxyRules(t *testing.T) {
+	// nil policy
+	var p *Policy
+	if rules := p.ProxyRules(); rules != nil {
+		t.Errorf("nil Policy.ProxyRules() = %v, want nil", rules)
+	}
+
+	// policy with no proxy section
+	p = &Policy{}
+	if rules := p.ProxyRules(); rules != nil {
+		t.Errorf("Policy with no proxy.ProxyRules() = %v, want nil", rules)
+	}
+
+	// policy with proxy rules
+	p = &Policy{
+		Proxy: &ProxyPolicy{
+			Rules: []ProxyRule{
+				{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}},
+			},
+		},
+	}
+	rules := p.ProxyRules()
+	if len(rules) != 1 {
+		t.Errorf("ProxyRules() = %d rules, want 1", len(rules))
+	}
+}

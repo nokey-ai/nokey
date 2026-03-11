@@ -924,3 +924,74 @@ func TestGitHubProvider_RefreshToken(t *testing.T) {
 		t.Errorf("AccessToken = %q, want %q", token.AccessToken, "refreshed-gh-token")
 	}
 }
+
+func TestGitHubProvider_ValidateToken_Success(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"login": "testuser",
+			"id":    12345,
+		})
+	}))
+	defer mockServer.Close()
+
+	p := &GitHubProvider{
+		apiURL: mockServer.URL + "/user",
+		config: &oauth2.Config{
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  mockServer.URL + "/auth",
+				TokenURL: mockServer.URL + "/token",
+			},
+		},
+	}
+	tok := &Token{AccessToken: "valid", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+	if err := p.ValidateToken(context.Background(), tok); err != nil {
+		t.Errorf("ValidateToken success case: %v", err)
+	}
+}
+
+func TestGitHubProvider_ValidateToken_NonOK(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		fmt.Fprint(w, "bad credentials")
+	}))
+	defer mockServer.Close()
+
+	p := &GitHubProvider{
+		apiURL: mockServer.URL + "/user",
+		config: &oauth2.Config{
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  mockServer.URL + "/auth",
+				TokenURL: mockServer.URL + "/token",
+			},
+		},
+	}
+	tok := &Token{AccessToken: "bad", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+	err := p.ValidateToken(context.Background(), tok)
+	if err == nil || !strings.Contains(err.Error(), "token validation failed") {
+		t.Errorf("expected 'token validation failed', got: %v", err)
+	}
+}
+
+func TestGitHubProvider_ValidateToken_MissingLogin(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"id": 123})
+	}))
+	defer mockServer.Close()
+
+	p := &GitHubProvider{
+		apiURL: mockServer.URL + "/user",
+		config: &oauth2.Config{
+			Endpoint: oauth2.Endpoint{
+				AuthURL:  mockServer.URL + "/auth",
+				TokenURL: mockServer.URL + "/token",
+			},
+		},
+	}
+	tok := &Token{AccessToken: "tok", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+	err := p.ValidateToken(context.Background(), tok)
+	if err == nil || !strings.Contains(err.Error(), "invalid response from GitHub API") {
+		t.Errorf("expected 'invalid response from GitHub API', got: %v", err)
+	}
+}

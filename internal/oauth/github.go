@@ -17,6 +17,8 @@ type GitHubProvider struct {
 	ClientSecret string
 	Scopes       []string
 	config       *oauth2.Config
+	// apiURL overrides the GitHub API base URL; empty uses the real endpoint.
+	apiURL string
 }
 
 // NewGitHubProvider creates a new GitHub OAuth provider
@@ -72,7 +74,11 @@ func (p *GitHubProvider) RefreshToken(ctx context.Context, refreshToken string) 
 func (p *GitHubProvider) ValidateToken(ctx context.Context, token *Token) error {
 	client := p.config.Client(ctx, token.ToOAuth2Token())
 
-	resp, err := client.Get("https://api.github.com/user")
+	apiURL := p.apiURL
+	if apiURL == "" {
+		apiURL = "https://api.github.com/user"
+	}
+	resp, err := client.Get(apiURL)
 	if err != nil {
 		return fmt.Errorf("failed to validate token: %w", err)
 	}

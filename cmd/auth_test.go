@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -870,5 +871,138 @@ func TestRunAuthDisable_DeletePINHashError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "remove failed") {
 		t.Errorf("error = %v, want 'remove failed'", err)
+	}
+}
+
+// oauthSetupCapture is a local Provider mock that captures the state passed to GetAuthURL.
+type oauthSetupCapture struct {
+	stateCh chan string
+	token   *oauth.Token
+}
+
+func (m *oauthSetupCapture) GetAuthURL(state string) string {
+	m.stateCh <- state
+	return "http://mock/auth?state=" + state
+}
+func (m *oauthSetupCapture) ExchangeCode(_ context.Context, _ string) (*oauth.Token, error) {
+	return m.token, nil
+}
+func (m *oauthSetupCapture) RefreshToken(_ context.Context, _ string) (*oauth.Token, error) {
+	return nil, nil
+}
+func (m *oauthSetupCapture) ValidateToken(_ context.Context, _ *oauth.Token) error { return nil }
+func (m *oauthSetupCapture) GetProviderName() string                               { return "github" }
+
+func TestRunAuthOAuthSetup_GitHub_HappyPath(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	tok := &oauth.Token{
+		AccessToken:  "access123",
+		RefreshToken: "refresh123",
+		TokenType:    "bearer",
+		Expiry:       time.Now().Add(time.Hour),
+	}
+	stateCh := make(chan string, 1)
+	redirectURLCh := make(chan string, 1)
+
+	old := newOAuthProviderFn
+	t.Cleanup(func() { newOAuthProviderFn = old })
+	newOAuthProviderFn = func(name string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
+		redirectURLCh <- redirectURL
+		return &oauthSetupCapture{stateCh: stateCh, token: tok}
+	}
+
+	oldProvider := oauthProvider
+	t.Cleanup(func() { oauthProvider = oldProvider })
+	oauthProvider = "github"
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runAuthOAuthSetup(nil, nil)
+	}()
+
+	// Wait for provider to be created (redirect URL known) then for state to be captured.
+	redirectURL := <-redirectURLCh
+	state := <-stateCh
+
+	// Simulate browser callback.
+	resp, err := http.Get(redirectURL + "?code=authcode&state=" + state)
+	if err != nil {
+		t.Fatalf("GET callback: %v", err)
+	}
+	resp.Body.Close()
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("runAuthOAuthSetup: %v", err)
+	}
+
+	// Verify token was persisted.
+	saved, err := oauth.LoadToken(store, "github")
+	if err != nil {
+		t.Fatalf("LoadToken: %v", err)
+	}
+	if saved.AccessToken != tok.AccessToken {
+		t.Errorf("access token = %q, want %q", saved.AccessToken, tok.AccessToken)
+	}
+}
+
+func TestRunAuthOAuthSetup_Generic_HappyPath(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	tok := &oauth.Token{
+		AccessToken: "gen-access",
+		TokenType:   "bearer",
+		Expiry:      time.Now().Add(time.Hour),
+	}
+	stateCh := make(chan string, 1)
+	redirectURLCh := make(chan string, 1)
+
+	old := newOAuthProviderFn
+	t.Cleanup(func() { newOAuthProviderFn = old })
+	newOAuthProviderFn = func(name string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
+		redirectURLCh <- redirectURL
+		return &oauthSetupCapture{stateCh: stateCh, token: tok}
+	}
+
+	oldProvider := oauthProvider
+	oldAuthURL := oauthAuthURL
+	oldTokenURL := oauthTokenURL
+	t.Cleanup(func() {
+		oauthProvider = oldProvider
+		oauthAuthURL = oldAuthURL
+		oauthTokenURL = oldTokenURL
+	})
+	oauthProvider = "generic"
+	oauthAuthURL = "https://example.com/auth"
+	oauthTokenURL = "https://example.com/token"
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runAuthOAuthSetup(nil, nil)
+	}()
+
+	redirectURL := <-redirectURLCh
+	state := <-stateCh
+
+	resp, err := http.Get(redirectURL + "?code=gencode&state=" + state)
+	if err != nil {
+		t.Fatalf("GET callback: %v", err)
+	}
+	resp.Body.Close()
+
+	if err := <-errCh; err != nil {
+		t.Fatalf("runAuthOAuthSetup generic: %v", err)
+	}
+
+	saved, err := oauth.LoadToken(store, "generic")
+	if err != nil {
+		t.Fatalf("LoadToken: %v", err)
+	}
+	if saved.AccessToken != tok.AccessToken {
+		t.Errorf("access token = %q, want %q", saved.AccessToken, tok.AccessToken)
 	}
 }
