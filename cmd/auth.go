@@ -174,6 +174,7 @@ var (
 	authChangePINFn    = auth.ChangePIN
 	authAuthenticateFn = auth.Authenticate
 	newOAuthProviderFn = newOAuthProvider
+	browserOpenFn      = browser.OpenURL
 )
 
 func runAuthSetup(cmd *cobra.Command, args []string) error {
@@ -355,7 +356,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nOpening browser for authorization...")
 	fmt.Printf("\nIf the browser doesn't open, visit this URL:\n%s\n\n", authURL)
 
-	if err := browser.OpenURL(authURL); err != nil {
+	if err := browserOpenFn(authURL); err != nil {
 		fmt.Printf("⚠️  Could not open browser: %v\n", err)
 	}
 

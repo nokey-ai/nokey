@@ -52,7 +52,7 @@ func (m *mockRing) Keys() ([]string, error) {
 }
 
 func newTestStore() *Store {
-	return &Store{ring: newMockRing(), serviceName: "test"}
+	return NewWithRing(newMockRing(), "test")
 }
 
 func TestStore_SetGet(t *testing.T) {
@@ -483,10 +483,10 @@ func TestStore_GetAll_GetError(t *testing.T) {
 	ring := &errorRing{mockRing: *newMockRing()}
 	s := NewWithRing(ring, "test")
 
-	// Set a key successfully
-	_ = s.Set("MYKEY", "val")
+	// Insert a key directly into the ring (bypassing cache)
+	ring.items["MYKEY"] = keyring.Item{Key: "MYKEY", Data: []byte("val")}
 
-	// Now make Get fail (but Keys still works)
+	// Make Get fail — the key exists in ring.Keys() but ring.Get() errors
 	ring.getErr = errors.New("ring get failed")
 
 	_, err := s.GetAll()
@@ -586,5 +586,255 @@ func TestAuthenticatedGetAll_GetAllError(t *testing.T) {
 	_, err := s.AuthenticatedGetAll()
 	if err == nil {
 		t.Error("expected error when GetAll fails")
+	}
+}
+
+// --- Cache behavior tests ---
+
+func TestStore_Cache_GetServedFromCache(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+
+	// Set populates cache
+	_ = s.Set("KEY", "val")
+
+	// Make ring.Get fail — should still return from cache
+	ring.getErr = errors.New("ring broken")
+	val, err := s.Get("KEY")
+	if err != nil {
+		t.Fatalf("Get should serve from cache: %v", err)
+	}
+	if val != "val" {
+		t.Errorf("Get = %q, want %q", val, "val")
+	}
+}
+
+func TestStore_Cache_DeleteEvictsCache(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+
+	_ = s.Set("KEY", "val")
+	_ = s.Delete("KEY")
+
+	// After delete, cache should be evicted; ring.Get returns not found
+	_, err := s.Get("KEY")
+	if err == nil {
+		t.Error("Get after Delete should fail")
+	}
+}
+
+func TestStore_Cache_SetOverwritesCache(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+
+	_ = s.Set("KEY", "v1")
+	_ = s.Set("KEY", "v2")
+
+	// Make ring fail to prove we're reading from cache
+	ring.getErr = errors.New("ring broken")
+	val, err := s.Get("KEY")
+	if err != nil {
+		t.Fatalf("Get should serve from cache: %v", err)
+	}
+	if val != "v2" {
+		t.Errorf("Get = %q, want %q", val, "v2")
+	}
+}
+
+func TestStore_Cache_GetPopulatesCache(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+
+	// Insert directly into ring, bypassing cache
+	ring.items["KEY"] = keyring.Item{Key: "KEY", Data: []byte("val")}
+
+	// First Get populates cache
+	_, err := s.Get("KEY")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+
+	// Now break ring — second Get should still work from cache
+	ring.getErr = errors.New("ring broken")
+	val, err := s.Get("KEY")
+	if err != nil {
+		t.Fatalf("cached Get: %v", err)
+	}
+	if val != "val" {
+		t.Errorf("Get = %q, want %q", val, "val")
+	}
+}
+
+// --- AllKeys tests ---
+
+func TestStore_AllKeys_IncludesInternal(t *testing.T) {
+	s := newTestStore()
+	_ = s.Set("API_KEY", "v1")
+	_ = s.Set("__nokey_internal", "hidden")
+
+	keys, err := s.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
+	if len(keys) != 2 {
+		t.Errorf("AllKeys returned %d keys, want 2: %v", len(keys), keys)
+	}
+	found := false
+	for _, k := range keys {
+		if k == "__nokey_internal" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("AllKeys should include __nokey_-prefixed keys")
+	}
+}
+
+func TestStore_AllKeys_Sorted(t *testing.T) {
+	s := newTestStore()
+	_ = s.Set("Z_KEY", "v")
+	_ = s.Set("A_KEY", "v")
+	_ = s.Set("M_KEY", "v")
+
+	keys, err := s.AllKeys()
+	if err != nil {
+		t.Fatalf("AllKeys: %v", err)
+	}
+	for i := 1; i < len(keys); i++ {
+		if keys[i-1] > keys[i] {
+			t.Errorf("AllKeys not sorted: %v", keys)
+			break
+		}
+	}
+}
+
+func TestStore_AllKeys_Error(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing(), keysErr: errors.New("keys failed")}
+	s := NewWithRing(ring, "test")
+	_, err := s.AllKeys()
+	if err == nil {
+		t.Error("AllKeys should return error when ring.Keys fails")
+	}
+}
+
+// --- MigrateAllItems tests ---
+
+func TestStore_MigrateAllItems_DryRun(t *testing.T) {
+	s := newTestStore()
+	_ = s.Set("KEY1", "v1")
+	_ = s.Set("KEY2", "v2")
+
+	count, err := s.MigrateAllItems(true)
+	if err != nil {
+		t.Fatalf("MigrateAllItems dry-run: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("dry-run count = %d, want 2", count)
+	}
+
+	// Verify data is unchanged
+	v, _ := s.Get("KEY1")
+	if v != "v1" {
+		t.Errorf("KEY1 = %q after dry-run, want %q", v, "v1")
+	}
+}
+
+func TestStore_MigrateAllItems_Migrate(t *testing.T) {
+	s := newTestStore()
+	_ = s.Set("KEY1", "v1")
+	_ = s.Set("__nokey_pin", "pinhash")
+
+	count, err := s.MigrateAllItems(false)
+	if err != nil {
+		t.Fatalf("MigrateAllItems: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("count = %d, want 2", count)
+	}
+
+	// Verify data preserved
+	v1, _ := s.Get("KEY1")
+	if v1 != "v1" {
+		t.Errorf("KEY1 = %q after migrate, want %q", v1, "v1")
+	}
+	v2, _ := s.Get("__nokey_pin")
+	if v2 != "pinhash" {
+		t.Errorf("__nokey_pin = %q after migrate, want %q", v2, "pinhash")
+	}
+}
+
+func TestStore_MigrateAllItems_Empty(t *testing.T) {
+	s := newTestStore()
+	count, err := s.MigrateAllItems(false)
+	if err != nil {
+		t.Fatalf("MigrateAllItems: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0", count)
+	}
+}
+
+func TestStore_MigrateAllItems_KeysError(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing(), keysErr: errors.New("keys failed")}
+	s := NewWithRing(ring, "test")
+	_, err := s.MigrateAllItems(false)
+	if err == nil {
+		t.Error("MigrateAllItems should fail when Keys() errors")
+	}
+}
+
+func TestStore_MigrateAllItems_GetError(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+	// Insert directly to bypass cache
+	ring.items["KEY"] = keyring.Item{Key: "KEY", Data: []byte("val")}
+	ring.getErr = errors.New("get failed")
+
+	_, err := s.MigrateAllItems(false)
+	if err == nil {
+		t.Error("MigrateAllItems should fail when Get() errors")
+	}
+}
+
+func TestStore_MigrateAllItems_RemoveError(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+	_ = s.Set("KEY", "val")
+	ring.removeErr = errors.New("remove failed")
+
+	_, err := s.MigrateAllItems(false)
+	if err == nil {
+		t.Error("MigrateAllItems should fail when Remove() errors")
+	}
+}
+
+func TestStore_MigrateAllItems_SetError(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+	_ = s.Set("KEY", "val")
+	// Remove will succeed (items exist), but Set will fail
+	ring.setErr = errors.New("set failed")
+
+	_, err := s.MigrateAllItems(false)
+	if err == nil {
+		t.Error("MigrateAllItems should fail when Set() errors")
+	}
+}
+
+// --- Trust flag test ---
+
+func TestNew_KeychainTrustEnabled(t *testing.T) {
+	old := keyringOpenFn
+	defer func() { keyringOpenFn = old }()
+	keyringOpenFn = func(config keyring.Config) (keyring.Keyring, error) {
+		if !config.KeychainTrustApplication {
+			t.Error("KeychainTrustApplication should be true")
+		}
+		return newMockRing(), nil
+	}
+
+	_, err := New("", "test")
+	if err != nil {
+		t.Fatalf("New: %v", err)
 	}
 }

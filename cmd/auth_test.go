@@ -897,6 +897,7 @@ func TestRunAuthOAuthSetup_GitHub_HappyPath(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
+	withNoBrowser(t)
 
 	tok := &oauth.Token{
 		AccessToken:  "access123",
@@ -952,6 +953,7 @@ func TestRunAuthOAuthSetup_Generic_HappyPath(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
+	withNoBrowser(t)
 
 	tok := &oauth.Token{
 		AccessToken: "gen-access",

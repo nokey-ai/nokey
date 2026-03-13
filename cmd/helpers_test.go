@@ -191,3 +191,11 @@ func withMockOAuthProvider(t *testing.T, provider oauth.Provider) {
 		return provider
 	}
 }
+
+// withNoBrowser stubs browserOpenFn so tests don't open a real browser.
+func withNoBrowser(t *testing.T) {
+	t.Helper()
+	old := browserOpenFn
+	t.Cleanup(func() { browserOpenFn = old })
+	browserOpenFn = func(url string) error { return nil }
+}

@@ -3,6 +3,7 @@ package keyring
 import (
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"syscall"
@@ -16,6 +17,7 @@ import (
 type Store struct {
 	ring        keyring.Keyring
 	serviceName string
+	cache       map[string]keyring.Item
 }
 
 // NewWithRing creates a Store backed by an existing keyring.Keyring implementation.
@@ -24,7 +26,7 @@ func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
 	if serviceName == "" {
 		serviceName = "nokey"
 	}
-	return &Store{ring: ring, serviceName: serviceName}
+	return &Store{ring: ring, serviceName: serviceName, cache: make(map[string]keyring.Item)}
 }
 
 // New creates a new keyring store with the specified backend and service name
@@ -45,7 +47,7 @@ func New(backend, serviceName string) (*Store, error) {
 	config := keyring.Config{
 		ServiceName:              serviceName,
 		AllowedBackends:          []keyring.BackendType{backendType},
-		KeychainTrustApplication: false,
+		KeychainTrustApplication: true,
 		FileDir:                  getFileBackendDir(),
 		FilePasswordFunc:         filePasswordPrompt,
 	}
@@ -63,6 +65,7 @@ func New(backend, serviceName string) (*Store, error) {
 	return &Store{
 		ring:        ring,
 		serviceName: serviceName,
+		cache:       make(map[string]keyring.Item),
 	}, nil
 }
 
@@ -82,6 +85,7 @@ func (s *Store) Set(key, value string) error {
 		return fmt.Errorf("failed to store secret: %w", err)
 	}
 
+	s.cache[key] = item
 	return nil
 }
 
@@ -89,6 +93,10 @@ func (s *Store) Set(key, value string) error {
 func (s *Store) Get(key string) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("key cannot be empty")
+	}
+
+	if item, ok := s.cache[key]; ok {
+		return string(item.Data), nil
 	}
 
 	item, err := s.ring.Get(key)
@@ -99,6 +107,7 @@ func (s *Store) Get(key string) (string, error) {
 		return "", fmt.Errorf("failed to retrieve secret: %w", err)
 	}
 
+	s.cache[key] = item
 	return string(item.Data), nil
 }
 
@@ -115,6 +124,7 @@ func (s *Store) Delete(key string) error {
 		return fmt.Errorf("failed to delete secret: %w", err)
 	}
 
+	delete(s.cache, key)
 	return nil
 }
 
@@ -184,30 +194,25 @@ func filePasswordPrompt(prompt string) (string, error) {
 
 // HasPIN checks if a PIN is configured
 func (s *Store) HasPIN() bool {
-	_, err := s.ring.Get(auth.PINHashKey)
+	_, err := s.Get(auth.PINHashKey)
 	return err == nil
 }
 
 // GetPINHash retrieves the stored PIN hash
 func (s *Store) GetPINHash() (string, error) {
-	item, err := s.ring.Get(auth.PINHashKey)
+	val, err := s.Get(auth.PINHashKey)
 	if err != nil {
-		if err == keyring.ErrKeyNotFound {
+		if IsNotFound(err) {
 			return "", fmt.Errorf("no PIN configured (run: nokey auth setup)")
 		}
 		return "", fmt.Errorf("failed to retrieve PIN hash: %w", err)
 	}
-	return string(item.Data), nil
+	return val, nil
 }
 
 // SetPINHash stores the PIN hash
 func (s *Store) SetPINHash(hash string) error {
-	item := keyring.Item{
-		Key:   auth.PINHashKey,
-		Data:  []byte(hash),
-		Label: "nokey: PIN hash",
-	}
-	if err := s.ring.Set(item); err != nil {
+	if err := s.Set(auth.PINHashKey, hash); err != nil {
 		return fmt.Errorf("failed to store PIN hash: %w", err)
 	}
 	return nil
@@ -215,8 +220,8 @@ func (s *Store) SetPINHash(hash string) error {
 
 // DeletePINHash removes the PIN hash (disables authentication)
 func (s *Store) DeletePINHash() error {
-	if err := s.ring.Remove(auth.PINHashKey); err != nil {
-		if err == keyring.ErrKeyNotFound {
+	if err := s.Delete(auth.PINHashKey); err != nil {
+		if IsNotFound(err) {
 			return fmt.Errorf("no PIN configured")
 		}
 		return fmt.Errorf("failed to delete PIN: %w", err)
@@ -252,6 +257,63 @@ func (s *Store) AuthenticatedGetAll() (map[string]string, error) {
 
 	// PIN verified, return secrets
 	return s.GetAll()
+}
+
+// AllKeys returns all stored keys, including internal __nokey_* keys.
+// Unlike List(), this does not filter out internal keys.
+func (s *Store) AllKeys() ([]string, error) {
+	keys, err := s.ring.Keys()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list keys: %w", err)
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
+// MigrateAllItems re-creates all keychain items so they pick up the current
+// keyring.Config (notably KeychainTrustApplication). On non-macOS platforms
+// this is a no-op.
+func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
+	if runtime.GOOS != "darwin" {
+		return 0, nil
+	}
+
+	keys, err := s.ring.Keys()
+	if err != nil {
+		return 0, fmt.Errorf("failed to enumerate keys: %w", err)
+	}
+
+	// Read all values into memory first (safety: data preserved if crash mid-migration)
+	type entry struct {
+		key  string
+		item keyring.Item
+	}
+	entries := make([]entry, 0, len(keys))
+	for _, k := range keys {
+		item, err := s.ring.Get(k)
+		if err != nil {
+			return 0, fmt.Errorf("failed to read key %q: %w", k, err)
+		}
+		entries = append(entries, entry{key: k, item: item})
+	}
+
+	if dryRun {
+		return len(entries), nil
+	}
+
+	// Re-create each item: remove then set to pick up new ACL
+	for _, e := range entries {
+		if err := s.ring.Remove(e.key); err != nil {
+			return 0, fmt.Errorf("failed to remove key %q during migration: %w", e.key, err)
+		}
+		if err := s.ring.Set(e.item); err != nil {
+			return 0, fmt.Errorf("failed to re-create key %q during migration: %w", e.key, err)
+		}
+		// Update cache with migrated item
+		s.cache[e.key] = e.item
+	}
+
+	return len(entries), nil
 }
 
 // IsNotFound returns true if the error indicates a key was not found in the keyring
