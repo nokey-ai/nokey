@@ -1,12 +1,15 @@
 package keyring
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"runtime"
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/nokey-ai/nokey/internal/sensitive"
 
 	"github.com/99designs/keyring"
 	"github.com/nokey-ai/nokey/internal/auth"
@@ -301,16 +304,38 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 		return len(entries), nil
 	}
 
-	// Re-create each item: remove then set to pick up new ACL
+	// Deep-copy Data so zeroing entries doesn't corrupt the backend's storage
+	for i := range entries {
+		entries[i].item.Data = bytes.Clone(entries[i].item.Data)
+	}
+
+	// Zero all loaded secret data on every exit path (including errors).
+	defer func() {
+		for i := range entries {
+			sensitive.ClearBytes(entries[i].item.Data)
+		}
+	}()
+
+	// Re-create each item to pick up new ACL. We remove first, then set —
+	// removal is required because macOS Keychain does not update ACLs on
+	// an in-place Set. If Set fails after Remove, we retry once before
+	// giving up so that a transient error doesn't cause data loss (the
+	// original value is still held in memory in `entries`).
 	for _, e := range entries {
 		if err := s.ring.Remove(e.key); err != nil {
 			return 0, fmt.Errorf("failed to remove key %q during migration: %w", e.key, err)
 		}
 		if err := s.ring.Set(e.item); err != nil {
-			return 0, fmt.Errorf("failed to re-create key %q during migration: %w", e.key, err)
+			// Retry once — the item was just removed, a transient failure
+			// here would lose data if we don't try again.
+			if retryErr := s.ring.Set(e.item); retryErr != nil {
+				return 0, fmt.Errorf("failed to re-create key %q during migration (data may need manual recovery): retry: %w (original: %v)", e.key, retryErr, err)
+			}
 		}
-		// Update cache with migrated item
-		s.cache[e.key] = e.item
+		// Cache a deep copy — the deferred zeroing will zero entries' backing arrays
+		cached := e.item
+		cached.Data = bytes.Clone(e.item.Data)
+		s.cache[e.key] = cached
 	}
 
 	return len(entries), nil
