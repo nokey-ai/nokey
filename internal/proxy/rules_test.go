@@ -9,7 +9,7 @@ import (
 func TestMatchRules(t *testing.T) {
 	rules := []policy.ProxyRule{
 		{Hosts: []string{"api.openai.com"}, Headers: map[string]string{"Authorization": "Bearer $TOKEN"}},
-		{Hosts: []string{"*.anthropic.com"}, Headers: map[string]string{"x-api-key": "$KEY"}},
+		{Hosts: []string{"*.example.com"}, Headers: map[string]string{"x-api-key": "$KEY"}},
 		{Hosts: []string{"api.github.com"}, Headers: map[string]string{"Authorization": "token $GH"}},
 	}
 
@@ -18,11 +18,11 @@ func TestMatchRules(t *testing.T) {
 		wantCount int
 	}{
 		{"api.openai.com", 1},
-		{"api.anthropic.com", 1},
-		{"other.anthropic.com", 1},
-		{"anthropic.com", 0}, // * requires at least one char
+		{"api.example.com", 1},
+		{"other.example.com", 1},
+		{"example.com", 0}, // * requires at least one char
 		{"api.github.com", 1},
-		{"unknown.example.com", 0},
+		{"unknown.other.com", 0},
 	}
 
 	for _, tt := range tests {

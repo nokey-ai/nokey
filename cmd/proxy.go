@@ -47,9 +47,9 @@ Example policies.yaml proxy section:
       - hosts: ["api.openai.com"]
         headers:
           Authorization: "Bearer $OPENAI_API_KEY"
-      - hosts: ["*.anthropic.com"]
+      - hosts: ["*.example.com"]
         headers:
-          x-api-key: "$ANTHROPIC_API_KEY"
+          x-api-key: "$EXAMPLE_API_KEY"
         approval: never`,
 	RunE: runProxyStart,
 }

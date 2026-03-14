@@ -24,9 +24,9 @@ proxy:
     - hosts: ["api.openai.com"]
       headers:
         Authorization: "Bearer $OPENAI_API_KEY"
-    - hosts: ["*.anthropic.com"]
+    - hosts: ["*.example.com"]
       headers:
-        x-api-key: "$ANTHROPIC_API_KEY"
+        x-api-key: "$EXAMPLE_API_KEY"
       approval: never
 `,
 			wantRules: 2,
@@ -301,11 +301,11 @@ func TestProxyRequiresApproval(t *testing.T) {
 				Proxy: &ProxyPolicy{
 					Approval: ApprovalNever,
 					Rules: []ProxyRule{
-						{Hosts: []string{"*.anthropic.com"}, Secrets: []string{"API_KEY"}},
+						{Hosts: []string{"*.example.com"}, Secrets: []string{"API_KEY"}},
 					},
 				},
 			},
-			host:        "api.anthropic.com",
+			host:        "api.example.com",
 			secretNames: []string{"API_KEY"},
 			want:        false,
 		},
@@ -328,8 +328,8 @@ func TestMatchesAnyHost(t *testing.T) {
 		want     bool
 	}{
 		{"api.openai.com", []string{"api.openai.com"}, true},
-		{"api.anthropic.com", []string{"*.anthropic.com"}, true},
-		{"anthropic.com", []string{"*.anthropic.com"}, false},
+		{"api.example.com", []string{"*.example.com"}, true},
+		{"example.com", []string{"*.example.com"}, false},
 		{"api.example.com", []string{"api.openai.com", "api.example.com"}, true},
 		{"other.com", []string{"api.openai.com"}, false},
 	}
