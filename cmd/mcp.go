@@ -30,12 +30,14 @@ const (
 	maxOutputBytes     = 1 << 20 // 1 MiB
 	defaultTimeoutSecs = 30
 	maxTimeoutSecs     = 300
+	autoMintTTLSecs    = 3600 // 1 hour — session token lifetime
 )
 
 var pol *policy.Policy
 var mcpSrv *server.MCPServer
 var proxyServer *proxy.Server
 var tokenStore *token.Store
+var sessionTokenID string
 
 // approvalRequestFn is injectable for testing.
 var approvalRequestFn = approval.Request
@@ -89,6 +91,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	}
 
 	tokenStore = token.NewStore()
+	sessionTokenID = ""
 
 	s := server.NewMCPServer("nokey", version.Version,
 		server.WithToolCapabilities(false),
@@ -665,9 +668,28 @@ func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNa
 		return fmt.Errorf("token invalid: %s", result.Reason)
 	}
 
+	// Try cached session token (auto-minted).
+	if sessionTokenID != "" {
+		result := tokenStore.Validate(sessionTokenID, secretNames)
+		if result.Valid {
+			recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
+			return nil
+		}
+		// Token expired or doesn't cover these secrets — clear and fall through.
+		sessionTokenID = ""
+	}
+
 	// No token provided — check if policy requires one.
 	if pol.RequiresToken(command, secretNames) {
 		return fmt.Errorf("token required by policy — use mint_token to create an access lease")
+	}
+
+	// Auto-mint: one approval covers the rest of the session.
+	if cfg != nil && cfg.Auth.AutoMintToken {
+		if err := tryAutoMint(ctx, secretNames); err == nil {
+			return nil
+		}
+		// Auto-mint declined or failed — fall through to per-call approval.
 	}
 
 	// Fall through to existing approval gateway.
@@ -677,6 +699,40 @@ func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNa
 		}
 	}
 
+	return nil
+}
+
+// tryAutoMint requests a one-time approval to mint a session token covering all secrets.
+func tryAutoMint(ctx context.Context, secretNames []string) error {
+	// Gather all secret names so the token covers everything.
+	store, err := getKeyring()
+	if err != nil {
+		return err
+	}
+	allNames, err := store.List()
+	if err != nil {
+		return err
+	}
+	if len(allNames) == 0 {
+		allNames = secretNames
+	}
+
+	if err := approvalRequestFn(ctx, mcpSrv, "session_token", allNames); err != nil {
+		return err
+	}
+
+	tok, err := tokenStore.Mint(token.MintRequest{
+		Secrets:   allNames,
+		TTLSecs:   autoMintTTLSecs,
+		MaxUses:   0, // unlimited
+		MintedFor: "*",
+	})
+	if err != nil {
+		return err
+	}
+
+	sessionTokenID = tok.ID
+	recordAudit("mcp:auto_mint", "session_token", strings.Join(allNames, ","), true, "")
 	return nil
 }
 

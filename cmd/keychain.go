@@ -84,6 +84,10 @@ func runKeychainMigrate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("migration failed: %w", err)
 	}
 
+	if err := store.SetKeychainMigrated(); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: migration succeeded but failed to write sentinel: %v\n", err)
+	}
+
 	fmt.Printf("Migrated %d keychain item(s). Keychain prompts should no longer appear.\n", count)
 	return nil
 }

@@ -341,6 +341,20 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 	return len(entries), nil
 }
 
+// keychainMigratedKey is a sentinel written after MigrateAllItems succeeds.
+const keychainMigratedKey = "__nokey_keychain_migrated__"
+
+// IsKeychainMigrated returns true if the keychain migration sentinel exists.
+func (s *Store) IsKeychainMigrated() bool {
+	val, err := s.Get(keychainMigratedKey)
+	return err == nil && val == "1"
+}
+
+// SetKeychainMigrated writes the migration sentinel key.
+func (s *Store) SetKeychainMigrated() error {
+	return s.Set(keychainMigratedKey, "1")
+}
+
 // IsNotFound returns true if the error indicates a key was not found in the keyring
 func IsNotFound(err error) bool {
 	return err != nil && strings.HasPrefix(err.Error(), "secret not found:")

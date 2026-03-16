@@ -119,10 +119,10 @@ func Clear() error {
 }
 
 // ParseTTL parses a duration string into a time.Duration.
-// An empty string defaults to 5 minutes. Maximum allowed is 1 hour.
+// An empty string defaults to 15 minutes. Maximum allowed is 8 hours.
 func ParseTTL(s string) (time.Duration, error) {
 	if s == "" {
-		return 5 * time.Minute, nil
+		return 15 * time.Minute, nil
 	}
 	d, err := time.ParseDuration(s)
 	if err != nil {
@@ -131,8 +131,8 @@ func ParseTTL(s string) (time.Duration, error) {
 	if d <= 0 {
 		return 0, fmt.Errorf("session TTL must be positive, got %s", d)
 	}
-	if d > 1*time.Hour {
-		return 0, fmt.Errorf("session TTL %s exceeds maximum of 1h", d)
+	if d > 8*time.Hour {
+		return 0, fmt.Errorf("session TTL %s exceeds maximum of 8h", d)
 	}
 	return d, nil
 }

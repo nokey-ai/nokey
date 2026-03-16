@@ -165,6 +165,7 @@ func TestSaveAndLoad_FullConfig(t *testing.T) {
 		Auth: AuthConfig{
 			DefaultMethod: "pin",
 			SessionTTL:    "10m",
+			AutoMintToken: true,
 			OAuth: OAuthConfig{
 				GitHub: OAuthGitHubConfig{
 					Enabled:      true,
@@ -206,6 +207,9 @@ func TestSaveAndLoad_FullConfig(t *testing.T) {
 	}
 	if loaded.Auth.SessionTTL != "10m" {
 		t.Errorf("Auth.SessionTTL = %q, want %q", loaded.Auth.SessionTTL, "10m")
+	}
+	if !loaded.Auth.AutoMintToken {
+		t.Error("Auth.AutoMintToken should be true")
 	}
 	if loaded.Auth.OAuth.GitHub.ClientID != "gh-client-id" {
 		t.Errorf("GitHub.ClientID = %q, want %q", loaded.Auth.OAuth.GitHub.ClientID, "gh-client-id")

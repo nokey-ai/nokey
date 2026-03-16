@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -26,6 +27,9 @@ var (
 	redactRunFn = redact.Run
 	osExitFn    = os.Exit
 )
+
+// migrateWarned ensures the keychain migration hint is only printed once per process.
+var migrateWarned bool
 
 var (
 	enableRedact  bool
@@ -191,6 +195,12 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	defer sensitive.ClearMap(allSecrets)
 
+	// On macOS, hint about keychain migration if PIN auth was used and migration hasn't been done.
+	if !migrateWarned && runtime.GOOS == "darwin" && (authMethodUsed == "pin" || authMethodUsed == "both") && !store.IsKeychainMigrated() {
+		fmt.Fprintln(os.Stderr, "Tip: Run 'nokey keychain migrate' to eliminate macOS Keychain password prompts.")
+		migrateWarned = true
+	}
+
 	if len(allSecrets) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: no secrets stored")
 	}
@@ -201,8 +211,8 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Show confirmation prompt unless --yes is used
-	if !skipConfirm {
+	// Show confirmation prompt unless --yes flag or skip_confirm config is set
+	if !skipConfirm && !cfg.Auth.SkipConfirm {
 		confirmed, err := confirmSecrets(secrets, args[0])
 		if err != nil {
 			return err

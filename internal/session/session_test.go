@@ -72,11 +72,13 @@ func TestParseTTL(t *testing.T) {
 		want    time.Duration
 		wantErr bool
 	}{
-		{"", 5 * time.Minute, false},
+		{"", 15 * time.Minute, false},
 		{"5m", 5 * time.Minute, false},
 		{"30s", 30 * time.Second, false},
 		{"1h", 1 * time.Hour, false},
-		{"2h", 0, true},  // exceeds max
+		{"4h", 4 * time.Hour, false},
+		{"8h", 8 * time.Hour, false},
+		{"9h", 0, true},  // exceeds max
 		{"-5m", 0, true}, // negative
 		{"bad", 0, true}, // unparseable
 		{"0s", 0, true},  // zero

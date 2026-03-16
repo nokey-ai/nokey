@@ -45,19 +45,22 @@ func makeCallToolRequest(args map[string]any) mcp.CallToolRequest {
 	}
 }
 
-// withMCPGlobals sets up package-level MCP vars (pol, tokenStore, cfg) and restores on cleanup.
+// withMCPGlobals sets up package-level MCP vars (pol, tokenStore, cfg, sessionTokenID) and restores on cleanup.
 func withMCPGlobals(t *testing.T) {
 	t.Helper()
 
 	oldPol := pol
 	oldTokenStore := tokenStore
+	oldSessionTokenID := sessionTokenID
 	t.Cleanup(func() {
 		pol = oldPol
 		tokenStore = oldTokenStore
+		sessionTokenID = oldSessionTokenID
 	})
 
 	pol = nil // nil policy allows everything
 	tokenStore = token.NewStore()
+	sessionTokenID = ""
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
@@ -1220,11 +1223,9 @@ func TestHandleMintToken_ApprovalAccepted(t *testing.T) {
 	withTestKeyring(t, store)
 	withMCPGlobals(t)
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
-		return nil // approved
-	}
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		return nil
+	})
 
 	req := makeCallToolRequest(map[string]any{
 		"secrets":     []any{"SECRET_A", "SECRET_B"},
@@ -1256,11 +1257,9 @@ func TestHandleMintToken_ApprovalDeclined(t *testing.T) {
 	withTestKeyring(t, store)
 	withMCPGlobals(t)
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return fmt.Errorf("user declined secret access for \"mint_token\"")
-	}
+	})
 
 	req := makeCallToolRequest(map[string]any{
 		"secrets":     []any{"SECRET_A"},
@@ -1281,11 +1280,9 @@ func TestHandleMintToken_UnlimitedUses(t *testing.T) {
 	withTestKeyring(t, store)
 	withMCPGlobals(t)
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return nil
-	}
+	})
 
 	req := makeCallToolRequest(map[string]any{
 		"secrets":     []any{"KEY"},
@@ -1311,11 +1308,9 @@ func TestHandleMintToken_WithAudit(t *testing.T) {
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return nil
-	}
+	})
 
 	req := makeCallToolRequest(map[string]any{
 		"secrets":     []any{"AUDIT_SEC"},
@@ -1336,11 +1331,9 @@ func TestHandleMintToken_DefaultFor(t *testing.T) {
 	withTestKeyring(t, store)
 	withMCPGlobals(t)
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return nil
-	}
+	})
 
 	req := makeCallToolRequest(map[string]any{
 		"secrets":     []any{"KEY"},
@@ -1371,11 +1364,9 @@ func TestCheckTokenOrApproval_RequiresApproval_Accepted(t *testing.T) {
 		}},
 	}
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return nil
-	}
+	})
 
 	err := checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"})
 	if err != nil {
@@ -1395,15 +1386,190 @@ func TestCheckTokenOrApproval_RequiresApproval_Declined(t *testing.T) {
 		}},
 	}
 
-	oldApproval := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = oldApproval })
-	approvalRequestFn = func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 		return fmt.Errorf("user declined")
-	}
+	})
 
 	err := checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"})
 	if err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Errorf("expected 'declined' error, got: %v", err)
+	}
+}
+
+// --- checkTokenOrApproval auto-mint path ---
+
+func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withMCPGlobals(t)
+
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	withTestConfig(t, c)
+
+	if err := store.Set("SECRET_A", "val-a"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	approvalCount := 0
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		approvalCount++
+		return nil
+	})
+
+	// First call: triggers auto-mint approval.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd1", []string{"SECRET_A"}); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Fatalf("approvalCount = %d, want 1", approvalCount)
+	}
+	if sessionTokenID == "" {
+		t.Fatal("sessionTokenID should be set after auto-mint")
+	}
+
+	// Second call: should use cached session token, no new approval.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd2", []string{"SECRET_A"}); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Errorf("approvalCount = %d, want 1 (no second prompt)", approvalCount)
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withMCPGlobals(t)
+
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	withTestConfig(t, c)
+
+	if err := store.Set("SEC", "val"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		return fmt.Errorf("user declined")
+	})
+
+	// Auto-mint declined → falls through. With nil policy, no further approval needed.
+	err := checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"})
+	if err != nil {
+		t.Errorf("expected nil (fallthrough with nil policy), got: %v", err)
+	}
+	if sessionTokenID != "" {
+		t.Error("sessionTokenID should remain empty after declined auto-mint")
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_Disabled(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withMCPGlobals(t)
+
+	approvalCount := 0
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		approvalCount++
+		return nil
+	})
+
+	// With nil policy, no approval required; auto-mint disabled → no prompt at all.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+		t.Fatalf("checkTokenOrApproval: %v", err)
+	}
+	if approvalCount != 0 {
+		t.Errorf("approvalCount = %d, want 0 (auto-mint disabled)", approvalCount)
+	}
+	if sessionTokenID != "" {
+		t.Error("sessionTokenID should remain empty when auto-mint is disabled")
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_Expired(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withMCPGlobals(t)
+
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	withTestConfig(t, c)
+
+	if err := store.Set("SEC", "val"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	approvalCount := 0
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		approvalCount++
+		return nil
+	})
+
+	// Mint a token with 1s TTL, then expire it by revoking.
+	tok, err := tokenStore.Mint(token.MintRequest{
+		Secrets: []string{"SEC"}, TTLSecs: 1, MintedFor: "*",
+	})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	sessionTokenID = tok.ID
+	tokenStore.Revoke(tok.ID) // simulate expiry
+
+	// Next call should detect invalid session token, clear it, then auto-mint again.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+		t.Fatalf("checkTokenOrApproval: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Errorf("approvalCount = %d, want 1 (re-mint after expiry)", approvalCount)
+	}
+	if sessionTokenID == "" || sessionTokenID == tok.ID {
+		t.Error("sessionTokenID should be set to a new token after re-mint")
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withMCPGlobals(t)
+
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	withTestConfig(t, c)
+
+	if err := store.Set("SEC_A", "a"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	approvalCount := 0
+	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		approvalCount++
+		return nil
+	})
+
+	// First call: auto-mint with SEC_A.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_A"}); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	if approvalCount != 1 {
+		t.Fatalf("approvalCount = %d, want 1", approvalCount)
+	}
+	firstToken := sessionTokenID
+
+	// Add a new secret and request it.
+	if err := store.Set("SEC_B", "b"); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+
+	// Session token only covers SEC_A, not SEC_B → should clear and re-mint.
+	if err := checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_B"}); err != nil {
+		t.Fatalf("second call: %v", err)
+	}
+	if approvalCount != 2 {
+		t.Errorf("approvalCount = %d, want 2 (re-mint for new secret)", approvalCount)
+	}
+	if sessionTokenID == firstToken {
+		t.Error("sessionTokenID should differ after re-mint for new secret")
 	}
 }
 
