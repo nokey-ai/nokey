@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/keyring"
@@ -33,11 +34,21 @@ func Execute() {
 	}
 }
 
+var versionLong bool
+
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version of nokey",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("nokey %s\n", version.Version)
+		if versionLong {
+			fmt.Printf("nokey %s\n", version.Version)
+			fmt.Printf("  commit: %s\n", version.Commit)
+			fmt.Printf("  built:  %s\n", version.Date)
+			fmt.Printf("  go:     %s\n", runtime.Version())
+			fmt.Printf("  os:     %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		} else {
+			fmt.Printf("nokey %s\n", version.Version)
+		}
 	},
 }
 
@@ -46,6 +57,7 @@ func init() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&backend, "backend", "", "Keyring backend (default: system default)")
+	versionCmd.Flags().BoolVar(&versionLong, "long", false, "Show commit, build date, Go version, and platform")
 	rootCmd.AddCommand(versionCmd)
 }
 

@@ -6,6 +6,8 @@ builds:
     ldflags:
       - -s -w
       - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
+      - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
     goos:
       - darwin
       - linux
