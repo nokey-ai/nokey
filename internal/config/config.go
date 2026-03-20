@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"gopkg.in/yaml.v3"
 )
@@ -93,14 +94,29 @@ func DefaultConfig() *Config {
 // Overridable for testing.
 var userHomeDirFn = os.UserHomeDir
 
-// ConfigPath returns the path to the config file
-func ConfigPath() (string, error) {
+// ConfigDir returns the nokey configuration directory.
+// On Windows it uses %APPDATA%\nokey; elsewhere ~/.config/nokey.
+// Exported as a var so tests can override it.
+var ConfigDir = func() (string, error) {
+	if runtime.GOOS == "windows" {
+		appData := os.Getenv("APPDATA")
+		if appData != "" {
+			return filepath.Join(appData, "nokey"), nil
+		}
+	}
 	homeDir, err := userHomeDirFn()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
+	return filepath.Join(homeDir, ".config", "nokey"), nil
+}
 
-	configDir := filepath.Join(homeDir, ".config", "nokey")
+// ConfigPath returns the path to the config file
+func ConfigPath() (string, error) {
+	configDir, err := ConfigDir()
+	if err != nil {
+		return "", err
+	}
 	return filepath.Join(configDir, "config.yaml"), nil
 }
 

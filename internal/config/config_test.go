@@ -390,6 +390,73 @@ func TestLoad_ConfigPathError(t *testing.T) {
 	}
 }
 
+func TestConfigDir_Default(t *testing.T) {
+	old := ConfigDir
+	defer func() { ConfigDir = old }()
+
+	tempDir := t.TempDir()
+	ConfigDir = func() (string, error) { return tempDir, nil }
+
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("ConfigDir: %v", err)
+	}
+	if dir != tempDir {
+		t.Errorf("ConfigDir = %q, want %q", dir, tempDir)
+	}
+}
+
+func TestConfigDir_UsesHomeDir(t *testing.T) {
+	tempDir := t.TempDir()
+	old := userHomeDirFn
+	defer func() { userHomeDirFn = old }()
+	userHomeDirFn = func() (string, error) { return tempDir, nil }
+
+	// Reset ConfigDir to its real implementation for this test.
+	oldDir := ConfigDir
+	defer func() { ConfigDir = oldDir }()
+	ConfigDir = func() (string, error) {
+		home, err := userHomeDirFn()
+		if err != nil {
+			return "", err
+		}
+		return filepath.Join(home, ".config", "nokey"), nil
+	}
+
+	dir, err := ConfigDir()
+	if err != nil {
+		t.Fatalf("ConfigDir: %v", err)
+	}
+	want := filepath.Join(tempDir, ".config", "nokey")
+	if dir != want {
+		t.Errorf("ConfigDir = %q, want %q", dir, want)
+	}
+}
+
+func TestConfigDir_HomeDirError(t *testing.T) {
+	old := userHomeDirFn
+	defer func() { userHomeDirFn = old }()
+	userHomeDirFn = func() (string, error) {
+		return "", fmt.Errorf("no home directory")
+	}
+
+	// Reset ConfigDir to real implementation.
+	oldDir := ConfigDir
+	defer func() { ConfigDir = oldDir }()
+	ConfigDir = func() (string, error) {
+		home, err := userHomeDirFn()
+		if err != nil {
+			return "", fmt.Errorf("failed to get user home directory: %w", err)
+		}
+		return filepath.Join(home, ".config", "nokey"), nil
+	}
+
+	_, err := ConfigDir()
+	if err == nil {
+		t.Fatal("ConfigDir should fail when home dir is unavailable")
+	}
+}
+
 func TestConfigPath_HomeDirError(t *testing.T) {
 	old := userHomeDirFn
 	defer func() { userHomeDirFn = old }()

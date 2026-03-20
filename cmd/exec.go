@@ -387,11 +387,10 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 	noop := func() {}
 
 	// Determine config directory.
-	homeDir, err := os.UserHomeDir()
+	configDir, err := getConfigDir()
 	if err != nil {
-		return nil, noop, fmt.Errorf("failed to get home directory: %w", err)
+		return nil, noop, fmt.Errorf("failed to get config directory: %w", err)
 	}
-	configDir := fmt.Sprintf("%s/.config/nokey", homeDir)
 
 	// Load policy to get proxy rules.
 	pol, err := policy.Load(configDir)

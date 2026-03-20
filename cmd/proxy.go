@@ -10,6 +10,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/spf13/cobra"
@@ -88,11 +89,7 @@ func init() {
 }
 
 func getConfigDir() (string, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %w", err)
-	}
-	return filepath.Join(homeDir, ".config", "nokey"), nil
+	return config.ConfigDir()
 }
 
 func runProxyStart(cmd *cobra.Command, args []string) error {
