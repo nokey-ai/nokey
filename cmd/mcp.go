@@ -16,6 +16,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/env"
 	"github.com/nokey-ai/nokey/internal/integration"
 	_ "github.com/nokey-ai/nokey/internal/integration/github"
+	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/placeholder"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
@@ -99,6 +100,14 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	)
 	mcpSrv = s
 
+	registerMCPTools(s)
+
+	return server.ServeStdio(s)
+}
+
+// registerMCPTools adds all MCP tool handlers to the server.
+// Extracted so tests can exercise tool registration without starting stdio.
+func registerMCPTools(s *server.MCPServer) {
 	readOnly := true
 
 	// list_secrets — read-only, AI needs to know available secret names
@@ -265,8 +274,6 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	for _, integ := range integration.All() {
 		s.AddTools(integ.Tools(deps)...)
 	}
-
-	return server.ServeStdio(s)
 }
 
 func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -366,14 +373,22 @@ func handleListSecrets(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolR
 
 func handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// Parse parameters
-	command := request.GetString("command", "")
+	command := strings.TrimSpace(request.GetString("command", ""))
 	if command == "" {
 		return mcp.NewToolResultError("parameter 'command' is required"), nil
+	}
+	if strings.Contains(command, "..") {
+		return mcp.NewToolResultError("command must not contain '..' (path traversal)"), nil
 	}
 
 	args := request.GetStringSlice("args", nil)
 	only := request.GetString("only", "")
 	except := request.GetString("except", "")
+
+	// Validate only/except filter names
+	if err := validateFilterNames(only, except); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	timeoutSecs := request.GetInt("timeout_seconds", defaultTimeoutSecs)
 	if timeoutSecs <= 0 {
@@ -466,9 +481,12 @@ func handleExec(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTool
 }
 
 func handleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	command := request.GetString("command", "")
+	command := strings.TrimSpace(request.GetString("command", ""))
 	if command == "" {
 		return mcp.NewToolResultError("parameter 'command' is required"), nil
+	}
+	if strings.Contains(command, "..") {
+		return mcp.NewToolResultError("command must not contain '..' (path traversal)"), nil
 	}
 
 	// Reject placeholders in command — secret values must not control which binary runs
@@ -748,6 +766,21 @@ func truncateOutput(data []byte, maxBytes int) []byte {
 	return truncated
 }
 
+// validateFilterNames validates that only/except filter values contain valid secret names.
+func validateFilterNames(only, except string) error {
+	for _, raw := range []string{only, except} {
+		if raw == "" {
+			continue
+		}
+		for _, name := range parseCommaSeparated(raw) {
+			if err := nokeyKeyring.ValidateSecretName(name); err != nil {
+				return fmt.Errorf("invalid filter name %q: %w", name, err)
+			}
+		}
+	}
+	return nil
+}
+
 // recordAudit logs an audit entry if auditing is enabled.
 func recordAudit(operation, command, target string, success bool, errMsg string) {
 	if cfg == nil || !cfg.Audit.Enabled {
@@ -761,5 +794,5 @@ func recordAudit(operation, command, target string, success bool, errMsg string)
 
 	secretNames := []string{target}
 	entry := audit.NewAuditEntry(operation, command, "keyring_acl", secretNames, success, errMsg)
-	_ = audit.Record(store, entry)
+	_ = audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays)
 }

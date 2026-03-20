@@ -318,7 +318,7 @@ func seedAuditLog(t *testing.T, store *nkeyring.Store, count int) {
 			Hostname:    "testhost",
 			PID:         os.Getpid(),
 		}
-		if err := audit.Record(store, entry); err != nil {
+		if err := audit.Record(store, entry, 1000, 90); err != nil {
 			t.Fatalf("audit.Record: %v", err)
 		}
 	}

@@ -403,7 +403,7 @@ func TestRecord(t *testing.T) {
 	store := newTestStore()
 	entry := NewAuditEntry("exec", "ls", "pin", []string{"KEY"}, true, "")
 
-	if err := Record(store, entry); err != nil {
+	if err := Record(store, entry, 1000, 90); err != nil {
 		t.Fatalf("Record: %v", err)
 	}
 
@@ -509,7 +509,7 @@ func TestRecord_MultipleEntries(t *testing.T) {
 	store := newTestStore()
 	for i := 0; i < 3; i++ {
 		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
-		if err := Record(store, entry); err != nil {
+		if err := Record(store, entry, 1000, 90); err != nil {
 			t.Fatalf("Record %d: %v", i, err)
 		}
 	}
@@ -519,6 +519,24 @@ func TestRecord_MultipleEntries(t *testing.T) {
 	}
 	if len(log.Entries) != 3 {
 		t.Errorf("expected 3 entries, got %d", len(log.Entries))
+	}
+}
+
+func TestRecord_CustomRetention(t *testing.T) {
+	store := newTestStore()
+	// Record 5 entries with a max of 3
+	for i := 0; i < 5; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
+		if err := Record(store, entry, 3, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 3 {
+		t.Errorf("expected 3 entries after custom retention, got %d", len(log.Entries))
 	}
 }
 

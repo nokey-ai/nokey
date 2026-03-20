@@ -49,7 +49,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		}
 
 		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry); auditErr != nil {
+		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
 		}
 	}

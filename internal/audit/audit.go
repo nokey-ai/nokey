@@ -130,8 +130,9 @@ func (a *AuditLog) Save(store *nokeyKeyring.Store) error {
 	return nil
 }
 
-// Record adds a new entry to the audit log
-func Record(store *nokeyKeyring.Store, entry *AuditEntry) error {
+// Record adds a new entry to the audit log.
+// maxEntries and retentionDays control the retention policy applied after each write.
+func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionDays int) error {
 	log, err := Load(store)
 	if err != nil {
 		return err
@@ -139,8 +140,7 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry) error {
 
 	log.Entries = append(log.Entries, *entry)
 
-	// Apply retention policy (keep max 1000 entries, 90 days)
-	log.ApplyRetentionPolicy(1000, 90)
+	log.ApplyRetentionPolicy(maxEntries, retentionDays)
 
 	return log.Save(store)
 }
