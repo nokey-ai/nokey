@@ -1,5 +1,9 @@
 # nokey
 
+[![CI](https://github.com/nokey-ai/nokey/actions/workflows/ci.yml/badge.svg)](https://github.com/nokey-ai/nokey/actions/workflows/ci.yml)
+[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Zero-trust secret management for AI coding assistants**
 
 `nokey` stores credentials in OS-native secure storage (macOS Keychain, Windows Credential Manager, Linux keyrings) and provides zero-trust access control with PIN/OAuth authentication and comprehensive audit logging. AI coding assistants can use your secrets without ever seeing the actual values, and you maintain complete control over when and how secrets are accessed.
@@ -41,7 +45,7 @@ go build -o nokey
 sudo mv nokey /usr/local/bin/
 ```
 
-### Homebrew (Coming Soon)
+### Homebrew
 
 ```bash
 brew install nokey-ai/tap/nokey
@@ -473,6 +477,195 @@ nokey exec --only PROD_DATABASE_URL,PROD_AWS_KEY -- npm run deploy
 
 ---
 
+## MCP Server Mode
+
+Run nokey as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server so AI tools can access secrets through a structured, audited interface.
+
+### Setup
+
+Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "nokey": {
+      "command": "nokey",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_secrets` | List stored secret key names (not values) |
+| `exec` | Execute a command with secrets as environment variables |
+| `exec_with_secrets` | Execute with `${{NOKEY:SECRET_NAME}}` placeholder injection |
+| `mint_token` | Create a short-lived access lease token |
+| `revoke_token` | Revoke an access lease token |
+| `list_tokens` | List active access lease tokens |
+| `start_proxy` | Start the HTTP/HTTPS secret-injection proxy |
+| `stop_proxy` | Stop the running proxy |
+| `github_api` | Call any GitHub API endpoint with automatic token injection |
+| `github_create_issue` | Create a GitHub issue |
+| `github_create_pr` | Create a GitHub pull request |
+| `github_list_issues` | List repository issues |
+| `github_list_prs` | List repository pull requests |
+| `github_get_file` | Get a file from a GitHub repository |
+
+All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
+
+### Session Tokens
+
+Session tokens allow a single user approval to cover multiple secret accesses within a session:
+
+```yaml
+# ~/.config/nokey/config.yaml
+auth:
+  auto_mint_token: true  # Auto-mint a session token on first MCP approval
+```
+
+When `auto_mint_token` is enabled, the first time an AI tool requests secret access, the user approves once. A session token (TTL: 1 hour) is minted and subsequent requests use it without re-prompting.
+
+Manual token management is also available via the `mint_token`, `revoke_token`, and `list_tokens` tools. Tokens support TTL (max 3600s) and max-use limits.
+
+---
+
+## Proxy Mode
+
+The HTTP/HTTPS proxy intercepts outbound requests and injects secrets into headers based on rules — AI agents never handle credentials directly.
+
+### Setup
+
+```bash
+# 1. Generate the local CA certificate
+nokey proxy init-ca
+
+# 2. Trust the CA (prints OS-specific instructions)
+nokey proxy trust-ca
+
+# 3. Start the proxy
+nokey proxy start
+```
+
+### Proxy Rules
+
+Define proxy rules in `~/.config/nokey/policies.yaml`:
+
+```yaml
+proxy:
+  rules:
+    - hosts: ["api.openai.com"]
+      headers:
+        Authorization: "Bearer $OPENAI_API_KEY"
+
+    - hosts: ["*.anthropic.com"]
+      headers:
+        x-api-key: "$ANTHROPIC_API_KEY"
+
+    - hosts: ["api.github.com"]
+      headers:
+        Authorization: "token $GITHUB_TOKEN"
+      approval: never  # skip per-request approval
+```
+
+### Using the Proxy
+
+```bash
+# Set environment variables (printed by `proxy start`)
+export http_proxy=http://127.0.0.1:<port>
+export https_proxy=http://127.0.0.1:<port>
+
+# Now any HTTP client routes through the proxy
+curl https://api.openai.com/v1/models  # Authorization header injected automatically
+```
+
+### Egress Isolation
+
+Block outbound network access to hosts without a proxy rule:
+
+```bash
+nokey exec --isolate -- python script.py
+```
+
+This starts a local proxy with `--isolate` that rejects connections to any host not covered by a proxy rule.
+
+---
+
+## Policy File
+
+`~/.config/nokey/policies.yaml` controls which commands can access which secrets, approval requirements, and proxy rules.
+
+### Full Reference
+
+```yaml
+# Global default approval mode (always, never, or omit for default)
+approval: always
+
+# Command-to-secret access rules
+rules:
+  - commands: ["claude", "cursor"]
+    secrets: ["OPENAI_API_KEY", "ANTHROPIC_API_KEY"]
+    approval: never           # Skip approval prompt for these
+
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+    approval: always          # Always prompt
+    token_required: true      # Require a session token (no per-call approval fallback)
+
+  - commands: ["*"]
+    secrets: ["*"]
+    approval: always          # Catch-all: approve everything else
+
+# Proxy header injection rules
+proxy:
+  rules:
+    - hosts: ["api.openai.com"]
+      headers:
+        Authorization: "Bearer $OPENAI_API_KEY"
+
+    - hosts: ["*.example.com"]
+      headers:
+        x-api-key: "$API_KEY"
+      approval: never
+```
+
+Commands are matched by base name (full paths are stripped). Secrets and commands support glob patterns (`*`, `?`). Rules are evaluated top-down; the first match wins. If no rule matches, access is denied (fail-closed).
+
+---
+
+## Diagnostic Commands
+
+### `nokey status`
+
+Unified health check showing PIN, keyring, config, policy, and secrets status:
+
+```bash
+$ nokey status
+nokey status:
+  PIN authentication:  configured
+  Keyring backend:     accessible
+  Config:              valid
+  Policy:              valid (3 rules, 2 proxy rules)
+  Secrets stored:      12
+```
+
+### `nokey config validate`
+
+Validate config and policy files without side effects:
+
+```bash
+$ nokey config validate
+config.yaml: OK
+policies.yaml: OK
+```
+
+Exits with code 1 if either file is invalid.
+
+---
+
 ## Threat Model
 
 ### What nokey protects against ✅
@@ -774,20 +967,30 @@ nokey/
 │   ├── list.go               # List secret names
 │   ├── exec.go               # Execute with secrets
 │   ├── import.go             # Import from .env
-│   └── export.go             # Export to shell
+│   ├── export.go             # Export to shell
+│   ├── mcp.go                # MCP server and tool handlers
+│   ├── proxy.go              # HTTP/HTTPS proxy commands
+│   ├── status.go             # Health check command
+│   └── config_cmd.go         # Config validation command
 ├── internal/
 │   ├── auth/
-│   │   └── auth.go           # PIN authentication logic
+│   │   ├── auth.go           # PIN authentication logic
+│   │   └── backoff.go        # Brute-force rate limiting
 │   ├── audit/
 │   │   └── audit.go          # Audit logging, encryption, filtering
 │   ├── config/
 │   │   └── config.go         # Configuration file handling
 │   ├── keyring/
-│   │   └── keyring.go        # OS keyring wrapper
+│   │   └── keyring.go        # OS keyring wrapper, name validation
 │   ├── exec/
 │   │   └── exec.go           # Subprocess execution
 │   ├── redact/
 │   │   └── redact.go         # Output redaction with PTY
+│   ├── policy/
+│   │   └── policy.go         # Policy rules, approval, proxy rules
+│   ├── proxy/                # HTTP/HTTPS proxy server and CA
+│   ├── token/                # Session token store
+│   ├── placeholder/          # ${{NOKEY:...}} resolution
 │   └── oauth/
 │       ├── oauth.go          # OAuth interface, token management
 │       ├── github.go         # GitHub OAuth provider
@@ -802,13 +1005,7 @@ nokey/
 
 ## Contributing
 
-Contributions are welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR guidelines.
 
 ### Areas for Contribution
 
@@ -837,6 +1034,7 @@ If you discover a security vulnerability, please email security@nokey.ai instead
 Built with:
 - [spf13/cobra](https://github.com/spf13/cobra) - CLI framework
 - [99designs/keyring](https://github.com/99designs/keyring) - Cross-platform keyring access
+- [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) - Model Context Protocol server
 - [creack/pty](https://github.com/creack/pty) - PTY interface for output redaction
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) - Cryptography (NaCl secretbox)
 - [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - OAuth 2.0 client
