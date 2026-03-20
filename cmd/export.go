@@ -44,7 +44,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	// Get all secrets
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w", err)
 	}
 
 	// Check if authentication is required
@@ -54,14 +54,14 @@ func runExport(cmd *cobra.Command, args []string) error {
 		// Use authenticated access (requires PIN entry)
 		secrets, err = store.AuthenticatedGetAll()
 		if err != nil {
-			return err
+			return fmt.Errorf("authentication failed: %w", err)
 		}
 		authMethod = "pin"
 	} else {
 		// Regular access (no PIN required)
 		secrets, err = store.GetAll()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to retrieve secrets: %w", err)
 		}
 		authMethod = "none"
 	}

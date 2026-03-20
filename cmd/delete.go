@@ -29,7 +29,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w", err)
 	}
 
 	err = store.Delete(key)
@@ -55,7 +55,7 @@ func runDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to delete secret %q: %w", key, err)
 	}
 
 	fmt.Printf("Secret '%s' deleted successfully\n", key)

@@ -85,7 +85,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 	// Store the secret
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w", err)
 	}
 
 	err = store.Set(key, value)
@@ -111,7 +111,7 @@ func runSet(cmd *cobra.Command, args []string) error {
 	}
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to store secret %q: %w", key, err)
 	}
 
 	fmt.Printf("Secret '%s' stored successfully\n", key)
