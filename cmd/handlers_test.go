@@ -53,6 +53,53 @@ func TestRunList_WithSecrets(t *testing.T) {
 	}
 }
 
+func TestRunList_JSON_Empty(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	old := listJSON
+	t.Cleanup(func() { listJSON = old })
+	listJSON = true
+
+	output := captureStdout(t, func() {
+		if err := runList(nil, nil); err != nil {
+			t.Fatalf("runList: %v", err)
+		}
+	})
+	if !strings.Contains(output, `"count": 0`) {
+		t.Errorf("JSON output should contain count 0: %q", output)
+	}
+	if !strings.Contains(output, `"secrets"`) {
+		t.Errorf("JSON output should contain secrets key: %q", output)
+	}
+}
+
+func TestRunList_JSON_WithSecrets(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	store.Set("API_KEY", "value1")
+	store.Set("TOKEN", "value2")
+
+	old := listJSON
+	t.Cleanup(func() { listJSON = old })
+	listJSON = true
+
+	output := captureStdout(t, func() {
+		if err := runList(nil, nil); err != nil {
+			t.Fatalf("runList: %v", err)
+		}
+	})
+	if !strings.Contains(output, `"count": 2`) {
+		t.Errorf("JSON output should contain count 2: %q", output)
+	}
+	if !strings.Contains(output, "API_KEY") {
+		t.Errorf("JSON output should contain API_KEY: %q", output)
+	}
+}
+
 // --- delete ---
 
 func TestRunDelete_Success(t *testing.T) {

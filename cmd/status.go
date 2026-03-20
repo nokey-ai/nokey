@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/spf13/cobra"
 )
+
+var statusJSON bool
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
@@ -18,58 +21,93 @@ configuration validity, policy rules, and stored secrets count.`,
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
+	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
+}
+
+type statusOutput struct {
+	Keyring    string `json:"keyring"`
+	PIN        string `json:"pin"`
+	Config     string `json:"config"`
+	Policy     string `json:"policy"`
+	PolicyRule int    `json:"policy_rules"`
+	ProxyRules int    `json:"proxy_rules"`
+	Secrets    int    `json:"secrets"`
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	fmt.Println("nokey status:")
+	out := statusOutput{}
 
-	// PIN authentication
+	// Keyring / PIN
 	store, err := getKeyring()
 	if err != nil {
-		fmt.Printf("  Keyring backend:     error (%s)\n", err)
-		return nil
-	}
-
-	if store.HasPIN() {
-		fmt.Println("  PIN authentication:  configured")
+		out.Keyring = fmt.Sprintf("error: %s", err)
+		out.PIN = "unknown"
 	} else {
-		fmt.Println("  PIN authentication:  not configured")
+		out.Keyring = "accessible"
+		if store.HasPIN() {
+			out.PIN = "configured"
+		} else {
+			out.PIN = "not configured"
+		}
 	}
-
-	// Keyring accessible
-	fmt.Println("  Keyring backend:     accessible")
 
 	// Config
 	if cfg != nil {
-		fmt.Println("  Config:              valid")
+		out.Config = "valid"
 	} else {
-		fmt.Println("  Config:              not loaded")
+		out.Config = "not loaded"
 	}
 
 	// Policy
-	configDir, err := getConfigDir()
-	if err == nil {
+	configDir, dirErr := getConfigDir()
+	if dirErr == nil {
 		pol, polErr := policy.Load(configDir)
 		if polErr != nil {
-			fmt.Printf("  Policy:              error (%s)\n", polErr)
+			out.Policy = fmt.Sprintf("error: %s", polErr)
 		} else if pol == nil {
-			fmt.Println("  Policy:              no policies.yaml (allow-all)")
+			out.Policy = "no policies.yaml (allow-all)"
 		} else {
-			ruleCount := len(pol.Rules)
-			proxyCount := 0
+			out.Policy = "valid"
+			out.PolicyRule = len(pol.Rules)
 			if pol.Proxy != nil {
-				proxyCount = len(pol.ProxyRules())
+				out.ProxyRules = len(pol.ProxyRules())
 			}
-			fmt.Printf("  Policy:              valid (%d rules, %d proxy rules)\n", ruleCount, proxyCount)
 		}
 	}
 
 	// Secrets count
-	keys, err := store.List()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  Secrets stored:      error (%s)\n", err)
+	if store != nil {
+		keys, listErr := store.List()
+		if listErr != nil {
+			out.Secrets = -1
+		} else {
+			out.Secrets = len(keys)
+		}
+	}
+
+	if statusJSON {
+		data, err := json.MarshalIndent(out, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		fmt.Println(string(data))
+		return nil
+	}
+
+	// Human-readable output
+	fmt.Println("nokey status:")
+	fmt.Printf("  Keyring backend:     %s\n", out.Keyring)
+	fmt.Printf("  PIN authentication:  %s\n", out.PIN)
+	fmt.Printf("  Config:              %s\n", out.Config)
+	if out.Policy == "valid" {
+		fmt.Printf("  Policy:              valid (%d rules, %d proxy rules)\n", out.PolicyRule, out.ProxyRules)
 	} else {
-		fmt.Printf("  Secrets stored:      %d\n", len(keys))
+		fmt.Printf("  Policy:              %s\n", out.Policy)
+	}
+	if out.Secrets >= 0 {
+		fmt.Printf("  Secrets stored:      %d\n", out.Secrets)
+	} else {
+		fmt.Fprintf(os.Stderr, "  Secrets stored:      error\n")
 	}
 
 	return nil
