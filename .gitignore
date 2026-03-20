@@ -41,6 +41,7 @@ config.yaml
 # Local planning and notes
 next-steps.md
 tmp/
+docs/
 
 # Claude Code local settings
 .claude/settings.local.json
