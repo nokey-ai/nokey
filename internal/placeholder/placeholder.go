@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-var placeholderRe = regexp.MustCompile(`\$\{\{NOKEY:([A-Za-z0-9_-]+)\}\}`)
+var placeholderRe = regexp.MustCompile(`\$\{\{NOKEY:([A-Za-z0-9_.\-]+)\}\}`)
 
 // ContainsPlaceholder returns true if s contains any ${{NOKEY:...}} placeholder.
 func ContainsPlaceholder(s string) bool {

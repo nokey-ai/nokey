@@ -36,9 +36,17 @@ var (
 	stderrWriter   io.Writer = os.Stderr
 )
 
-// Authenticate prompts the user for their PIN and verifies it against the stored hash
-// This ALWAYS requires interactive input from a terminal (cannot be bypassed programmatically)
+// Authenticate prompts the user for their PIN and verifies it against the stored hash.
+// This ALWAYS requires interactive input from a terminal (cannot be bypassed programmatically).
+// If a backoff store is registered via SetBackoffStore, failed attempts are rate-limited.
 func Authenticate(storedHash string) error {
+	// Check brute-force backoff
+	if bs := backoffStoreFn(); bs != nil {
+		if err := checkBackoff(bs); err != nil {
+			return err
+		}
+	}
+
 	// Verify we're running in an interactive terminal
 	if !isTerminalFn(int(os.Stdin.Fd())) {
 		return fmt.Errorf("authentication requires an interactive terminal (stdin is not a TTY)\n" +
@@ -68,10 +76,21 @@ func Authenticate(storedHash string) error {
 	// Verify against stored hash
 	ok, err := VerifyPIN(pinStr, storedHash)
 	if err != nil {
+		if bs := backoffStoreFn(); bs != nil {
+			recordFailure(bs)
+		}
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 	if !ok {
+		if bs := backoffStoreFn(); bs != nil {
+			recordFailure(bs)
+		}
 		return fmt.Errorf("authentication failed: incorrect PIN")
+	}
+
+	// Success — clear failure counter
+	if bs := backoffStoreFn(); bs != nil {
+		clearFailures(bs)
 	}
 
 	return nil

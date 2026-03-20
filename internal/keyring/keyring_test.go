@@ -821,6 +821,67 @@ func TestStore_MigrateAllItems_SetError(t *testing.T) {
 	}
 }
 
+// --- ValidateSecretName ---
+
+func TestValidateSecretName_Valid(t *testing.T) {
+	valid := []string{"API_KEY", "my-secret", "a", "A1_B2.c3-d4", "UPPER_CASE_123"}
+	for _, name := range valid {
+		if err := ValidateSecretName(name); err != nil {
+			t.Errorf("ValidateSecretName(%q) = %v, want nil", name, err)
+		}
+	}
+}
+
+func TestValidateSecretName_Invalid(t *testing.T) {
+	cases := []struct {
+		name string
+		desc string
+	}{
+		{"", "empty"},
+		{strings.Repeat("a", 129), "too long"},
+		{"__nokey_internal", "reserved prefix"},
+		{".dotfirst", "starts with dot"},
+		{"-dashfirst", "starts with dash"},
+		{"has space", "contains space"},
+		{"has/slash", "contains slash"},
+		{"has@at", "contains at sign"},
+	}
+	for _, tc := range cases {
+		if err := ValidateSecretName(tc.name); err == nil {
+			t.Errorf("ValidateSecretName(%q) [%s] = nil, want error", tc.name, tc.desc)
+		}
+	}
+}
+
+func TestStore_Set_RejectsInvalidName(t *testing.T) {
+	s := newTestStore()
+	if err := s.Set("has space", "val"); err == nil {
+		t.Error("Set should reject invalid secret name")
+	}
+}
+
+func TestStore_Set_AllowsInternalKeys(t *testing.T) {
+	s := newTestStore()
+	// Internal __nokey_ keys bypass validation (used by auth, audit, etc.)
+	if err := s.Set("__nokey_internal_key", "val"); err != nil {
+		t.Fatalf("Set should allow internal __nokey_ keys: %v", err)
+	}
+}
+
+func TestStore_Set_AllowsDotsAndDashes(t *testing.T) {
+	s := newTestStore()
+	if err := s.Set("my.secret-key", "val"); err != nil {
+		t.Fatalf("Set should allow dots and dashes: %v", err)
+	}
+	v, err := s.Get("my.secret-key")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if v != "val" {
+		t.Errorf("Get = %q, want %q", v, "val")
+	}
+}
+
 // --- Trust flag test ---
 
 func TestNew_KeychainTrustEnabled(t *testing.T) {

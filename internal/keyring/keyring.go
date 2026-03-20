@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -15,6 +16,27 @@ import (
 	"github.com/nokey-ai/nokey/internal/auth"
 	"golang.org/x/term"
 )
+
+var secretNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.\-]*$`)
+
+// ValidateSecretName checks that a secret name is well-formed.
+// Names must match [A-Za-z0-9_][A-Za-z0-9_.-]*, be at most 128 chars,
+// and must not use the reserved __nokey_ prefix.
+func ValidateSecretName(name string) error {
+	if name == "" {
+		return fmt.Errorf("secret name cannot be empty")
+	}
+	if len(name) > 128 {
+		return fmt.Errorf("secret name too long (max 128 characters)")
+	}
+	if strings.HasPrefix(name, "__nokey_") {
+		return fmt.Errorf("secret name cannot use reserved prefix '__nokey_'")
+	}
+	if !secretNameRe.MatchString(name) {
+		return fmt.Errorf("invalid secret name %q: must match [A-Za-z0-9_][A-Za-z0-9_.\\-]*", name)
+	}
+	return nil
+}
 
 // Store wraps the keyring library and provides nokey-specific functionality
 type Store struct {
@@ -72,10 +94,18 @@ func New(backend, serviceName string) (*Store, error) {
 	}, nil
 }
 
-// Set stores a secret value for the given key
+// Set stores a secret value for the given key.
+// User-facing secret names are validated; internal __nokey_ keys bypass validation.
 func (s *Store) Set(key, value string) error {
 	if key == "" {
 		return fmt.Errorf("key cannot be empty")
+	}
+
+	// Validate user-facing names; internal keys bypass validation
+	if !strings.HasPrefix(key, "__nokey_") {
+		if err := ValidateSecretName(key); err != nil {
+			return err
+		}
 	}
 
 	item := keyring.Item{
