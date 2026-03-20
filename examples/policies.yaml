@@ -1,0 +1,66 @@
+# nokey policies — copy to ~/.config/nokey/policies.yaml and customize.
+#
+# Rules control which commands can access which secrets via `nokey exec`.
+# Proxy rules inject secrets into HTTP headers for specific hosts.
+#
+# If no policies.yaml exists, nokey runs in allow-all mode (any command
+# can access any secret). Adding rules switches to deny-by-default.
+
+# Global approval mode: "always" (prompt before every exec) or "never".
+# Per-rule approval overrides this default.
+# approval: always
+
+rules:
+  # Allow Claude Code to read AI provider keys
+  - commands:
+      - "claude"
+      - "claude-code"
+    secrets:
+      - "ANTHROPIC_API_KEY"
+      - "OPENAI_API_KEY"
+    # approval: always  # uncomment to require confirmation each time
+
+  # Allow the GitHub CLI to use your GitHub token
+  - commands:
+      - "gh"
+    secrets:
+      - "GITHUB_TOKEN"
+    approval: never
+
+  # Allow Python scripts to access database credentials
+  # - commands:
+  #     - "python*"
+  #   secrets:
+  #     - "DATABASE_URL"
+  #     - "REDIS_URL"
+
+proxy:
+  # Proxy rules inject secrets into HTTP headers when requests pass through
+  # the nokey proxy (started with `nokey proxy start`).
+
+  rules:
+    # Anthropic API — inject the API key as a Bearer token
+    - hosts:
+        - "api.anthropic.com"
+      headers:
+        x-api-key: "$ANTHROPIC_API_KEY"
+
+    # OpenAI API
+    - hosts:
+        - "api.openai.com"
+      headers:
+        Authorization: "Bearer $OPENAI_API_KEY"
+
+    # GitHub API
+    - hosts:
+        - "api.github.com"
+      headers:
+        Authorization: "Bearer $GITHUB_TOKEN"
+
+    # Custom internal API example (uncomment and adjust)
+    # - hosts:
+    #     - "api.internal.example.com"
+    #     - "*.internal.example.com"
+    #   headers:
+    #     Authorization: "Bearer $INTERNAL_API_KEY"
+    #   approval: never
