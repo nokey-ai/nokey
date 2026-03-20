@@ -24,12 +24,12 @@ func init() {
 func runList(cmd *cobra.Command, args []string) error {
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
 	}
 
 	keys, err := store.List()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list secrets: %w", err)
 	}
 
 	if len(keys) == 0 {

@@ -95,13 +95,13 @@ func runImport(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(secrets) == 0 {
-		return fmt.Errorf("no valid secrets found in file")
+		return fmt.Errorf("no valid secrets found in %s\n\nExpected format (one per line):\n  KEY=VALUE\n  # comments are ignored", filePath)
 	}
 
 	// Store secrets
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
 	}
 
 	imported := 0

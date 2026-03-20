@@ -98,7 +98,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// Get all secrets
 	store, err := getKeyring()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
 	}
 
 	// Determine which authentication method to use
@@ -153,7 +153,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 		allSecrets, err = store.GetAll()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to retrieve secrets: %w", err)
 		}
 		authMethodUsed = "oauth"
 
@@ -185,7 +185,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		// No authentication required
 		allSecrets, err = store.GetAll()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to retrieve secrets: %w", err)
 		}
 		authMethodUsed = "none"
 
