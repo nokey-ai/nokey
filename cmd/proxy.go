@@ -17,6 +17,13 @@ import (
 
 var proxyAddr string
 
+// makeSignalChan creates the channel for OS signal notification. Overridable for testing.
+var makeSignalChan = func() chan os.Signal {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	return sig
+}
+
 var proxyCmd = &cobra.Command{
 	Use:   "proxy",
 	Short: "HTTP/HTTPS intercept proxy for secret injection into API requests",
@@ -146,8 +153,7 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 	fmt.Printf("\nPress Ctrl+C to stop\n")
 
 	// Block on SIGINT/SIGTERM.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	sig := makeSignalChan()
 	<-sig
 
 	fmt.Printf("\nShutting down proxy...\n")

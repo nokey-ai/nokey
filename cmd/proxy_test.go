@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 )
@@ -391,5 +392,57 @@ func TestRunProxyStart_CACreateError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to load/create CA") {
 		t.Errorf("error = %v, want 'failed to load/create CA'", err)
+	}
+}
+
+func TestRunProxyStart_SignalShutdown(t *testing.T) {
+	dir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+	os.Setenv("HOME", dir)
+
+	configDir := filepath.Join(dir, ".config", "nokey")
+	os.MkdirAll(configDir, 0700)
+
+	polYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_SECRET"
+`
+	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
+
+	store, _ := newTestStore()
+	_ = store.Set("MY_SECRET", "s3cret")
+	withTestKeyring(t, store)
+
+	// Override signal channel so we can trigger shutdown
+	sigCh := make(chan os.Signal, 1)
+	oldMake := makeSignalChan
+	t.Cleanup(func() { makeSignalChan = oldMake })
+	makeSignalChan = func() chan os.Signal { return sigCh }
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runProxyStart(nil, nil)
+	}()
+
+	// Give the server a moment to start
+	select {
+	case err := <-errCh:
+		t.Fatalf("runProxyStart returned early: %v", err)
+	case <-time.After(200 * time.Millisecond):
+		// Server is running — send signal to shut it down
+	}
+
+	close(sigCh)
+
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("runProxyStart after signal: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("runProxyStart did not return after signal")
 	}
 }
