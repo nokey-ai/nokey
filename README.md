@@ -56,6 +56,9 @@ brew install nokey-ai/tap/nokey
 ## Quick Start
 
 ```bash
+# 0. Create starter config and policies files
+nokey init
+
 # 1. Store secrets (prompted securely, no echo)
 nokey set OPENAI_API_KEY
 nokey set DATABASE_PASSWORD
@@ -78,6 +81,35 @@ nokey audit list
 ---
 
 ## Core Commands
+
+### Setup
+
+```bash
+# Generate starter config.yaml and policies.yaml
+nokey init
+
+# Overwrite existing files
+nokey init --force
+
+# Also set up PIN authentication
+nokey init --with-auth
+```
+
+### Shell Completions
+
+```bash
+# Bash (add to ~/.bashrc)
+source <(nokey completion bash)
+
+# Zsh (add to ~/.zshrc)
+source <(nokey completion zsh)
+
+# Fish
+nokey completion fish | source
+
+# PowerShell
+nokey completion powershell | Out-String | Invoke-Expression
+```
 
 ### Secret Management
 
@@ -650,11 +682,42 @@ nokey status:
   Config:              valid
   Policy:              valid (3 rules, 2 proxy rules)
   Secrets stored:      12
+
+# Machine-readable output
+$ nokey status --json
+{"pin_configured":true,"keyring_accessible":true,"config_valid":true,...}
+```
+
+### `nokey list`
+
+```bash
+# List stored secret names (never values)
+nokey list
+
+# Machine-readable output
+$ nokey list --json
+["OPENAI_API_KEY","DATABASE_PASSWORD","GITHUB_TOKEN"]
+```
+
+### `nokey version`
+
+```bash
+# Short version
+$ nokey version
+nokey v0.2.0
+
+# Detailed build info
+$ nokey version --long
+nokey v0.2.0
+  commit:   abc1234
+  built:    2025-01-15T10:30:00Z
+  go:       go1.24
+  platform: darwin/arm64
 ```
 
 ### `nokey config validate`
 
-Validate config and policy files without side effects:
+Validate config and policy files without side effects. Detects unknown YAML keys (typos):
 
 ```bash
 $ nokey config validate
