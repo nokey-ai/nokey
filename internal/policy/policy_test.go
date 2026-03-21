@@ -3,6 +3,7 @@ package policy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -487,6 +488,57 @@ func TestRequiresToken(t *testing.T) {
 				t.Errorf("RequiresToken() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestLoadStrict_ValidPolicy(t *testing.T) {
+	dir := t.TempDir()
+	content := `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`
+	if err := os.WriteFile(filepath.Join(dir, "policies.yaml"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	pol, err := LoadStrict(dir)
+	if err != nil {
+		t.Fatalf("LoadStrict should accept valid policy: %v", err)
+	}
+	if len(pol.Rules) != 1 {
+		t.Errorf("got %d rules, want 1", len(pol.Rules))
+	}
+}
+
+func TestLoadStrict_UnknownKeys(t *testing.T) {
+	dir := t.TempDir()
+	content := `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+    unknown_option: true
+`
+	if err := os.WriteFile(filepath.Join(dir, "policies.yaml"), []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadStrict(dir)
+	if err == nil {
+		t.Fatal("LoadStrict should reject unknown keys")
+	}
+	if !strings.Contains(err.Error(), "unknown_option") {
+		t.Errorf("error should mention unknown field, got: %v", err)
+	}
+}
+
+func TestLoadStrict_NoFile(t *testing.T) {
+	dir := t.TempDir()
+
+	pol, err := LoadStrict(dir)
+	if err != nil {
+		t.Fatalf("LoadStrict should return nil when no file: %v", err)
+	}
+	if pol != nil {
+		t.Error("expected nil policy when file absent")
 	}
 }
 

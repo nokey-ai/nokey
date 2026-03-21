@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path"
@@ -59,6 +60,54 @@ func Load(configDir string) (*Policy, error) {
 
 	var pol Policy
 	if err := yaml.Unmarshal(data, &pol); err != nil {
+		return nil, fmt.Errorf("failed to parse policy file: %w", err)
+	}
+
+	// Validate global approval mode
+	if err := validateApproval(pol.Approval, "global"); err != nil {
+		return nil, err
+	}
+
+	// Validate rules
+	for i, rule := range pol.Rules {
+		if len(rule.Commands) == 0 {
+			return nil, fmt.Errorf("policy rule %d: commands must not be empty", i)
+		}
+		if len(rule.Secrets) == 0 {
+			return nil, fmt.Errorf("policy rule %d: secrets must not be empty", i)
+		}
+		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
+			return nil, err
+		}
+	}
+
+	// Validate proxy rules if present
+	if pol.Proxy != nil {
+		if err := ValidateProxyRules(pol.Proxy); err != nil {
+			return nil, err
+		}
+	}
+
+	return &pol, nil
+}
+
+// LoadStrict reads the policy file like Load, but rejects unknown YAML keys.
+// Use this for validation commands where typos should be caught.
+func LoadStrict(configDir string) (*Policy, error) {
+	policyPath := filepath.Join(configDir, "policies.yaml")
+
+	data, err := os.ReadFile(policyPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read policy file: %w", err)
+	}
+
+	var pol Policy
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	if err := dec.Decode(&pol); err != nil {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
 	}
 

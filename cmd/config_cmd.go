@@ -27,20 +27,20 @@ func init() {
 }
 
 func runConfigValidate(cmd *cobra.Command, args []string) error {
-	// Validate config
-	_, err := config.Load()
+	// Validate config (strict mode catches unknown keys / typos)
+	_, err := config.LoadStrict()
 	if err != nil {
 		return fmt.Errorf("config.yaml: %w", err)
 	}
 	fmt.Println("config.yaml: OK")
 
-	// Validate policy
+	// Validate policy (strict mode catches unknown keys / typos)
 	configDir, err := getConfigDir()
 	if err != nil {
 		return fmt.Errorf("failed to determine config directory: %w", err)
 	}
 
-	pol, err := policy.Load(configDir)
+	pol, err := policy.LoadStrict(configDir)
 	if err != nil {
 		return fmt.Errorf("policies.yaml: %w", err)
 	}

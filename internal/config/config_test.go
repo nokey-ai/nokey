@@ -498,3 +498,66 @@ func TestSave_HomeDirError(t *testing.T) {
 		t.Fatal("Save should fail when home dir is unavailable")
 	}
 }
+
+func TestLoadStrict_ValidConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	configDir := filepath.Join(tempDir, ".config", "nokey")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	content := `service_name: "test"
+redact_by_default: true
+`
+	if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte(content), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := LoadStrict()
+	if err != nil {
+		t.Fatalf("LoadStrict should accept valid config: %v", err)
+	}
+	if cfg.ServiceName != "test" {
+		t.Errorf("ServiceName = %q, want %q", cfg.ServiceName, "test")
+	}
+}
+
+func TestLoadStrict_UnknownKeys(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	configDir := filepath.Join(tempDir, ".config", "nokey")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	content := `service_name: "test"
+unknown_field: true
+`
+	if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte(content), 0600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	_, err := LoadStrict()
+	if err == nil {
+		t.Fatal("LoadStrict should reject unknown keys")
+	}
+	if !strings.Contains(err.Error(), "unknown_field") {
+		t.Errorf("error should mention unknown field, got: %v", err)
+	}
+}
+
+func TestLoadStrict_NoFile(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg, err := LoadStrict()
+	if err != nil {
+		t.Fatalf("LoadStrict should return defaults when no file: %v", err)
+	}
+	if cfg.ServiceName != "nokey" {
+		t.Errorf("ServiceName = %q, want default", cfg.ServiceName)
+	}
+}
