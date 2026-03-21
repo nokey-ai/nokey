@@ -84,7 +84,7 @@ func init() {
 func runMCPServe(cmd *cobra.Command, args []string) error {
 	configDir, err := getConfigDir()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get config directory: %w", err)
 	}
 	pol, err = policy.Load(configDir)
 	if err != nil {
@@ -713,7 +713,7 @@ func checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNa
 	// Fall through to existing approval gateway.
 	if pol.RequiresApproval(command, secretNames) {
 		if err := approvalRequestFn(ctx, mcpSrv, command, secretNames); err != nil {
-			return err
+			return fmt.Errorf("approval denied: %w", err)
 		}
 	}
 
