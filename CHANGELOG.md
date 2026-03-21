@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- `make check` convenience target (test + vet + lint)
+- Test coverage for `keychain migrate` command (6 tests)
 - `nokey init` command to generate starter config and policies files
 - `nokey completion` command for bash, zsh, fish, and powershell
 - `nokey list --json` and `nokey status --json` for machine-readable output
@@ -18,9 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md
 
 ### Changed
+- README documents `init`, `completion`, `--json`, and `version --long`
+- `config validate` detects unknown YAML keys (typos)
 - Error messages now include actionable hints (e.g., "run `nokey status`")
 - Standardized error wrapping across all commands (lowercase, `%w`)
 - Config directory resolution extracted to `config.ConfigDir()` for reuse
+
+### Fixed
+- Bare `return err` in MCP server startup now wrapped with context
 
 ## [0.1.0] - 2025-01-01
 
