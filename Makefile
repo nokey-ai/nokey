@@ -5,7 +5,7 @@ LDFLAGS := -X github.com/nokey-ai/nokey/internal/version.Version=$(VERSION) \
            -X github.com/nokey-ai/nokey/internal/version.Commit=$(COMMIT) \
            -X github.com/nokey-ai/nokey/internal/version.Date=$(DATE)
 
-.PHONY: build test lint install release clean coverage fmt vet help
+.PHONY: build test lint install release clean coverage fmt vet check help
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o nokey .
@@ -31,6 +31,8 @@ fmt:
 vet:
 	go vet ./...
 
+check: test vet lint
+
 clean:
 	rm -f nokey coverage.out
 
@@ -46,5 +48,6 @@ help: ## Show available targets
 	@echo "  coverage  Run tests with coverage report"
 	@echo "  fmt       Format Go source files"
 	@echo "  vet       Run go vet"
+	@echo "  check     Run test + vet + lint (CI convenience)"
 	@echo "  clean     Remove built binary and coverage output"
 	@echo "  help      Show this help message"
