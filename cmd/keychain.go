@@ -10,6 +10,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// keychainGOOS is the OS identifier used for the platform check.
+// Overridable for testing.
+var keychainGOOS = runtime.GOOS
+
 var keychainCmd = &cobra.Command{
 	Use:   "keychain",
 	Short: "macOS Keychain management commands",
@@ -40,7 +44,7 @@ func init() {
 }
 
 func runKeychainMigrate(cmd *cobra.Command, args []string) error {
-	if runtime.GOOS != "darwin" {
+	if keychainGOOS != "darwin" {
 		fmt.Println("Keychain migration is only needed on macOS.")
 		return nil
 	}
