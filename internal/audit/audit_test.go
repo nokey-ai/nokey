@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -722,6 +723,128 @@ func TestClear_NoFileNoPanic(t *testing.T) {
 	// Clear on empty state should not error
 	if err := Clear(store); err != nil {
 		t.Fatalf("Clear on empty: %v", err)
+	}
+}
+
+// --- Migration ---
+
+func TestMigrateFromKeyring_WithData(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Create encryption key
+	encKey, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+
+	// Seed old-format keyring blob
+	oldLog := struct {
+		Entries []AuditEntry `json:"entries"`
+	}{
+		Entries: []AuditEntry{
+			{Operation: "exec", Command: "cmd1", Timestamp: time.Now().UTC(), Success: true},
+			{Operation: "set", Command: "cmd2", Timestamp: time.Now().UTC(), Success: true},
+		},
+	}
+	data, _ := json.Marshal(oldLog)
+	encrypted, _ := encrypt(data, encKey)
+	_ = store.Set(AuditLogKey, string(encrypted))
+
+	// Load triggers migration
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 2 {
+		t.Errorf("expected 2 migrated entries, got %d", len(log.Entries))
+	}
+	if log.Entries[0].Operation != "exec" || log.Entries[1].Operation != "set" {
+		t.Error("migrated entries have wrong operations")
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+
+	// Old key should be deleted
+	if _, err := store.Get(AuditLogKey); err == nil {
+		t.Error("old AuditLogKey should be deleted after migration")
+	}
+
+	// File should exist
+	if _, err := os.Stat(dir + "/audit.log"); err != nil {
+		t.Errorf("audit.log should exist: %v", err)
+	}
+
+	// Chain head should be set
+	head, _ := loadChainHead(store)
+	if head.Count != 2 {
+		t.Errorf("chain head count = %d, want 2", head.Count)
+	}
+}
+
+func TestMigrateFromKeyring_NoOldData(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// Load on empty state — no old key, no file
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected empty log, got %d entries", len(log.Entries))
+	}
+}
+
+func TestMigrateFromKeyring_FileAlreadyExists(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Create encryption key
+	encKey, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+
+	// Seed old-format keyring blob
+	oldLog := struct {
+		Entries []AuditEntry `json:"entries"`
+	}{
+		Entries: []AuditEntry{
+			{Operation: "exec", Command: "old", Timestamp: time.Now().UTC(), Success: true},
+		},
+	}
+	data, _ := json.Marshal(oldLog)
+	encrypted, _ := encrypt(data, encKey)
+	_ = store.Set(AuditLogKey, string(encrypted))
+
+	// Write a file-format entry first
+	entry := NewAuditEntry("exec", "new-cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// File already exists now — Load should NOT overwrite with old data
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Should have the new entry, not the old one
+	found := false
+	for _, e := range log.Entries {
+		if e.Command == "new-cmd" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected to find 'new-cmd' entry (file should not be overwritten)")
+	}
+
+	// Verify file still exists
+	if _, err := os.Stat(dir + "/audit.log"); err != nil {
+		t.Errorf("audit.log should exist: %v", err)
 	}
 }
 

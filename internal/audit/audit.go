@@ -108,12 +108,17 @@ func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
 	}
 	hmacKey := deriveHMACKey(encKey)
 
-	head, err := loadChainHead(store)
+	filePath, err := auditLogPath()
 	if err != nil {
 		return nil, err
 	}
 
-	filePath, err := auditLogPath()
+	// Auto-migrate from old keyring format if needed
+	if err := migrateFromKeyring(store, encKey, hmacKey, filePath); err != nil {
+		return nil, fmt.Errorf("failed to migrate audit log: %w", err)
+	}
+
+	head, err := loadChainHead(store)
 	if err != nil {
 		return nil, err
 	}
@@ -130,12 +135,17 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 	}
 	hmacKey := deriveHMACKey(encKey)
 
-	head, err := loadChainHead(store)
+	filePath, err := auditLogPath()
 	if err != nil {
 		return err
 	}
 
-	filePath, err := auditLogPath()
+	// Auto-migrate from old keyring format if needed
+	if err := migrateFromKeyring(store, encKey, hmacKey, filePath); err != nil {
+		return fmt.Errorf("failed to migrate audit log: %w", err)
+	}
+
+	head, err := loadChainHead(store)
 	if err != nil {
 		return err
 	}
@@ -194,6 +204,94 @@ func Clear(store *nokeyKeyring.Store) error {
 	// Clean up chain head
 	_ = store.Delete(AuditChainHeadKey)
 	// Clean up old keyring format if present
+	_ = store.Delete(AuditLogKey)
+
+	return nil
+}
+
+// migrateFromKeyring converts the old keyring-based audit log to the new file format.
+// No-op if old key doesn't exist or file already exists.
+func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []byte, filePath string) error {
+	// Check if old keyring blob exists
+	oldData, err := store.Get(AuditLogKey)
+	if err != nil {
+		if nokeyKeyring.IsNotFound(err) {
+			return nil // Nothing to migrate
+		}
+		return fmt.Errorf("failed to read old audit log: %w", err)
+	}
+
+	// If file already exists, migration was already done (old key just not cleaned up)
+	if _, err := os.Stat(filePath); err == nil {
+		// Clean up old key
+		_ = store.Delete(AuditLogKey)
+		return nil
+	}
+
+	// Decrypt old blob
+	decrypted, err := decrypt([]byte(oldData), encKey)
+	if err != nil {
+		return fmt.Errorf("failed to decrypt old audit log: %w", err)
+	}
+
+	var oldLog struct {
+		Entries []AuditEntry `json:"entries"`
+	}
+	if err := json.Unmarshal(decrypted, &oldLog); err != nil {
+		return fmt.Errorf("failed to parse old audit log: %w", err)
+	}
+
+	if len(oldLog.Entries) == 0 {
+		// Nothing to write, just delete old key
+		_ = store.Delete(AuditLogKey)
+		return nil
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+		return fmt.Errorf("failed to create audit log directory: %w", err)
+	}
+
+	// Write each entry to file with chain
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to create audit log file: %w", err)
+	}
+
+	prevHMAC := zeroHMAC
+	var lastHMAC string
+	count := 0
+
+	for _, entry := range oldLog.Entries {
+		se := storedEntry{Entry: entry, PrevHMAC: prevHMAC}
+		lineBytes, err := encryptEntry(&se, encKey)
+		if err != nil {
+			f.Close()
+			os.Remove(filePath)
+			return err
+		}
+		if _, err := f.Write(append(lineBytes, '\n')); err != nil {
+			f.Close()
+			os.Remove(filePath)
+			return fmt.Errorf("failed to write migrated entry: %w", err)
+		}
+		lastHMAC = computeLineHMAC(hmacKey, lineBytes)
+		prevHMAC = lastHMAC
+		count++
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(filePath)
+		return fmt.Errorf("failed to close audit log: %w", err)
+	}
+
+	// Save chain head
+	head := &chainHead{HMAC: lastHMAC, Count: count}
+	if err := saveChainHead(store, head); err != nil {
+		return err
+	}
+
+	// Delete old keyring blob
 	_ = store.Delete(AuditLogKey)
 
 	return nil
