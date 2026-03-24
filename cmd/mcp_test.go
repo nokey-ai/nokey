@@ -857,6 +857,7 @@ func TestHandleStopProxy_Running(t *testing.T) {
 func TestHandleExec_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	withMCPGlobals(t)
 
 	c := config.DefaultConfig()
@@ -1002,6 +1003,7 @@ func TestHandleStartProxy_SecretNotFound(t *testing.T) {
 func TestHandleListSecrets_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	store.Set("KEY1", "val1")
 
 	oldPol := pol
@@ -1128,6 +1130,7 @@ func TestRecordAudit_Disabled(t *testing.T) {
 func TestRecordAudit_Enabled(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
@@ -1150,6 +1153,7 @@ func TestRecordAudit_GetKeyringError(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
+	withTestAuditDir(t)
 
 	old := getKeyring
 	t.Cleanup(func() { getKeyring = old })
@@ -1302,6 +1306,7 @@ func TestHandleMintToken_UnlimitedUses(t *testing.T) {
 func TestHandleMintToken_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	withMCPGlobals(t)
 
 	c := config.DefaultConfig()

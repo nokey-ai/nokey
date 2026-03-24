@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -441,35 +442,35 @@ func TestDecrypt_TooShort(t *testing.T) {
 	}
 }
 
-// --- Load / Save / Record (with mock store) ---
+// --- Record / Load / Clear (file-based) ---
 
-func TestLoadSave_RoundTrip(t *testing.T) {
+func TestRecordLoad_RoundTrip(t *testing.T) {
 	store := newTestStore()
+	withTestAuditDir(t)
 
-	// Load from empty store should return empty log.
+	// Load from empty state should return empty log.
 	log, err := Load(store)
 	if err != nil {
-		t.Fatalf("Load on empty store: %v", err)
+		t.Fatalf("Load on empty: %v", err)
 	}
 	if len(log.Entries) != 0 {
 		t.Errorf("expected empty log, got %d entries", len(log.Entries))
 	}
 
-	// Add an entry and save.
-	log.Entries = append(log.Entries, AuditEntry{
+	// Record an entry and load again.
+	entry := &AuditEntry{
 		Operation: "set",
 		Command:   "test",
 		Success:   true,
 		Timestamp: time.Now().UTC(),
-	})
-	if err := log.Save(store); err != nil {
-		t.Fatalf("Save: %v", err)
+	}
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
 	}
 
-	// Load again and verify.
 	log2, err := Load(store)
 	if err != nil {
-		t.Fatalf("Load after Save: %v", err)
+		t.Fatalf("Load after Record: %v", err)
 	}
 	if len(log2.Entries) != 1 {
 		t.Errorf("expected 1 entry after reload, got %d", len(log2.Entries))
@@ -477,10 +478,14 @@ func TestLoadSave_RoundTrip(t *testing.T) {
 	if log2.Entries[0].Operation != "set" {
 		t.Errorf("reloaded entry operation = %q, want %q", log2.Entries[0].Operation, "set")
 	}
+	if len(log2.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log2.Warnings)
+	}
 }
 
 func TestRecord(t *testing.T) {
 	store := newTestStore()
+	withTestAuditDir(t)
 	entry := NewAuditEntry("exec", "ls", "pin", []string{"KEY"}, true, "")
 
 	if err := Record(store, entry, 1000, 90); err != nil {
@@ -493,6 +498,230 @@ func TestRecord(t *testing.T) {
 	}
 	if len(log.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(log.Entries))
+	}
+}
+
+func TestRecord_MultipleEntries(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 3 {
+		t.Errorf("expected 3 entries, got %d", len(log.Entries))
+	}
+	// Verify order is preserved
+	for i, e := range log.Entries {
+		want := fmt.Sprintf("cmd-%d", i)
+		if e.Command != want {
+			t.Errorf("entry %d command = %q, want %q", i, e.Command, want)
+		}
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+}
+
+func TestRecord_FilePermissions(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "ls", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	info, err := os.Stat(dir + "/audit.log")
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("file permissions = %o, want 0600", perm)
+	}
+}
+
+func TestRecord_ChainHeadUpdated(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		headBefore, _ := loadChainHead(store)
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+		headAfter, _ := loadChainHead(store)
+
+		if headAfter.Count != i+1 {
+			t.Errorf("after Record %d: count = %d, want %d", i, headAfter.Count, i+1)
+		}
+		if headAfter.HMAC == headBefore.HMAC {
+			t.Errorf("after Record %d: HMAC should have changed", i)
+		}
+	}
+}
+
+// --- Tamper detection ---
+
+func TestReadAndVerify_DetectsTruncation(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Remove last line from file
+	filePath := dir + "/audit.log"
+	data, _ := os.ReadFile(filePath)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	truncated := strings.Join(lines[:2], "\n") + "\n"
+	os.WriteFile(filePath, []byte(truncated), 0600)
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(log.Entries))
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected truncation warning")
+	}
+	hasWarning := false
+	for _, w := range log.Warnings {
+		if strings.Contains(w, "truncation") {
+			hasWarning = true
+		}
+	}
+	if !hasWarning {
+		t.Errorf("warnings = %v, expected truncation warning", log.Warnings)
+	}
+}
+
+func TestReadAndVerify_DetectsTampering(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Modify a line's ciphertext
+	filePath := dir + "/audit.log"
+	data, _ := os.ReadFile(filePath)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	// Corrupt the middle line by replacing a character
+	if len(lines[1]) > 10 {
+		runes := []byte(lines[1])
+		if runes[5] == 'A' {
+			runes[5] = 'B'
+		} else {
+			runes[5] = 'A'
+		}
+		lines[1] = string(runes)
+	}
+	os.WriteFile(filePath, []byte(strings.Join(lines, "\n")+"\n"), 0600)
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected tampering warnings")
+	}
+}
+
+func TestReadAndVerify_DetectsInsertion(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// Add a garbage line
+	filePath := dir + "/audit.log"
+	f, _ := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND, 0600)
+	f.WriteString("not-valid-base64-garbage\n")
+	f.Close()
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected warnings for inserted line")
+	}
+}
+
+// --- Clear ---
+
+func TestClear_RemovesFileAndChainHead(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// Verify file exists
+	filePath := dir + "/audit.log"
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("file should exist before clear: %v", err)
+	}
+
+	if err := Clear(store); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+
+	// File should be gone
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("file should be removed after clear")
+	}
+
+	// Chain head should be gone
+	head, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if head.HMAC != "" || head.Count != 0 {
+		t.Errorf("chain head should be zero after clear, got %+v", head)
+	}
+
+	// Load should return empty
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load after clear: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected empty log after clear, got %d entries", len(log.Entries))
+	}
+}
+
+func TestClear_NoFileNoPanic(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// Clear on empty state should not error
+	if err := Clear(store); err != nil {
+		t.Fatalf("Clear on empty: %v", err)
 	}
 }
 
@@ -543,80 +772,6 @@ func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
 	_, err := getOrCreateEncryptionKey(store)
 	if err == nil {
 		t.Error("expected error for invalid key length")
-	}
-}
-
-func TestLoad_CorruptedAuditLog(t *testing.T) {
-	store := newTestStore()
-	// First create a valid encryption key
-	key, err := getOrCreateEncryptionKey(store)
-	if err != nil {
-		t.Fatalf("getOrCreateEncryptionKey: %v", err)
-	}
-	// Store encrypted but invalid JSON
-	encrypted, err := encrypt([]byte("not-json{{{"), key)
-	if err != nil {
-		t.Fatalf("encrypt: %v", err)
-	}
-	_ = store.Set(AuditLogKey, string(encrypted))
-
-	_, err = Load(store)
-	if err == nil {
-		t.Error("expected error for corrupted JSON")
-	}
-	if !strings.Contains(err.Error(), "parse audit log") {
-		t.Errorf("error should mention parsing, got: %v", err)
-	}
-}
-
-func TestLoad_DecryptionFailure(t *testing.T) {
-	store := newTestStore()
-	// Create encryption key
-	_, _ = getOrCreateEncryptionKey(store)
-	// Store garbage (not valid encrypted data but long enough to have a nonce)
-	_ = store.Set(AuditLogKey, strings.Repeat("x", 50))
-
-	_, err := Load(store)
-	if err == nil {
-		t.Error("expected error for decryption failure")
-	}
-	if !strings.Contains(err.Error(), "decrypt") {
-		t.Errorf("error should mention decryption, got: %v", err)
-	}
-}
-
-func TestRecord_MultipleEntries(t *testing.T) {
-	store := newTestStore()
-	for i := 0; i < 3; i++ {
-		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
-		if err := Record(store, entry, 1000, 90); err != nil {
-			t.Fatalf("Record %d: %v", i, err)
-		}
-	}
-	log, err := Load(store)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(log.Entries) != 3 {
-		t.Errorf("expected 3 entries, got %d", len(log.Entries))
-	}
-}
-
-func TestRecord_CustomRetention(t *testing.T) {
-	store := newTestStore()
-	// Record 5 entries with a max of 3
-	for i := 0; i < 5; i++ {
-		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
-		if err := Record(store, entry, 3, 90); err != nil {
-			t.Fatalf("Record %d: %v", i, err)
-		}
-	}
-	log, err := Load(store)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(log.Entries) != 3 {
-		t.Errorf("expected 3 entries after custom retention, got %d", len(log.Entries))
 	}
 }
 

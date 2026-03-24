@@ -296,6 +296,7 @@ func TestRunExec_ExecError(t *testing.T) {
 func TestRunExec_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.Auth.DefaultMethod = "none"
@@ -519,6 +520,7 @@ func TestRunExec_LegacyPINDetection(t *testing.T) {
 func TestRunExec_ExecErrorWithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.Auth.DefaultMethod = "none"
@@ -1470,6 +1472,7 @@ func TestRunExec_IsolateNoPolicies(t *testing.T) {
 func TestRunExec_AuditOnSuccess(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	store.Set("AK", "val")
 
 	c := config.DefaultConfig()
@@ -1914,6 +1917,7 @@ func TestRunExec_AuditRecordWarning(t *testing.T) {
 	ring.items["KEY"] = kring.Item{Key: "KEY", Data: []byte("val")}
 	store := nkeyring.NewWithRing(&errorSetRing{mockRing: ring}, "nokey-test")
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 
 	c := config.DefaultConfig()
 	c.Auth.DefaultMethod = "none"

@@ -145,6 +145,7 @@ func TestRunDelete_NotFound(t *testing.T) {
 func TestRunDelete_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -452,6 +453,7 @@ func TestRunImport_MissingFile(t *testing.T) {
 func TestRunSet_StdinWithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -511,6 +513,7 @@ func TestRunSet_NonTerminalNonStdin(t *testing.T) {
 func TestRunExport_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -559,6 +562,7 @@ func TestRunExport_Zsh(t *testing.T) {
 func TestRunImport_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -634,6 +638,7 @@ func TestRunImport_PermissivePermissions(t *testing.T) {
 func TestRunDelete_WithAuditSuccess(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -655,6 +660,7 @@ func TestRunDelete_WithAuditSuccess(t *testing.T) {
 func TestRunDelete_WithAuditFailure(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -669,6 +675,7 @@ func TestRunDelete_WithAuditFailure(t *testing.T) {
 func TestRunSet_WithStdinAndAuditError(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -895,6 +902,7 @@ func TestRunSet_NonTerminalStdin(t *testing.T) {
 func TestRunSet_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -920,6 +928,7 @@ func TestRunSet_WithAudit(t *testing.T) {
 func TestRunSet_WithAuditError(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -1046,6 +1055,7 @@ func TestRunImport_SetFailure(t *testing.T) {
 	ring := newMockRing()
 	store := nkeyring.NewWithRing(&errorSetRing{mockRing: ring}, "nokey-test")
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
@@ -1076,6 +1086,7 @@ func TestRunSet_SetFailure(t *testing.T) {
 	ring := newMockRing()
 	store := nkeyring.NewWithRing(&errorSetRing{mockRing: ring}, "nokey-test")
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true

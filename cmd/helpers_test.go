@@ -9,6 +9,7 @@ import (
 
 	kring "github.com/99designs/keyring"
 	"github.com/nokey-ai/nokey/internal/approval"
+	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
@@ -62,6 +63,16 @@ func newTestStore() (*nkeyring.Store, *mockRing) {
 	ring := newMockRing()
 	store := nkeyring.NewWithRing(ring, "nokey-test")
 	return store, ring
+}
+
+// withTestAuditDir overrides audit.AuditLogDir to a temp directory and restores on cleanup.
+func withTestAuditDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := audit.AuditLogDir
+	t.Cleanup(func() { audit.AuditLogDir = old })
+	audit.AuditLogDir = func() (string, error) { return dir, nil }
+	return dir
 }
 
 // withTestKeyring overrides getKeyring to return the given store and restores it on cleanup.

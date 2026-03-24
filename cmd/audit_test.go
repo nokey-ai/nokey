@@ -189,6 +189,7 @@ func TestRunAuditList_Disabled(t *testing.T) {
 func TestRunAuditList_InvalidSince(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -254,19 +255,17 @@ func TestRunAuditClear_Disabled(t *testing.T) {
 func TestRunAuditClear_NoPIN(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.RequireAuth = false
 	withTestConfig(t, c)
 
 	// Without a PIN, audit clear should proceed directly.
-	// It may fail on Save since mock keyring doesn't have encryption key,
-	// but the auth check path is tested.
 	output := captureStdout(t, func() {
 		err := runAuditClear(nil, nil)
-		// We expect either success or an encryption key error — not an auth error.
-		if err != nil && strings.Contains(err.Error(), "authentication") {
-			t.Fatalf("unexpected auth error: %v", err)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 	_ = output
@@ -275,6 +274,7 @@ func TestRunAuditClear_NoPIN(t *testing.T) {
 func TestRunAuditClear_WithPIN(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -293,7 +293,7 @@ func TestRunAuditClear_WithPIN(t *testing.T) {
 	output := captureStdout(t, func() {
 		_ = captureStderr(t, func() {
 			err := runAuditClear(nil, nil)
-			if err != nil && !strings.Contains(err.Error(), "encryption") && !strings.Contains(err.Error(), "clear") {
+			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
@@ -327,6 +327,7 @@ func seedAuditLog(t *testing.T, store *nkeyring.Store, count int) {
 func TestRunAuditList_WithEntries(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -358,6 +359,7 @@ func TestRunAuditList_WithEntries(t *testing.T) {
 func TestRunAuditList_WithSince(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -386,6 +388,7 @@ func TestRunAuditList_WithSince(t *testing.T) {
 func TestRunAuditList_NoMatches(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -414,6 +417,7 @@ func TestRunAuditList_NoMatches(t *testing.T) {
 func TestRunAuditExport_JSON(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -448,6 +452,7 @@ func TestRunAuditExport_JSON(t *testing.T) {
 func TestRunAuditExport_CSV(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -479,6 +484,7 @@ func TestRunAuditExport_CSV(t *testing.T) {
 func TestRunAuditExport_ToFile(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -522,6 +528,7 @@ func TestRunAuditExport_ToFile(t *testing.T) {
 func TestRunAuditExport_WithSince(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -578,6 +585,7 @@ func TestRunAuditExport_InvalidSince(t *testing.T) {
 func TestRunAuditClear_Success(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.RequireAuth = false
@@ -599,6 +607,7 @@ func TestRunAuditClear_Success(t *testing.T) {
 func TestRunAuditClear_WithAuth(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.RequireAuth = true
@@ -631,6 +640,7 @@ func TestRunAuditClear_WithAuth(t *testing.T) {
 func TestRunAuditClear_WithAuthFailed(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.RequireAuth = true
@@ -723,25 +733,26 @@ func TestRunAuditClear_HasPINGetHashError(t *testing.T) {
 	}
 }
 
-// --- audit clear save error ---
+// --- audit clear on empty state ---
 
-func TestRunAuditClear_SaveError(t *testing.T) {
-	// Use a store that fails on Set (which Save uses internally)
-	ring := newMockRing()
-	store := nkeyring.NewWithRing(&errorSetRing{mockRing: ring}, "nokey-test")
+func TestRunAuditClear_NoFilesNoPanic(t *testing.T) {
+	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	c.RequireAuth = false
 	withTestConfig(t, c)
 
-	err := runAuditClear(nil, nil)
-	if err == nil {
-		t.Fatal("expected error when Save fails")
-	}
-	if !strings.Contains(err.Error(), "failed to clear audit log") {
-		t.Errorf("error = %v, want 'failed to clear audit log'", err)
+	output := captureStdout(t, func() {
+		err := runAuditClear(nil, nil)
+		if err != nil {
+			t.Fatalf("runAuditClear on empty: %v", err)
+		}
+	})
+	if !strings.Contains(output, "cleared successfully") {
+		t.Errorf("output = %q, want 'cleared successfully'", output)
 	}
 }
 
@@ -750,6 +761,7 @@ func TestRunAuditClear_SaveError(t *testing.T) {
 func TestRunAuditExport_WithFilterOptions(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -833,6 +845,7 @@ func TestRunAuditExport_LoadError(t *testing.T) {
 func TestRunAuditExport_WriteToFile(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
@@ -876,6 +889,7 @@ func TestRunAuditExport_WriteToFile(t *testing.T) {
 func TestRunAuditExport_WriteFileError(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 	withTestConfig(t, c)

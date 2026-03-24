@@ -1,6 +1,7 @@
 package audit
 
 import (
+	"bufio"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -10,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"os/user"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -65,9 +67,10 @@ type AuditEntry struct {
 	Operation    string    `json:"operation"`       // "exec", "set", "delete", "import", "auth"
 }
 
-// AuditLog contains all audit entries
+// AuditLog contains all audit entries and any integrity warnings.
 type AuditLog struct {
-	Entries []AuditEntry `json:"entries"`
+	Entries  []AuditEntry `json:"entries"`
+	Warnings []string     `json:"-"`
 }
 
 // NewAuditEntry creates a new audit entry with system info populated
@@ -97,80 +100,204 @@ func NewAuditEntry(operation, command, authMethod string, secretNames []string, 
 	}
 }
 
-// Load retrieves the audit log from the keyring
+// Load reads the audit log from the encrypted file with chain verification.
 func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
-	// Get encryption key
-	key, err := getOrCreateEncryptionKey(store)
+	encKey, err := getOrCreateEncryptionKey(store)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get encryption key: %w", err)
 	}
+	hmacKey := deriveHMACKey(encKey)
 
-	// Try to load audit log
-	encryptedData, err := store.Get(AuditLogKey)
+	head, err := loadChainHead(store)
 	if err != nil {
-		if nokeyKeyring.IsNotFound(err) {
-			// No audit log exists yet, return empty log
-			return &AuditLog{Entries: []AuditEntry{}}, nil
-		}
-		return nil, fmt.Errorf("failed to load audit log: %w", err)
+		return nil, err
 	}
 
-	// Decrypt
-	decrypted, err := decrypt([]byte(encryptedData), key)
+	filePath, err := auditLogPath()
 	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt audit log: %w", err)
+		return nil, err
 	}
 
-	// Parse JSON
-	var log AuditLog
-	if err := json.Unmarshal(decrypted, &log); err != nil {
-		return nil, fmt.Errorf("failed to parse audit log: %w", err)
-	}
-
-	return &log, nil
+	return readAndVerifyFile(filePath, encKey, hmacKey, head)
 }
 
-// Save stores the audit log to the keyring
-func (a *AuditLog) Save(store *nokeyKeyring.Store) error {
-	// Get encryption key
-	key, err := getOrCreateEncryptionKey(store)
+// Record appends a new entry to the audit log file with chain integrity.
+// maxEntries and retentionDays control lazy compaction (triggered at 2x maxEntries).
+func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionDays int) error {
+	encKey, err := getOrCreateEncryptionKey(store)
 	if err != nil {
 		return fmt.Errorf("failed to get encryption key: %w", err)
 	}
+	hmacKey := deriveHMACKey(encKey)
 
-	// Serialize to JSON
-	data, err := json.Marshal(a)
-	if err != nil {
-		return fmt.Errorf("failed to serialize audit log: %w", err)
-	}
-
-	// Encrypt
-	encrypted, err := encrypt(data, key)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt audit log: %w", err)
-	}
-
-	// Store in keyring
-	if err := store.Set(AuditLogKey, string(encrypted)); err != nil {
-		return fmt.Errorf("failed to save audit log: %w", err)
-	}
-
-	return nil
-}
-
-// Record adds a new entry to the audit log.
-// maxEntries and retentionDays control the retention policy applied after each write.
-func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionDays int) error {
-	log, err := Load(store)
+	head, err := loadChainHead(store)
 	if err != nil {
 		return err
 	}
 
-	log.Entries = append(log.Entries, *entry)
+	filePath, err := auditLogPath()
+	if err != nil {
+		return err
+	}
 
-	log.ApplyRetentionPolicy(maxEntries, retentionDays)
+	// Determine prev HMAC for this entry
+	prevHMAC := head.HMAC
+	if prevHMAC == "" {
+		prevHMAC = zeroHMAC
+	}
 
-	return log.Save(store)
+	// Build stored entry
+	se := storedEntry{Entry: *entry, PrevHMAC: prevHMAC}
+
+	lineBytes, err := encryptEntry(&se, encKey)
+	if err != nil {
+		return err
+	}
+
+	// Ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(filePath), 0700); err != nil {
+		return fmt.Errorf("failed to create audit log directory: %w", err)
+	}
+
+	// Append to file
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to open audit log: %w", err)
+	}
+	if _, err := f.Write(append(lineBytes, '\n')); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write audit entry: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close audit log: %w", err)
+	}
+
+	// Update chain head
+	newHMAC := computeLineHMAC(hmacKey, lineBytes)
+	head.HMAC = newHMAC
+	head.Count++
+
+	return saveChainHead(store, head)
+}
+
+// Clear removes the audit log file and chain head from keyring.
+func Clear(store *nokeyKeyring.Store) error {
+	filePath, err := auditLogPath()
+	if err != nil {
+		return err
+	}
+
+	if err := os.Remove(filePath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove audit log: %w", err)
+	}
+
+	// Clean up chain head
+	_ = store.Delete(AuditChainHeadKey)
+	// Clean up old keyring format if present
+	_ = store.Delete(AuditLogKey)
+
+	return nil
+}
+
+// encryptEntry serializes and encrypts a storedEntry, returning base64-encoded bytes.
+func encryptEntry(se *storedEntry, encKey *[32]byte) ([]byte, error) {
+	plaintext, err := json.Marshal(se)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize audit entry: %w", err)
+	}
+	ciphertext, err := encrypt(plaintext, encKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt audit entry: %w", err)
+	}
+	encoded := make([]byte, base64.StdEncoding.EncodedLen(len(ciphertext)))
+	base64.StdEncoding.Encode(encoded, ciphertext)
+	return encoded, nil
+}
+
+// readAndVerifyFile reads and verifies the audit log file against the chain head.
+func readAndVerifyFile(filePath string, encKey *[32]byte, hmacKey []byte, head *chainHead) (*AuditLog, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &AuditLog{Entries: []AuditEntry{}}, nil
+		}
+		return nil, fmt.Errorf("failed to open audit log: %w", err)
+	}
+	defer f.Close()
+
+	var entries []AuditEntry
+	var warnings []string
+	expectedPrevHMAC := zeroHMAC
+	var lastLineHMAC string
+	lineCount := 0
+
+	scanner := bufio.NewScanner(f)
+	// Allow up to 1MB per line for large encrypted entries
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		lineCount++
+
+		// Compute HMAC of this line
+		lineHMAC := computeLineHMAC(hmacKey, line)
+
+		// Decode and decrypt
+		ciphertext, err := base64.StdEncoding.DecodeString(string(line))
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("line %d: base64 decode failed", lineCount))
+			expectedPrevHMAC = lineHMAC
+			lastLineHMAC = lineHMAC
+			continue
+		}
+
+		plaintext, err := decrypt(ciphertext, encKey)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("line %d: decryption failed (possible tampering)", lineCount))
+			expectedPrevHMAC = lineHMAC
+			lastLineHMAC = lineHMAC
+			continue
+		}
+
+		var se storedEntry
+		if err := json.Unmarshal(plaintext, &se); err != nil {
+			warnings = append(warnings, fmt.Sprintf("line %d: JSON parse failed", lineCount))
+			expectedPrevHMAC = lineHMAC
+			lastLineHMAC = lineHMAC
+			continue
+		}
+
+		// Verify chain link
+		if se.PrevHMAC != expectedPrevHMAC {
+			warnings = append(warnings, fmt.Sprintf("line %d: chain break detected (expected prev_hmac %s..., got %s...)",
+				lineCount, truncHex(expectedPrevHMAC), truncHex(se.PrevHMAC)))
+		}
+
+		entries = append(entries, se.Entry)
+		expectedPrevHMAC = lineHMAC
+		lastLineHMAC = lineHMAC
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read audit log: %w", err)
+	}
+
+	// Verify against chain head checkpoint
+	if head.Count > 0 {
+		if lineCount < head.Count {
+			warnings = append(warnings, fmt.Sprintf("truncation detected: expected %d entries, found %d", head.Count, lineCount))
+		}
+		if lineCount > 0 && lastLineHMAC != head.HMAC {
+			if lineCount == head.Count {
+				warnings = append(warnings, "chain head HMAC mismatch (possible tampering of last entry)")
+			}
+		}
+	}
+
+	return &AuditLog{Entries: entries, Warnings: warnings}, nil
 }
 
 // ApplyRetentionPolicy removes old entries based on count and age
@@ -332,7 +459,15 @@ func auditLogPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return dir + "/" + auditLogFileName, nil
+	return filepath.Join(dir, auditLogFileName), nil
+}
+
+// truncHex returns the first 8 chars of a hex string for display.
+func truncHex(h string) string {
+	if len(h) > 8 {
+		return h[:8]
+	}
+	return h
 }
 
 // deriveHMACKey derives a separate HMAC key from the encryption key.
