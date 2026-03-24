@@ -295,7 +295,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 		s.audit("proxy:https", host, secretNames, true, "")
 		_ = resp.Write(tlsConn)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 }
 

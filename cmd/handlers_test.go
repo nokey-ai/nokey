@@ -320,8 +320,7 @@ func TestRunExport_NoSecrets(t *testing.T) {
 	t.Cleanup(func() { shellType = oldShell })
 	shellType = "bash"
 
-	var stderrOutput string
-	stderrOutput = captureStderr(t, func() {
+	stderrOutput := captureStderr(t, func() {
 		if err := runExport(nil, nil); err != nil {
 			t.Fatalf("runExport: %v", err)
 		}

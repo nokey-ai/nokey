@@ -321,7 +321,6 @@ func handleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.Call
 	addr := request.GetString("addr", "127.0.0.1:0")
 
 	srv := proxy.NewServer(ca, rules, secrets, pol, recordAudit)
-	secrets = nil // Server owns the map now; Stop() handles cleanup.
 
 	actualAddr, err := srv.Start(addr)
 	if err != nil {

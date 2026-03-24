@@ -1,3 +1,5 @@
+version: "2"
+
 linters:
   enable:
     - errcheck
@@ -5,10 +7,40 @@ linters:
     - staticcheck
     - unused
     - gosec
-
-issues:
-  exclude-rules:
-    # Allow unchecked errors on fmt.Fprint* to stderr (informational output)
-    - linters:
-        - errcheck
-      source: "fmt\\.Fprint"
+  exclusions:
+    rules:
+      # Allow unchecked errors on fmt.Fprint* (informational output to stderr)
+      - linters:
+          - errcheck
+        source: "fmt\\.Fprint"
+      # defer .Close() is idiomatic Go; errors are rarely actionable
+      - linters:
+          - errcheck
+        source: "defer .+\\.Close\\("
+      # Test files: unchecked errors in setup/helpers are standard practice
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+      # G204: this is a CLI exec tool — subprocess with variable args is by design
+      - linters:
+          - gosec
+        text: "G204:"
+      # G304: CLI reads user-specified config/data files
+      - linters:
+          - gosec
+        text: "G304:"
+      # G115: uintptr→int for terminal Fd() is standard Go
+      - linters:
+          - gosec
+        text: "G115:"
+      # G103: sensitive package intentionally uses unsafe for zeroing secrets
+      - linters:
+          - gosec
+        text: "G103:"
+        path: internal/sensitive/
+      # G117: the tool manages OAuth tokens — marshaling secrets is by design
+      - linters:
+          - gosec
+        text: "G117:"
+        path: internal/oauth/

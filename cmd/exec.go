@@ -454,20 +454,20 @@ func validateOAuthToken(store *keyring.Store) error {
 	// Load the token
 	token, err := oauth.LoadToken(store, providerName)
 	if err != nil {
-		return fmt.Errorf("no OAuth token found for provider %s: %w\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", providerName, err, providerName)
+		return fmt.Errorf("no OAuth token found for provider %s (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...): %w", providerName, providerName, err)
 	}
 
 	// Check if token is expired and attempt auto-refresh
 	if token.IsExpired() {
 		// Check if we have a refresh token
 		if token.RefreshToken == "" {
-			return fmt.Errorf("OAuth token for %s is expired and no refresh token available\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", providerName, providerName)
+			return fmt.Errorf("OAuth token for %s is expired and no refresh token available (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...)", providerName, providerName)
 		}
 
 		// Load client credentials for refresh
 		creds, err := oauth.LoadClientCredentials(store, providerName)
 		if err != nil {
-			return fmt.Errorf("OAuth token expired but client credentials not found\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", providerName)
+			return fmt.Errorf("OAuth token expired but client credentials not found (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...)", providerName)
 		}
 
 		provider := newOAuthProviderFn(providerName, creds, "http://localhost:0/callback")
@@ -477,7 +477,7 @@ func validateOAuthToken(store *keyring.Store) error {
 		fmt.Fprintf(os.Stderr, "🔄 Refreshing expired OAuth token for %s...\n", providerName)
 		newToken, err := provider.RefreshToken(ctx, token.RefreshToken)
 		if err != nil {
-			return fmt.Errorf("failed to refresh OAuth token: %w\nRun: nokey auth oauth setup --provider %s --client-id ... --client-secret ...", err, providerName)
+			return fmt.Errorf("failed to refresh OAuth token (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...): %w", providerName, err)
 		}
 
 		// Validate the new token

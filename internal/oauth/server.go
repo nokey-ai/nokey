@@ -31,7 +31,7 @@ func NewCallbackServer() (*CallbackServer, error) {
 	// Generate random state token for CSRF protection
 	stateBytes := make([]byte, 32)
 	if _, err := rand.Read(stateBytes); err != nil {
-		listener.Close()
+		_ = listener.Close()
 		return nil, fmt.Errorf("failed to generate state token: %w", err)
 	}
 	state := base64.URLEncoding.EncodeToString(stateBytes)
