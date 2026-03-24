@@ -1,7 +1,9 @@
 package audit
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -54,6 +56,86 @@ func (m *mockRing) Keys() ([]string, error) {
 
 func newTestStore() *nokeyKeyring.Store {
 	return nokeyKeyring.NewWithRing(newMockRing(), "test")
+}
+
+// withTestAuditDir overrides AuditLogDir to use a temp directory.
+func withTestAuditDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := AuditLogDir
+	t.Cleanup(func() { AuditLogDir = old })
+	AuditLogDir = func() (string, error) { return dir, nil }
+	return dir
+}
+
+// --- Chain primitives ---
+
+func TestDeriveHMACKey_Deterministic(t *testing.T) {
+	var key [32]byte
+	for i := range key {
+		key[i] = byte(i)
+	}
+	k1 := deriveHMACKey(&key)
+	k2 := deriveHMACKey(&key)
+	if len(k1) != 32 {
+		t.Fatalf("HMAC key length = %d, want 32", len(k1))
+	}
+	for i := range k1 {
+		if k1[i] != k2[i] {
+			t.Fatal("deriveHMACKey is not deterministic")
+		}
+	}
+}
+
+func TestComputeLineHMAC_Deterministic(t *testing.T) {
+	hmacKey := []byte("test-key-32-bytes-padding-extra!")
+	data := []byte("some ciphertext line")
+	h1 := computeLineHMAC(hmacKey, data)
+	h2 := computeLineHMAC(hmacKey, data)
+	if h1 != h2 {
+		t.Fatalf("computeLineHMAC not deterministic: %q vs %q", h1, h2)
+	}
+	if len(h1) != 64 {
+		t.Fatalf("HMAC hex length = %d, want 64", len(h1))
+	}
+}
+
+func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
+	store := newTestStore()
+	head := &chainHead{HMAC: "abc123", Count: 42}
+	if err := saveChainHead(store, head); err != nil {
+		t.Fatalf("saveChainHead: %v", err)
+	}
+	loaded, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if loaded.HMAC != head.HMAC || loaded.Count != head.Count {
+		t.Errorf("loaded = %+v, want %+v", loaded, head)
+	}
+}
+
+func TestLoadChainHead_NotFound_ReturnsZero(t *testing.T) {
+	store := newTestStore()
+	head, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if head.HMAC != "" || head.Count != 0 {
+		t.Errorf("expected zero chainHead, got %+v", head)
+	}
+}
+
+func TestAuditLogPath(t *testing.T) {
+	dir := withTestAuditDir(t)
+	p, err := auditLogPath()
+	if err != nil {
+		t.Fatalf("auditLogPath: %v", err)
+	}
+	want := dir + "/audit.log"
+	if p != want {
+		t.Errorf("auditLogPath = %q, want %q", p, want)
+	}
 }
 
 // --- NewAuditEntry ---
@@ -361,35 +443,35 @@ func TestDecrypt_TooShort(t *testing.T) {
 	}
 }
 
-// --- Load / Save / Record (with mock store) ---
+// --- Record / Load / Clear (file-based) ---
 
-func TestLoadSave_RoundTrip(t *testing.T) {
+func TestRecordLoad_RoundTrip(t *testing.T) {
 	store := newTestStore()
+	withTestAuditDir(t)
 
-	// Load from empty store should return empty log.
+	// Load from empty state should return empty log.
 	log, err := Load(store)
 	if err != nil {
-		t.Fatalf("Load on empty store: %v", err)
+		t.Fatalf("Load on empty: %v", err)
 	}
 	if len(log.Entries) != 0 {
 		t.Errorf("expected empty log, got %d entries", len(log.Entries))
 	}
 
-	// Add an entry and save.
-	log.Entries = append(log.Entries, AuditEntry{
+	// Record an entry and load again.
+	entry := &AuditEntry{
 		Operation: "set",
 		Command:   "test",
 		Success:   true,
 		Timestamp: time.Now().UTC(),
-	})
-	if err := log.Save(store); err != nil {
-		t.Fatalf("Save: %v", err)
+	}
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
 	}
 
-	// Load again and verify.
 	log2, err := Load(store)
 	if err != nil {
-		t.Fatalf("Load after Save: %v", err)
+		t.Fatalf("Load after Record: %v", err)
 	}
 	if len(log2.Entries) != 1 {
 		t.Errorf("expected 1 entry after reload, got %d", len(log2.Entries))
@@ -397,10 +479,14 @@ func TestLoadSave_RoundTrip(t *testing.T) {
 	if log2.Entries[0].Operation != "set" {
 		t.Errorf("reloaded entry operation = %q, want %q", log2.Entries[0].Operation, "set")
 	}
+	if len(log2.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log2.Warnings)
+	}
 }
 
 func TestRecord(t *testing.T) {
 	store := newTestStore()
+	withTestAuditDir(t)
 	entry := NewAuditEntry("exec", "ls", "pin", []string{"KEY"}, true, "")
 
 	if err := Record(store, entry, 1000, 90); err != nil {
@@ -413,6 +499,475 @@ func TestRecord(t *testing.T) {
 	}
 	if len(log.Entries) != 1 {
 		t.Errorf("expected 1 entry, got %d", len(log.Entries))
+	}
+}
+
+func TestRecord_MultipleEntries(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 3 {
+		t.Errorf("expected 3 entries, got %d", len(log.Entries))
+	}
+	// Verify order is preserved
+	for i, e := range log.Entries {
+		want := fmt.Sprintf("cmd-%d", i)
+		if e.Command != want {
+			t.Errorf("entry %d command = %q, want %q", i, e.Command, want)
+		}
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+}
+
+func TestRecord_FilePermissions(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "ls", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	info, err := os.Stat(dir + "/audit.log")
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	perm := info.Mode().Perm()
+	if perm != 0600 {
+		t.Errorf("file permissions = %o, want 0600", perm)
+	}
+}
+
+func TestRecord_ChainHeadUpdated(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		headBefore, _ := loadChainHead(store)
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+		headAfter, _ := loadChainHead(store)
+
+		if headAfter.Count != i+1 {
+			t.Errorf("after Record %d: count = %d, want %d", i, headAfter.Count, i+1)
+		}
+		if headAfter.HMAC == headBefore.HMAC {
+			t.Errorf("after Record %d: HMAC should have changed", i)
+		}
+	}
+}
+
+// --- Tamper detection ---
+
+func TestReadAndVerify_DetectsTruncation(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Remove last line from file
+	filePath := dir + "/audit.log"
+	data, _ := os.ReadFile(filePath)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	truncated := strings.Join(lines[:2], "\n") + "\n"
+	os.WriteFile(filePath, []byte(truncated), 0600)
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 2 {
+		t.Errorf("expected 2 entries, got %d", len(log.Entries))
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected truncation warning")
+	}
+	hasWarning := false
+	for _, w := range log.Warnings {
+		if strings.Contains(w, "truncation") {
+			hasWarning = true
+		}
+	}
+	if !hasWarning {
+		t.Errorf("warnings = %v, expected truncation warning", log.Warnings)
+	}
+}
+
+func TestReadAndVerify_DetectsTampering(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Modify a line's ciphertext
+	filePath := dir + "/audit.log"
+	data, _ := os.ReadFile(filePath)
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	// Corrupt the middle line by replacing a character
+	if len(lines[1]) > 10 {
+		runes := []byte(lines[1])
+		if runes[5] == 'A' {
+			runes[5] = 'B'
+		} else {
+			runes[5] = 'A'
+		}
+		lines[1] = string(runes)
+	}
+	os.WriteFile(filePath, []byte(strings.Join(lines, "\n")+"\n"), 0600)
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected tampering warnings")
+	}
+}
+
+func TestReadAndVerify_DetectsInsertion(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// Add a garbage line
+	filePath := dir + "/audit.log"
+	f, _ := os.OpenFile(filePath, os.O_WRONLY|os.O_APPEND, 0600)
+	f.WriteString("not-valid-base64-garbage\n")
+	f.Close()
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Warnings) == 0 {
+		t.Error("expected warnings for inserted line")
+	}
+}
+
+func TestReadAndVerify_KeyLoss_SingleWarning(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Write entries with one key
+	for i := 0; i < 5; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	// Simulate key loss by replacing the encryption key
+	var newKey [32]byte
+	for i := range newKey {
+		newKey[i] = byte(i + 100)
+	}
+	_ = store.Set(AuditEncryptionKeyKey, "")
+	_ = store.Delete(AuditEncryptionKeyKey)
+	// Force a new key to be created
+	_ = store.Delete(AuditChainHeadKey)
+
+	// Load with new key — all old entries fail decryption
+	encKey, _ := getOrCreateEncryptionKey(store)
+	hmacKey := deriveHMACKey(encKey)
+	filePath := dir + "/audit.log"
+	head := &chainHead{}
+
+	log, err := readAndVerifyFile(filePath, encKey, hmacKey, head)
+	if err != nil {
+		t.Fatalf("readAndVerifyFile: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected 0 readable entries, got %d", len(log.Entries))
+	}
+	// Should get a single summary warning, not 5 per-line warnings
+	if len(log.Warnings) != 1 {
+		t.Errorf("expected 1 summary warning, got %d: %v", len(log.Warnings), log.Warnings)
+	}
+	if len(log.Warnings) > 0 && !strings.Contains(log.Warnings[0], "encryption key was likely reset") {
+		t.Errorf("warning = %q, want key reset message", log.Warnings[0])
+	}
+}
+
+// --- Clear ---
+
+func TestClear_RemovesFileAndChainHead(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	entry := NewAuditEntry("exec", "cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// Verify file exists
+	filePath := dir + "/audit.log"
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("file should exist before clear: %v", err)
+	}
+
+	if err := Clear(store); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+
+	// File should be gone
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("file should be removed after clear")
+	}
+
+	// Chain head should be gone
+	head, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if head.HMAC != "" || head.Count != 0 {
+		t.Errorf("chain head should be zero after clear, got %+v", head)
+	}
+
+	// Load should return empty
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load after clear: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected empty log after clear, got %d entries", len(log.Entries))
+	}
+}
+
+func TestClear_NoFileNoPanic(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// Clear on empty state should not error
+	if err := Clear(store); err != nil {
+		t.Fatalf("Clear on empty: %v", err)
+	}
+}
+
+// --- Migration ---
+
+func TestMigrateFromKeyring_WithData(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Create encryption key
+	encKey, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+
+	// Seed old-format keyring blob
+	oldLog := struct {
+		Entries []AuditEntry `json:"entries"`
+	}{
+		Entries: []AuditEntry{
+			{Operation: "exec", Command: "cmd1", Timestamp: time.Now().UTC(), Success: true},
+			{Operation: "set", Command: "cmd2", Timestamp: time.Now().UTC(), Success: true},
+		},
+	}
+	data, _ := json.Marshal(oldLog)
+	encrypted, _ := encrypt(data, encKey)
+	_ = store.Set(AuditLogKey, string(encrypted))
+
+	// Load triggers migration
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 2 {
+		t.Errorf("expected 2 migrated entries, got %d", len(log.Entries))
+	}
+	if log.Entries[0].Operation != "exec" || log.Entries[1].Operation != "set" {
+		t.Error("migrated entries have wrong operations")
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+
+	// Old key should be deleted
+	if _, err := store.Get(AuditLogKey); err == nil {
+		t.Error("old AuditLogKey should be deleted after migration")
+	}
+
+	// File should exist
+	if _, err := os.Stat(dir + "/audit.log"); err != nil {
+		t.Errorf("audit.log should exist: %v", err)
+	}
+
+	// Chain head should be set
+	head, _ := loadChainHead(store)
+	if head.Count != 2 {
+		t.Errorf("chain head count = %d, want 2", head.Count)
+	}
+}
+
+func TestMigrateFromKeyring_NoOldData(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// Load on empty state — no old key, no file
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected empty log, got %d entries", len(log.Entries))
+	}
+}
+
+func TestMigrateFromKeyring_FileAlreadyExists(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Create encryption key
+	encKey, err := getOrCreateEncryptionKey(store)
+	if err != nil {
+		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	}
+
+	// Seed old-format keyring blob
+	oldLog := struct {
+		Entries []AuditEntry `json:"entries"`
+	}{
+		Entries: []AuditEntry{
+			{Operation: "exec", Command: "old", Timestamp: time.Now().UTC(), Success: true},
+		},
+	}
+	data, _ := json.Marshal(oldLog)
+	encrypted, _ := encrypt(data, encKey)
+	_ = store.Set(AuditLogKey, string(encrypted))
+
+	// Write a file-format entry first
+	entry := NewAuditEntry("exec", "new-cmd", "pin", nil, true, "")
+	if err := Record(store, entry, 1000, 90); err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+
+	// File already exists now — Load should NOT overwrite with old data
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Should have the new entry, not the old one
+	found := false
+	for _, e := range log.Entries {
+		if e.Command == "new-cmd" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected to find 'new-cmd' entry (file should not be overwritten)")
+	}
+
+	// Verify file still exists
+	if _, err := os.Stat(dir + "/audit.log"); err != nil {
+		t.Errorf("audit.log should exist: %v", err)
+	}
+}
+
+// --- Compaction ---
+
+func TestCompactFile_ReducesEntries(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Write 10 entries
+	for i := 0; i < 10; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	// Compact to 5
+	encKey, _ := getOrCreateEncryptionKey(store)
+	hmacKey := deriveHMACKey(encKey)
+	filePath := dir + "/audit.log"
+
+	if err := compactFile(store, filePath, encKey, hmacKey, 5, 90); err != nil {
+		t.Fatalf("compactFile: %v", err)
+	}
+
+	// Load and verify
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 5 {
+		t.Errorf("expected 5 entries after compaction, got %d", len(log.Entries))
+	}
+	// Should keep the 5 most recent
+	if log.Entries[4].Command != "cmd-9" {
+		t.Errorf("last entry command = %q, want cmd-9", log.Entries[4].Command)
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings after compaction: %v", log.Warnings)
+	}
+
+	// Chain head should reflect compacted state
+	head, _ := loadChainHead(store)
+	if head.Count != 5 {
+		t.Errorf("chain head count = %d, want 5", head.Count)
+	}
+}
+
+func TestRecord_TriggersCompaction(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// maxEntries=5, so compaction triggers at 2*5=10
+	for i := 0; i < 11; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 5, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// After compaction at entry 10 (count=10 >= 2*5), we compact to 5 entries,
+	// then entry 10 is appended, so we should have 6 entries
+	if len(log.Entries) != 6 {
+		t.Errorf("expected 6 entries (5 after compaction + 1 new), got %d", len(log.Entries))
+	}
+
+	// Last entry should be cmd-10
+	if log.Entries[len(log.Entries)-1].Command != "cmd-10" {
+		t.Errorf("last entry = %q, want cmd-10", log.Entries[len(log.Entries)-1].Command)
+	}
+
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
 	}
 }
 
@@ -463,80 +1018,6 @@ func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
 	_, err := getOrCreateEncryptionKey(store)
 	if err == nil {
 		t.Error("expected error for invalid key length")
-	}
-}
-
-func TestLoad_CorruptedAuditLog(t *testing.T) {
-	store := newTestStore()
-	// First create a valid encryption key
-	key, err := getOrCreateEncryptionKey(store)
-	if err != nil {
-		t.Fatalf("getOrCreateEncryptionKey: %v", err)
-	}
-	// Store encrypted but invalid JSON
-	encrypted, err := encrypt([]byte("not-json{{{"), key)
-	if err != nil {
-		t.Fatalf("encrypt: %v", err)
-	}
-	_ = store.Set(AuditLogKey, string(encrypted))
-
-	_, err = Load(store)
-	if err == nil {
-		t.Error("expected error for corrupted JSON")
-	}
-	if !strings.Contains(err.Error(), "parse audit log") {
-		t.Errorf("error should mention parsing, got: %v", err)
-	}
-}
-
-func TestLoad_DecryptionFailure(t *testing.T) {
-	store := newTestStore()
-	// Create encryption key
-	_, _ = getOrCreateEncryptionKey(store)
-	// Store garbage (not valid encrypted data but long enough to have a nonce)
-	_ = store.Set(AuditLogKey, strings.Repeat("x", 50))
-
-	_, err := Load(store)
-	if err == nil {
-		t.Error("expected error for decryption failure")
-	}
-	if !strings.Contains(err.Error(), "decrypt") {
-		t.Errorf("error should mention decryption, got: %v", err)
-	}
-}
-
-func TestRecord_MultipleEntries(t *testing.T) {
-	store := newTestStore()
-	for i := 0; i < 3; i++ {
-		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
-		if err := Record(store, entry, 1000, 90); err != nil {
-			t.Fatalf("Record %d: %v", i, err)
-		}
-	}
-	log, err := Load(store)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(log.Entries) != 3 {
-		t.Errorf("expected 3 entries, got %d", len(log.Entries))
-	}
-}
-
-func TestRecord_CustomRetention(t *testing.T) {
-	store := newTestStore()
-	// Record 5 entries with a max of 3
-	for i := 0; i < 5; i++ {
-		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", []string{"KEY"}, true, "")
-		if err := Record(store, entry, 3, 90); err != nil {
-			t.Fatalf("Record %d: %v", i, err)
-		}
-	}
-	log, err := Load(store)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if len(log.Entries) != 3 {
-		t.Errorf("expected 3 entries after custom retention, got %d", len(log.Entries))
 	}
 }
 

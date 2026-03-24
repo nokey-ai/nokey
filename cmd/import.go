@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/spf13/cobra"
 )
 
@@ -118,27 +117,12 @@ func runImport(cmd *cobra.Command, args []string) error {
 		importedKeys = append(importedKeys, key)
 	}
 
-	// Record audit entry if audit logging is enabled
-	if cfg.Audit.Enabled {
-		errorMsg := ""
-		if len(failedKeys) > 0 {
-			errorMsg = fmt.Sprintf("failed to import %d secret(s): %v", len(failedKeys), failedKeys)
-		}
-
-		entry := audit.NewAuditEntry(
-			"import",
-			filePath,
-			"none", // import operation doesn't require auth
-			importedKeys,
-			len(failedKeys) == 0,
-			errorMsg,
-		)
-
-		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
-		}
+	// Record audit entry
+	errorMsg := ""
+	if len(failedKeys) > 0 {
+		errorMsg = fmt.Sprintf("failed to import %d secret(s): %v", len(failedKeys), failedKeys)
 	}
+	AppFromCmd(cmd).RecordAudit(store, "import", filePath, "none", importedKeys, len(failedKeys) == 0, errorMsg)
 
 	fmt.Printf("Successfully imported %d secret(s) from %s\n", imported, filePath)
 	fmt.Fprintf(os.Stderr, "\nSecurity tip: Consider deleting %s now that secrets are stored securely:\n", filePath)

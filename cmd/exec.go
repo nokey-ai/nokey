@@ -9,7 +9,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nokey-ai/nokey/internal/audit"
+	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
@@ -206,7 +206,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	// Filter secrets based on --only and --except flags
-	secrets, err := filterSecrets(allSecrets, onlySecrets, exceptSecrets)
+	secrets, err := env.FilterSecrets(allSecrets, onlySecrets, exceptSecrets)
 	if err != nil {
 		return err
 	}
@@ -251,31 +251,17 @@ func runExec(cmd *cobra.Command, args []string) error {
 		exitCode, execErr = execRunFn(args[0], args[1:], secrets, proxyEnv...)
 	}
 
-	// Record audit entry if audit logging is enabled
-	if cfg.Audit.Enabled {
+	// Record audit entry
+	{
 		secretNames := make([]string, 0, len(secrets))
 		for name := range secrets {
 			secretNames = append(secretNames, name)
 		}
-
 		errorMsg := ""
 		if execErr != nil {
 			errorMsg = execErr.Error()
 		}
-
-		entry := audit.NewAuditEntry(
-			"exec",
-			args[0],
-			authMethodUsed,
-			secretNames,
-			execErr == nil && exitCode == 0,
-			errorMsg,
-		)
-
-		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
-		}
+		AppFromCmd(cmd).RecordAudit(store, "exec", args[0], authMethodUsed, secretNames, execErr == nil && exitCode == 0, errorMsg)
 	}
 
 	if execErr != nil {
@@ -285,64 +271,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// Exit with the same code as the subprocess
 	osExitFn(exitCode)
 	return nil
-}
-
-// filterSecrets filters the secrets map based on --only and --except flags
-func filterSecrets(allSecrets map[string]string, only, except string) (map[string]string, error) {
-	// If both --only and --except are specified, that's an error
-	if only != "" && except != "" {
-		return nil, fmt.Errorf("cannot use both --only and --except flags")
-	}
-
-	// If --only is specified, return only those secrets
-	if only != "" {
-		onlyList := parseCommaSeparated(only)
-		filtered := make(map[string]string)
-		for _, key := range onlyList {
-			if value, ok := allSecrets[key]; ok {
-				filtered[key] = value
-			} else {
-				return nil, fmt.Errorf("secret not found: %s", key)
-			}
-		}
-		return filtered, nil
-	}
-
-	// If --except is specified, return all except those
-	if except != "" {
-		exceptList := parseCommaSeparated(except)
-		exceptMap := make(map[string]bool)
-		for _, key := range exceptList {
-			exceptMap[key] = true
-		}
-
-		filtered := make(map[string]string)
-		for key, value := range allSecrets {
-			if !exceptMap[key] {
-				filtered[key] = value
-			}
-		}
-		return filtered, nil
-	}
-
-	// No filtering, return all secrets
-	return allSecrets, nil
-}
-
-// parseCommaSeparated parses a comma-separated string into a slice of trimmed strings
-func parseCommaSeparated(s string) []string {
-	if s == "" {
-		return nil
-	}
-	parts := strings.Split(s, ",")
-	result := make([]string, 0, len(parts))
-	for _, part := range parts {
-		trimmed := strings.TrimSpace(part)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
 }
 
 // confirmSecrets shows a confirmation prompt asking the user to approve secret injection

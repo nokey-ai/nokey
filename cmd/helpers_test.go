@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	kring "github.com/99designs/keyring"
-	"github.com/nokey-ai/nokey/internal/approval"
+	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
@@ -62,6 +62,16 @@ func newTestStore() (*nkeyring.Store, *mockRing) {
 	ring := newMockRing()
 	store := nkeyring.NewWithRing(ring, "nokey-test")
 	return store, ring
+}
+
+// withTestAuditDir overrides audit.AuditLogDir to a temp directory and restores on cleanup.
+func withTestAuditDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := audit.AuditLogDir
+	t.Cleanup(func() { audit.AuditLogDir = old })
+	audit.AuditLogDir = func() (string, error) { return dir, nil }
+	return dir
 }
 
 // withTestKeyring overrides getKeyring to return the given store and restores it on cleanup.
@@ -191,14 +201,6 @@ func withMockOAuthProvider(t *testing.T, provider oauth.Provider) {
 	newOAuthProviderFn = func(name string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
 		return provider
 	}
-}
-
-// withApprovalFn overrides approvalRequestFn and restores it on cleanup.
-func withApprovalFn(t *testing.T, fn func(context.Context, approval.Requester, string, []string) error) {
-	t.Helper()
-	old := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = old })
-	approvalRequestFn = fn
 }
 
 // withNoBrowser stubs browserOpenFn so tests don't open a real browser.

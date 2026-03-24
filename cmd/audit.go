@@ -115,6 +115,11 @@ func runAuditList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load audit log: %w", err)
 	}
 
+	// Print any integrity warnings
+	for _, w := range log.Warnings {
+		fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
+	}
+
 	// Parse filters
 	opts := audit.FilterOptions{
 		SecretName: auditSecret,
@@ -164,6 +169,11 @@ func runAuditExport(cmd *cobra.Command, args []string) error {
 	log, err := audit.Load(store)
 	if err != nil {
 		return fmt.Errorf("failed to load audit log: %w", err)
+	}
+
+	// Print any integrity warnings
+	for _, w := range log.Warnings {
+		fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
 	}
 
 	// Parse filters
@@ -238,9 +248,7 @@ func runAuditClear(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create empty log
-	emptyLog := &audit.AuditLog{Entries: []audit.AuditEntry{}}
-	if err := emptyLog.Save(store); err != nil {
+	if err := audit.Clear(store); err != nil {
 		return fmt.Errorf("failed to clear audit log: %w", err)
 	}
 
