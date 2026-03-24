@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md
 
 ### Changed
+- Bump Go 1.24 → 1.26 (post-quantum TLS defaults, Green Tea GC)
 - Bump GitHub Actions to Node.js 24 (checkout v6, setup-go v6, golangci-lint-action v9, goreleaser-action v7)
 - Migrate golangci-lint config to v2 format
 - Release workflow uses GitHub App token instead of PAT for tap publishing
