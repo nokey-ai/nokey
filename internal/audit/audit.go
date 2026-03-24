@@ -401,6 +401,7 @@ func readAndVerifyFile(filePath string, encKey *[32]byte, hmacKey []byte, head *
 	expectedPrevHMAC := zeroHMAC
 	var lastLineHMAC string
 	lineCount := 0
+	decryptFailCount := 0
 
 	scanner := bufio.NewScanner(f)
 	// Allow up to 1MB per line for large encrypted entries
@@ -427,7 +428,7 @@ func readAndVerifyFile(filePath string, encKey *[32]byte, hmacKey []byte, head *
 
 		plaintext, err := decrypt(ciphertext, encKey)
 		if err != nil {
-			warnings = append(warnings, fmt.Sprintf("line %d: decryption failed (possible tampering)", lineCount))
+			decryptFailCount++
 			expectedPrevHMAC = lineHMAC
 			lastLineHMAC = lineHMAC
 			continue
@@ -454,6 +455,15 @@ func readAndVerifyFile(filePath string, encKey *[32]byte, hmacKey []byte, head *
 
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("failed to read audit log: %w", err)
+	}
+
+	// Summarize decryption failures
+	if decryptFailCount > 0 {
+		if decryptFailCount == lineCount {
+			warnings = append(warnings, fmt.Sprintf("all %d entries failed decryption (encryption key was likely reset — consider running 'nokey audit clear')", decryptFailCount))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("%d entries failed decryption (possible tampering)", decryptFailCount))
+		}
 	}
 
 	// Verify against chain head checkpoint

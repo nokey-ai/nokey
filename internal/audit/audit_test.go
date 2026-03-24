@@ -671,6 +671,50 @@ func TestReadAndVerify_DetectsInsertion(t *testing.T) {
 	}
 }
 
+func TestReadAndVerify_KeyLoss_SingleWarning(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Write entries with one key
+	for i := 0; i < 5; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	// Simulate key loss by replacing the encryption key
+	var newKey [32]byte
+	for i := range newKey {
+		newKey[i] = byte(i + 100)
+	}
+	_ = store.Set(AuditEncryptionKeyKey, "")
+	_ = store.Delete(AuditEncryptionKeyKey)
+	// Force a new key to be created
+	_ = store.Delete(AuditChainHeadKey)
+
+	// Load with new key — all old entries fail decryption
+	encKey, _ := getOrCreateEncryptionKey(store)
+	hmacKey := deriveHMACKey(encKey)
+	filePath := dir + "/audit.log"
+	head := &chainHead{}
+
+	log, err := readAndVerifyFile(filePath, encKey, hmacKey, head)
+	if err != nil {
+		t.Fatalf("readAndVerifyFile: %v", err)
+	}
+	if len(log.Entries) != 0 {
+		t.Errorf("expected 0 readable entries, got %d", len(log.Entries))
+	}
+	// Should get a single summary warning, not 5 per-line warnings
+	if len(log.Warnings) != 1 {
+		t.Errorf("expected 1 summary warning, got %d: %v", len(log.Warnings), log.Warnings)
+	}
+	if len(log.Warnings) > 0 && !strings.Contains(log.Warnings[0], "encryption key was likely reset") {
+		t.Errorf("warning = %q, want key reset message", log.Warnings[0])
+	}
+}
+
 // --- Clear ---
 
 func TestClear_RemovesFileAndChainHead(t *testing.T) {
