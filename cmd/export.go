@@ -5,7 +5,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/spf13/cobra"
 )
@@ -97,27 +96,12 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("unsupported shell type: %s (supported: bash, zsh, fish, powershell)", shellType)
 	}
 
-	// Record audit entry if audit logging is enabled
-	if cfg.Audit.Enabled {
-		secretNames := make([]string, 0, len(secrets))
-		for name := range secrets {
-			secretNames = append(secretNames, name)
-		}
-
-		entry := audit.NewAuditEntry(
-			"export",
-			shellType,
-			authMethod,
-			secretNames,
-			true, // export succeeded
-			"",
-		)
-
-		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
-		}
+	// Record audit entry
+	secretNames := make([]string, 0, len(secrets))
+	for name := range secrets {
+		secretNames = append(secretNames, name)
 	}
+	AppFromCmd(cmd).RecordAudit(store, "export", shellType, authMethod, secretNames, true, "")
 
 	return nil
 }

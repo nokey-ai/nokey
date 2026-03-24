@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -90,25 +89,12 @@ func runSet(cmd *cobra.Command, args []string) error {
 
 	err = store.Set(key, value)
 
-	// Record audit entry if audit logging is enabled
-	if cfg.Audit.Enabled {
-		entry := audit.NewAuditEntry(
-			"set",
-			key,
-			"none", // set operation doesn't require auth
-			[]string{key},
-			err == nil,
-			"",
-		)
-		if err != nil {
-			entry.ErrorMessage = err.Error()
-		}
-
-		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
-		}
+	// Record audit entry
+	errMsg := ""
+	if err != nil {
+		errMsg = err.Error()
 	}
+	AppFromCmd(cmd).RecordAudit(store, "set", key, "none", []string{key}, err == nil, errMsg)
 
 	if err != nil {
 		return fmt.Errorf("failed to store secret %q: %w", key, err)

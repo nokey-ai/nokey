@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
@@ -252,31 +251,17 @@ func runExec(cmd *cobra.Command, args []string) error {
 		exitCode, execErr = execRunFn(args[0], args[1:], secrets, proxyEnv...)
 	}
 
-	// Record audit entry if audit logging is enabled
-	if cfg.Audit.Enabled {
+	// Record audit entry
+	{
 		secretNames := make([]string, 0, len(secrets))
 		for name := range secrets {
 			secretNames = append(secretNames, name)
 		}
-
 		errorMsg := ""
 		if execErr != nil {
 			errorMsg = execErr.Error()
 		}
-
-		entry := audit.NewAuditEntry(
-			"exec",
-			args[0],
-			authMethodUsed,
-			secretNames,
-			execErr == nil && exitCode == 0,
-			errorMsg,
-		)
-
-		// Record audit entry (ignore errors to not disrupt execution)
-		if auditErr := audit.Record(store, entry, cfg.Audit.MaxEntries, cfg.Audit.RetentionDays); auditErr != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to record audit entry: %v\n", auditErr)
-		}
+		AppFromCmd(cmd).RecordAudit(store, "exec", args[0], authMethodUsed, secretNames, execErr == nil && exitCode == 0, errorMsg)
 	}
 
 	if execErr != nil {

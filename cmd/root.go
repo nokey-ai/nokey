@@ -55,6 +55,10 @@ var versionCmd = &cobra.Command{
 func init() {
 	cobra.OnInitialize(initConfig)
 
+	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
+		setAppContext(cmd)
+	}
+
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&backend, "backend", "", "Keyring backend (default: system default)")
 	versionCmd.Flags().BoolVar(&versionLong, "long", false, "Show commit, build date, Go version, and platform")
