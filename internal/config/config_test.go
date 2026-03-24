@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -219,6 +220,34 @@ func TestSaveAndLoad_FullConfig(t *testing.T) {
 	}
 	if loaded.RequireAuth != true {
 		t.Error("RequireAuth should be true")
+	}
+
+	// ClientSecret fields must NOT be persisted to disk
+	if loaded.Auth.OAuth.GitHub.ClientSecret != "" {
+		t.Errorf("GitHub.ClientSecret should be empty on disk, got %q", loaded.Auth.OAuth.GitHub.ClientSecret)
+	}
+	if loaded.Auth.OAuth.Custom.ClientSecret != "" {
+		t.Errorf("Custom.ClientSecret should be empty on disk, got %q", loaded.Auth.OAuth.Custom.ClientSecret)
+	}
+
+	// Verify raw file doesn't contain secret values
+	path, _ := ConfigPath()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	for _, secret := range []string{"gh-secret", "custom-secret"} {
+		if bytes.Contains(raw, []byte(secret)) {
+			t.Errorf("config.yaml contains secret %q in plaintext", secret)
+		}
+	}
+
+	// Save must not mutate the caller's struct
+	if cfg.Auth.OAuth.GitHub.ClientSecret != "gh-secret" {
+		t.Errorf("Save mutated caller's GitHub.ClientSecret to %q", cfg.Auth.OAuth.GitHub.ClientSecret)
+	}
+	if cfg.Auth.OAuth.Custom.ClientSecret != "custom-secret" {
+		t.Errorf("Save mutated caller's Custom.ClientSecret to %q", cfg.Auth.OAuth.Custom.ClientSecret)
 	}
 }
 

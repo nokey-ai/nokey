@@ -186,7 +186,12 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	data, err := yaml.Marshal(cfg)
+	// Don't persist secrets — they belong in the keyring, not config.yaml
+	saved := *cfg
+	saved.Auth.OAuth.GitHub.ClientSecret = ""
+	saved.Auth.OAuth.Custom.ClientSecret = ""
+
+	data, err := yaml.Marshal(&saved)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
