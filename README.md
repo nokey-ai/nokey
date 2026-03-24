@@ -1,7 +1,7 @@
 # nokey
 
 [![CI](https://github.com/nokey-ai/nokey/actions/workflows/ci.yml/badge.svg)](https://github.com/nokey-ai/nokey/actions/workflows/ci.yml)
-[![Go 1.24](https://img.shields.io/badge/Go-1.24-00ADD8?logo=go)](https://go.dev)
+[![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go)](https://go.dev)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Zero-trust secret management for AI coding assistants**

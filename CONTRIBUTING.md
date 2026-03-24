@@ -4,7 +4,7 @@ Thanks for your interest in contributing to nokey! This guide will help you get 
 
 ## Development Setup
 
-**Requirements:** Go 1.24+
+**Requirements:** Go 1.26+
 
 ```bash
 # Fork and clone
