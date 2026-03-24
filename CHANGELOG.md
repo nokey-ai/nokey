@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Homebrew cask tap (`nokey-ai/homebrew-tap`) with GoReleaser auto-publish
 - `make check` convenience target (test + vet + lint)
 - Test coverage for `keychain migrate` command (6 tests)
 - `nokey init` command to generate starter config and policies files
@@ -20,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CHANGELOG.md
 
 ### Changed
+- Bump GitHub Actions to Node.js 24 (checkout v6, setup-go v6, golangci-lint-action v9, goreleaser-action v7)
+- Migrate golangci-lint config to v2 format
+- Release workflow uses GitHub App token instead of PAT for tap publishing
 - README documents `init`, `completion`, `--json`, and `version --long`
 - `config validate` detects unknown YAML keys (typos)
 - Error messages now include actionable hints (e.g., "run `nokey status`")
@@ -27,7 +31,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config directory resolution extracted to `config.ConfigDir()` for reuse
 
 ### Fixed
+- Bump `buger/jsonparser` v1.1.1 → v1.1.2 (DoS vulnerability, Dependabot #3)
+- Bump Go 1.24.0 → 1.24.13 (8 stdlib CVEs in crypto/tls, net/url, crypto/x509)
+- Skip `MigrateAllItems` tests on non-macOS (function is darwin-only no-op)
+- Fix lint: ineffectual assignment, error strings ending with newlines, unchecked Close()
+- Redact `ClientSecret` fields from config.yaml on save
 - Bare `return err` in MCP server startup now wrapped with context
+
+### Security
+- `.gitignore` now excludes `policies.yaml`, `*.key`, `*.crt`, `*.pem`
 
 ## [0.1.0] - 2025-01-01
 
