@@ -150,6 +150,18 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 		return err
 	}
 
+	// Lazy compaction when file grows to 2x max entries
+	if maxEntries > 0 && head.Count >= 2*maxEntries {
+		if err := compactFile(store, filePath, encKey, hmacKey, maxEntries, retentionDays); err != nil {
+			return fmt.Errorf("failed to compact audit log: %w", err)
+		}
+		// Reload head after compaction
+		head, err = loadChainHead(store)
+		if err != nil {
+			return err
+		}
+	}
+
 	// Determine prev HMAC for this entry
 	prevHMAC := head.HMAC
 	if prevHMAC == "" {
@@ -188,6 +200,67 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 	head.Count++
 
 	return saveChainHead(store, head)
+}
+
+// compactFile rewrites the audit log keeping only entries that pass retention.
+// Resets the hash chain from scratch.
+func compactFile(store *nokeyKeyring.Store, filePath string, encKey *[32]byte, hmacKey []byte, maxEntries, retentionDays int) error {
+	// Read all entries from current file
+	head, err := loadChainHead(store)
+	if err != nil {
+		return err
+	}
+	log, err := readAndVerifyFile(filePath, encKey, hmacKey, head)
+	if err != nil {
+		return fmt.Errorf("failed to read audit log for compaction: %w", err)
+	}
+
+	// Apply retention policy
+	log.ApplyRetentionPolicy(maxEntries, retentionDays)
+
+	// Write survivors to temp file with fresh chain
+	tmpPath := filePath + ".tmp"
+	f, err := os.OpenFile(tmpPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to create temp audit log: %w", err)
+	}
+
+	prevHMAC := zeroHMAC
+	var lastHMAC string
+	count := 0
+
+	for _, entry := range log.Entries {
+		se := storedEntry{Entry: entry, PrevHMAC: prevHMAC}
+		lineBytes, err := encryptEntry(&se, encKey)
+		if err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return err
+		}
+		if _, err := f.Write(append(lineBytes, '\n')); err != nil {
+			f.Close()
+			os.Remove(tmpPath)
+			return fmt.Errorf("failed to write compacted entry: %w", err)
+		}
+		lastHMAC = computeLineHMAC(hmacKey, lineBytes)
+		prevHMAC = lastHMAC
+		count++
+	}
+
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to close temp audit log: %w", err)
+	}
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, filePath); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to replace audit log: %w", err)
+	}
+
+	// Update chain head
+	newHead := &chainHead{HMAC: lastHMAC, Count: count}
+	return saveChainHead(store, newHead)
 }
 
 // Clear removes the audit log file and chain head from keyring.

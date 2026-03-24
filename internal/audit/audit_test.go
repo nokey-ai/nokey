@@ -848,6 +848,85 @@ func TestMigrateFromKeyring_FileAlreadyExists(t *testing.T) {
 	}
 }
 
+// --- Compaction ---
+
+func TestCompactFile_ReducesEntries(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	// Write 10 entries
+	for i := 0; i < 10; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	// Compact to 5
+	encKey, _ := getOrCreateEncryptionKey(store)
+	hmacKey := deriveHMACKey(encKey)
+	filePath := dir + "/audit.log"
+
+	if err := compactFile(store, filePath, encKey, hmacKey, 5, 90); err != nil {
+		t.Fatalf("compactFile: %v", err)
+	}
+
+	// Load and verify
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != 5 {
+		t.Errorf("expected 5 entries after compaction, got %d", len(log.Entries))
+	}
+	// Should keep the 5 most recent
+	if log.Entries[4].Command != "cmd-9" {
+		t.Errorf("last entry command = %q, want cmd-9", log.Entries[4].Command)
+	}
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings after compaction: %v", log.Warnings)
+	}
+
+	// Chain head should reflect compacted state
+	head, _ := loadChainHead(store)
+	if head.Count != 5 {
+		t.Errorf("chain head count = %d, want 5", head.Count)
+	}
+}
+
+func TestRecord_TriggersCompaction(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// maxEntries=5, so compaction triggers at 2*5=10
+	for i := 0; i < 11; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 5, 90); err != nil {
+			t.Fatalf("Record %d: %v", i, err)
+		}
+	}
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// After compaction at entry 10 (count=10 >= 2*5), we compact to 5 entries,
+	// then entry 10 is appended, so we should have 6 entries
+	if len(log.Entries) != 6 {
+		t.Errorf("expected 6 entries (5 after compaction + 1 new), got %d", len(log.Entries))
+	}
+
+	// Last entry should be cmd-10
+	if log.Entries[len(log.Entries)-1].Command != "cmd-10" {
+		t.Errorf("last entry = %q, want cmd-10", log.Entries[len(log.Entries)-1].Command)
+	}
+
+	if len(log.Warnings) != 0 {
+		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+}
+
 func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
 	store := newTestStore()
 	key, err := getOrCreateEncryptionKey(store)
