@@ -187,7 +187,7 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 		return fmt.Errorf("failed to open audit log: %w", err)
 	}
 	if _, err := f.Write(append(lineBytes, '\n')); err != nil {
-		f.Close()
+		_ = f.Close()
 		return fmt.Errorf("failed to write audit entry: %w", err)
 	}
 	if err := f.Close(); err != nil {
@@ -233,13 +233,13 @@ func compactFile(store *nokeyKeyring.Store, filePath string, encKey *[32]byte, h
 		se := storedEntry{Entry: entry, PrevHMAC: prevHMAC}
 		lineBytes, err := encryptEntry(&se, encKey)
 		if err != nil {
-			f.Close()
-			os.Remove(tmpPath)
+			_ = f.Close()
+			_ = os.Remove(tmpPath)
 			return err
 		}
 		if _, err := f.Write(append(lineBytes, '\n')); err != nil {
-			f.Close()
-			os.Remove(tmpPath)
+			_ = f.Close()
+			_ = os.Remove(tmpPath)
 			return fmt.Errorf("failed to write compacted entry: %w", err)
 		}
 		lastHMAC = computeLineHMAC(hmacKey, lineBytes)
@@ -248,13 +248,13 @@ func compactFile(store *nokeyKeyring.Store, filePath string, encKey *[32]byte, h
 	}
 
 	if err := f.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to close temp audit log: %w", err)
 	}
 
 	// Atomic rename
 	if err := os.Rename(tmpPath, filePath); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to replace audit log: %w", err)
 	}
 
@@ -339,13 +339,13 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 		se := storedEntry{Entry: entry, PrevHMAC: prevHMAC}
 		lineBytes, err := encryptEntry(&se, encKey)
 		if err != nil {
-			f.Close()
-			os.Remove(filePath)
+			_ = f.Close()
+			_ = os.Remove(filePath)
 			return err
 		}
 		if _, err := f.Write(append(lineBytes, '\n')); err != nil {
-			f.Close()
-			os.Remove(filePath)
+			_ = f.Close()
+			_ = os.Remove(filePath)
 			return fmt.Errorf("failed to write migrated entry: %w", err)
 		}
 		lastHMAC = computeLineHMAC(hmacKey, lineBytes)
@@ -354,7 +354,7 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 	}
 
 	if err := f.Close(); err != nil {
-		os.Remove(filePath)
+		_ = os.Remove(filePath)
 		return fmt.Errorf("failed to close audit log: %w", err)
 	}
 
