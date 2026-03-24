@@ -3,6 +3,7 @@ package keyring
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -720,6 +721,9 @@ func TestStore_AllKeys_Error(t *testing.T) {
 // --- MigrateAllItems tests ---
 
 func TestStore_MigrateAllItems_DryRun(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	s := newTestStore()
 	_ = s.Set("KEY1", "v1")
 	_ = s.Set("KEY2", "v2")
@@ -740,6 +744,9 @@ func TestStore_MigrateAllItems_DryRun(t *testing.T) {
 }
 
 func TestStore_MigrateAllItems_Migrate(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	s := newTestStore()
 	_ = s.Set("KEY1", "v1")
 	_ = s.Set("__nokey_pin", "pinhash")
@@ -775,6 +782,9 @@ func TestStore_MigrateAllItems_Empty(t *testing.T) {
 }
 
 func TestStore_MigrateAllItems_KeysError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	ring := &errorRing{mockRing: *newMockRing(), keysErr: errors.New("keys failed")}
 	s := NewWithRing(ring, "test")
 	_, err := s.MigrateAllItems(false)
@@ -784,6 +794,9 @@ func TestStore_MigrateAllItems_KeysError(t *testing.T) {
 }
 
 func TestStore_MigrateAllItems_GetError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	ring := &errorRing{mockRing: *newMockRing()}
 	s := NewWithRing(ring, "test")
 	// Insert directly to bypass cache
@@ -797,6 +810,9 @@ func TestStore_MigrateAllItems_GetError(t *testing.T) {
 }
 
 func TestStore_MigrateAllItems_RemoveError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	ring := &errorRing{mockRing: *newMockRing()}
 	s := NewWithRing(ring, "test")
 	_ = s.Set("KEY", "val")
@@ -809,6 +825,9 @@ func TestStore_MigrateAllItems_RemoveError(t *testing.T) {
 }
 
 func TestStore_MigrateAllItems_SetError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
 	ring := &errorRing{mockRing: *newMockRing()}
 	s := NewWithRing(ring, "test")
 	_ = s.Set("KEY", "val")
