@@ -35,8 +35,14 @@ build/
 
 # Config files (may contain sensitive data in development)
 config.yaml
+policies.yaml
 .env
 .env.*
+
+# TLS certificates and private keys
+*.key
+*.crt
+*.pem
 
 # Local planning and notes
 next-steps.md
