@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	kring "github.com/99designs/keyring"
-	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
@@ -202,14 +201,6 @@ func withMockOAuthProvider(t *testing.T, provider oauth.Provider) {
 	newOAuthProviderFn = func(name string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
 		return provider
 	}
-}
-
-// withApprovalFn overrides approvalRequestFn and restores it on cleanup.
-func withApprovalFn(t *testing.T, fn func(context.Context, approval.Requester, string, []string) error) {
-	t.Helper()
-	old := approvalRequestFn
-	t.Cleanup(func() { approvalRequestFn = old })
-	approvalRequestFn = fn
 }
 
 // withNoBrowser stubs browserOpenFn so tests don't open a real browser.

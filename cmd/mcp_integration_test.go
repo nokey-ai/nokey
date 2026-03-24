@@ -13,7 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
-	"github.com/nokey-ai/nokey/internal/token"
+	"github.com/nokey-ai/nokey/internal/mcpserver"
 	"github.com/nokey-ai/nokey/internal/version"
 )
 
@@ -63,36 +63,30 @@ func readJSONRPC(t *testing.T, r *bufio.Reader) jsonRPCResponse {
 func intPtr(v int) *int { return &v }
 
 func TestMCPIntegration_InitializeAndListTools(t *testing.T) {
-	// Set up test globals
+	// Set up test store via keyring helper (for the getKeyring closure)
 	store, _ := newTestStore()
 	_ = store.Set("TEST_KEY", "test-value")
 	withTestKeyring(t, store)
+
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
-	withTestConfig(t, c)
 
-	oldPol := pol
-	oldTokenStore := tokenStore
-	oldSessionTokenID := sessionTokenID
-	t.Cleanup(func() {
-		pol = oldPol
-		tokenStore = oldTokenStore
-		sessionTokenID = oldSessionTokenID
-	})
-	pol = nil
-	tokenStore = token.NewStore()
-	sessionTokenID = ""
-
-	withApprovalFn(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
-		return nil
+	h := mcpserver.New(mcpserver.Deps{
+		GetStore: func() (mcpserver.SecretStore, error) { return store, nil },
+		Policy:   nil,
+		Config:   c,
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+			return nil
+		},
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
 
 	// Create MCP server with registered tools
 	s := server.NewMCPServer("nokey", version.Version,
 		server.WithToolCapabilities(false),
 	)
-	mcpSrv = s
-	registerMCPTools(s)
+	h.RegisterTools(s)
 
 	// Use os.Pipe for kernel-buffered pipes (avoids io.Pipe deadlock)
 	serverReadR, clientWriteW, err := os.Pipe()
@@ -230,7 +224,7 @@ func TestMCPIntegration_InitializeAndListTools(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &callResult); err != nil {
 		t.Fatalf("unmarshal exec result: %v", err)
 	}
-	// echo with no args just outputs a newline — the important thing is
+	// echo with no args just outputs a newline -- the important thing is
 	// that exec completed successfully through the full MCP JSON-RPC path
 	if len(callResult.Content) == 0 {
 		t.Fatal("exec returned no content")
