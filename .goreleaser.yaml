@@ -26,6 +26,24 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+homebrew_casks:
+  - repository:
+      owner: nokey-ai
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Casks
+    binaries:
+      - nokey
+    homepage: https://github.com/nokey-ai/nokey
+    description: "Zero-trust secret management for AI coding assistants"
+    license: MIT
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/nokey"]
+          end
+
 changelog:
   sort: asc
   filters:
