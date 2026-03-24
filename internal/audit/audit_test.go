@@ -56,6 +56,86 @@ func newTestStore() *nokeyKeyring.Store {
 	return nokeyKeyring.NewWithRing(newMockRing(), "test")
 }
 
+// withTestAuditDir overrides AuditLogDir to use a temp directory.
+func withTestAuditDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := AuditLogDir
+	t.Cleanup(func() { AuditLogDir = old })
+	AuditLogDir = func() (string, error) { return dir, nil }
+	return dir
+}
+
+// --- Chain primitives ---
+
+func TestDeriveHMACKey_Deterministic(t *testing.T) {
+	var key [32]byte
+	for i := range key {
+		key[i] = byte(i)
+	}
+	k1 := deriveHMACKey(&key)
+	k2 := deriveHMACKey(&key)
+	if len(k1) != 32 {
+		t.Fatalf("HMAC key length = %d, want 32", len(k1))
+	}
+	for i := range k1 {
+		if k1[i] != k2[i] {
+			t.Fatal("deriveHMACKey is not deterministic")
+		}
+	}
+}
+
+func TestComputeLineHMAC_Deterministic(t *testing.T) {
+	hmacKey := []byte("test-key-32-bytes-padding-extra!")
+	data := []byte("some ciphertext line")
+	h1 := computeLineHMAC(hmacKey, data)
+	h2 := computeLineHMAC(hmacKey, data)
+	if h1 != h2 {
+		t.Fatalf("computeLineHMAC not deterministic: %q vs %q", h1, h2)
+	}
+	if len(h1) != 64 {
+		t.Fatalf("HMAC hex length = %d, want 64", len(h1))
+	}
+}
+
+func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
+	store := newTestStore()
+	head := &chainHead{HMAC: "abc123", Count: 42}
+	if err := saveChainHead(store, head); err != nil {
+		t.Fatalf("saveChainHead: %v", err)
+	}
+	loaded, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if loaded.HMAC != head.HMAC || loaded.Count != head.Count {
+		t.Errorf("loaded = %+v, want %+v", loaded, head)
+	}
+}
+
+func TestLoadChainHead_NotFound_ReturnsZero(t *testing.T) {
+	store := newTestStore()
+	head, err := loadChainHead(store)
+	if err != nil {
+		t.Fatalf("loadChainHead: %v", err)
+	}
+	if head.HMAC != "" || head.Count != 0 {
+		t.Errorf("expected zero chainHead, got %+v", head)
+	}
+}
+
+func TestAuditLogPath(t *testing.T) {
+	dir := withTestAuditDir(t)
+	p, err := auditLogPath()
+	if err != nil {
+		t.Fatalf("auditLogPath: %v", err)
+	}
+	want := dir + "/audit.log"
+	if p != want {
+		t.Errorf("auditLogPath = %q, want %q", p, want)
+	}
+}
+
 // --- NewAuditEntry ---
 
 func TestNewAuditEntry_Fields(t *testing.T) {

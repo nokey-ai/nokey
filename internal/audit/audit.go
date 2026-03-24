@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nokey-ai/nokey/internal/config"
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"golang.org/x/crypto/nacl/secretbox"
 )
@@ -21,7 +25,31 @@ const (
 
 	// AuditEncryptionKeyKey is where the encryption key for audit logs is stored
 	AuditEncryptionKeyKey = "__nokey_audit_encryption_key__"
+
+	// AuditChainHeadKey is the keyring key for the hash chain head checkpoint
+	AuditChainHeadKey = "__nokey_audit_chain_head__"
+
+	auditLogFileName  = "audit.log"
+	hmacDerivationTag = "nokey-audit-chain-v1"
+
+	// zeroHMAC is the prev_hmac for the first entry in a chain
+	zeroHMAC = "0000000000000000000000000000000000000000000000000000000000000000"
 )
+
+// AuditLogDir returns the directory for audit log files. Overridable for testing.
+var AuditLogDir = config.ConfigDir
+
+// storedEntry wraps an AuditEntry with chain metadata. Internal to storage.
+type storedEntry struct {
+	Entry    AuditEntry `json:"entry"`
+	PrevHMAC string     `json:"prev_hmac"`
+}
+
+// chainHead is persisted in the keyring to detect truncation.
+type chainHead struct {
+	HMAC  string `json:"hmac"`
+	Count int    `json:"count"`
+}
 
 // AuditEntry represents a single audit log entry
 type AuditEntry struct {
@@ -296,6 +324,58 @@ func csvEscape(s string) string {
 	b.WriteByte('"')
 
 	return b.String()
+}
+
+// auditLogPath returns the full path to the audit log file.
+func auditLogPath() (string, error) {
+	dir, err := AuditLogDir()
+	if err != nil {
+		return "", err
+	}
+	return dir + "/" + auditLogFileName, nil
+}
+
+// deriveHMACKey derives a separate HMAC key from the encryption key.
+func deriveHMACKey(encKey *[32]byte) []byte {
+	mac := hmac.New(sha256.New, encKey[:])
+	mac.Write([]byte(hmacDerivationTag))
+	return mac.Sum(nil)
+}
+
+// computeLineHMAC returns the hex-encoded HMAC-SHA256 of lineBytes.
+func computeLineHMAC(hmacKey, lineBytes []byte) string {
+	mac := hmac.New(sha256.New, hmacKey)
+	mac.Write(lineBytes)
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// loadChainHead reads the chain head checkpoint from the keyring.
+// Returns a zero-value chainHead if not found.
+func loadChainHead(store *nokeyKeyring.Store) (*chainHead, error) {
+	data, err := store.Get(AuditChainHeadKey)
+	if err != nil {
+		if nokeyKeyring.IsNotFound(err) {
+			return &chainHead{}, nil
+		}
+		return nil, fmt.Errorf("failed to load chain head: %w", err)
+	}
+	var head chainHead
+	if err := json.Unmarshal([]byte(data), &head); err != nil {
+		return nil, fmt.Errorf("failed to parse chain head: %w", err)
+	}
+	return &head, nil
+}
+
+// saveChainHead writes the chain head checkpoint to the keyring.
+func saveChainHead(store *nokeyKeyring.Store, head *chainHead) error {
+	data, err := json.Marshal(head)
+	if err != nil {
+		return fmt.Errorf("failed to serialize chain head: %w", err)
+	}
+	if err := store.Set(AuditChainHeadKey, string(data)); err != nil {
+		return fmt.Errorf("failed to save chain head: %w", err)
+	}
+	return nil
 }
 
 // getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
