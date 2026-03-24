@@ -31,14 +31,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config directory resolution extracted to `config.ConfigDir()` for reuse
 
 ### Fixed
-- Bump `buger/jsonparser` v1.1.1 → v1.1.2 (DoS vulnerability, Dependabot #3)
-- Bump Go 1.24.0 → 1.24.13 (8 stdlib CVEs in crypto/tls, net/url, crypto/x509)
 - Skip `MigrateAllItems` tests on non-macOS (function is darwin-only no-op)
 - Fix lint: ineffectual assignment, error strings ending with newlines, unchecked Close()
 - Redact `ClientSecret` fields from config.yaml on save
 - Bare `return err` in MCP server startup now wrapped with context
 
 ### Security
+- Bump `buger/jsonparser` v1.1.1 → v1.1.2 (DoS vulnerability, Dependabot #3)
+- Bump Go 1.24.0 → 1.24.13 (8 stdlib CVEs in crypto/tls, net/url, crypto/x509)
 - `.gitignore` now excludes `policies.yaml`, `*.key`, `*.crt`, `*.pem`
 
 ## [0.1.0] - 2025-01-01

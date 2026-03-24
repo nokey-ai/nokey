@@ -35,7 +35,7 @@ build/
 
 # Config files (may contain sensitive data in development)
 config.yaml
-policies.yaml
+/policies.yaml
 .env
 .env.*
 
