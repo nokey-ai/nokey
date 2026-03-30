@@ -12,7 +12,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/sensitive"
 
-	"github.com/99designs/keyring"
+	"github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/auth"
 	"golang.org/x/term"
 )
@@ -54,9 +54,10 @@ func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
 	return &Store{ring: ring, serviceName: serviceName, cache: make(map[string]keyring.Item)}
 }
 
-// New creates a new keyring store with the specified backend and service name
-// If backend is empty, the default backend for the platform is used
-func New(backend, serviceName string) (*Store, error) {
+// New creates a new keyring store with the specified backend and service name.
+// If backend is empty, the default backend for the platform is used.
+// If useBiometrics is true, Touch ID is enabled for macOS keychain access.
+func New(backend, serviceName string, useBiometrics bool) (*Store, error) {
 	if serviceName == "" {
 		serviceName = "nokey"
 	}
@@ -75,6 +76,9 @@ func New(backend, serviceName string) (*Store, error) {
 		KeychainTrustApplication: true,
 		FileDir:                  getFileBackendDir(),
 		FilePasswordFunc:         filePasswordPrompt,
+		UseBiometrics:            useBiometrics,
+		TouchIDAccount:           "com.nokey.biometrics",
+		TouchIDService:           serviceName,
 	}
 
 	// If no specific backend, allow all backends

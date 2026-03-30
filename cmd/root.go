@@ -57,6 +57,7 @@ func init() {
 
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		setAppContext(cmd)
+		checkKeychainMigrationHint()
 	}
 
 	// Global flags
@@ -88,5 +89,6 @@ func initConfig() {
 // getKeyring returns a keyring store using the current configuration.
 // It is a variable so tests can override it.
 var getKeyring = func() (*keyring.Store, error) {
-	return keyring.New(cfg.DefaultBackend, cfg.ServiceName)
+	bio := cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics
+	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio)
 }

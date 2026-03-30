@@ -46,6 +46,7 @@ type AuthConfig struct {
 	SessionTTL    string      `yaml:"session_ttl,omitempty"`     // duration string, e.g. "15m" (default), max "8h"
 	SkipConfirm   bool        `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
 	AutoMintToken bool        `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
+	UseBiometrics *bool       `yaml:"use_biometrics,omitempty"`  // use Touch ID on macOS (default: true on macOS)
 	OAuth         OAuthConfig `yaml:"oauth,omitempty"`
 }
 

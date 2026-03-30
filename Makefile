@@ -9,6 +9,9 @@ LDFLAGS := -X github.com/nokey-ai/nokey/internal/version.Version=$(VERSION) \
 
 build:
 	go build -ldflags "$(LDFLAGS)" -o nokey .
+ifeq ($(shell uname),Darwin)
+	@codesign -s - nokey 2>/dev/null && echo "Signed (ad-hoc) for Touch ID keychain access" || true
+endif
 
 test:
 	go test ./...
@@ -18,6 +21,9 @@ lint:
 
 install:
 	go install -ldflags "$(LDFLAGS)" .
+ifeq ($(shell uname),Darwin)
+	@GOBIN=$$(go env GOPATH)/bin && codesign -s - "$$GOBIN/nokey" 2>/dev/null || true
+endif
 
 release:
 	goreleaser release --clean

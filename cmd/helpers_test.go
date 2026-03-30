@@ -7,7 +7,7 @@ import (
 	"os"
 	"testing"
 
-	kring "github.com/99designs/keyring"
+	kring "github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"

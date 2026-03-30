@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/99designs/keyring"
+	"github.com/byteness/keyring"
 )
 
 // mockRing is an in-memory keyring.Keyring for testing.
@@ -508,7 +508,7 @@ func TestNew_DefaultBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "myservice")
+	s, err := New("", "myservice", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestNew_SpecificBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("file", "")
+	s, err := New("file", "", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -543,7 +543,7 @@ func TestNew_OpenError(t *testing.T) {
 		return nil, fmt.Errorf("keyring unavailable")
 	}
 
-	_, err := New("", "test")
+	_, err := New("", "test", false)
 	if err == nil {
 		t.Fatal("New should fail when keyring.Open fails")
 	}
@@ -562,7 +562,7 @@ func TestNew_DefaultServiceName(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "")
+	s, err := New("", "", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -913,7 +913,7 @@ func TestNew_KeychainTrustEnabled(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	_, err := New("", "test")
+	_, err := New("", "test", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
