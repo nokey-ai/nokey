@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/config"
@@ -759,8 +760,45 @@ func migrateChainHeadFromKeyring(store *nokeyKeyring.Store, chainHeadPath string
 	return nil
 }
 
+// ResetEncKeyCache clears the in-process encryption key cache.
+// Exported for use in tests that swap the keyring store between runs.
+func ResetEncKeyCache() {
+	cachedEncKeyMu.Lock()
+	cachedEncKey = nil
+	cachedEncKeyMu.Unlock()
+}
+
+// cachedEncKey holds the audit encryption key for the lifetime of the process.
+// The key never changes once created (Clear does not delete it), so caching
+// avoids repeated keychain prompts — especially for MCP where each audit call
+// creates a fresh keyring Store. If key rotation is ever added, this cache
+// must be invalidated.
+var (
+	cachedEncKey   *[32]byte
+	cachedEncKeyMu sync.Mutex
+)
+
 // getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
 func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
+	cachedEncKeyMu.Lock()
+	if cachedEncKey != nil {
+		k := cachedEncKey
+		cachedEncKeyMu.Unlock()
+		return k, nil
+	}
+	cachedEncKeyMu.Unlock()
+
+	key, err := loadOrCreateEncryptionKey(store)
+	if err != nil {
+		return nil, err
+	}
+	cachedEncKeyMu.Lock()
+	cachedEncKey = key
+	cachedEncKeyMu.Unlock()
+	return key, nil
+}
+
+func loadOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 	// Try to load existing key
 	keyStr, err := store.Get(AuditEncryptionKeyKey)
 	if err == nil {

@@ -65,12 +65,17 @@ func newTestStore() (*nkeyring.Store, *mockRing) {
 }
 
 // withTestAuditDir overrides audit.AuditLogDir to a temp directory and restores on cleanup.
+// Also resets the audit encryption key cache to prevent cross-test pollution.
 func withTestAuditDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	old := audit.AuditLogDir
-	t.Cleanup(func() { audit.AuditLogDir = old })
+	t.Cleanup(func() {
+		audit.AuditLogDir = old
+		audit.ResetEncKeyCache()
+	})
 	audit.AuditLogDir = func() (string, error) { return dir, nil }
+	audit.ResetEncKeyCache()
 	return dir
 }
 

@@ -58,13 +58,18 @@ func newTestStore() *nokeyKeyring.Store {
 	return nokeyKeyring.NewWithRing(newMockRing(), "test")
 }
 
-// withTestAuditDir overrides AuditLogDir to use a temp directory.
+// withTestAuditDir overrides AuditLogDir to use a temp directory
+// and resets the in-process encryption key cache.
 func withTestAuditDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	old := AuditLogDir
-	t.Cleanup(func() { AuditLogDir = old })
+	t.Cleanup(func() {
+		AuditLogDir = old
+		ResetEncKeyCache()
+	})
 	AuditLogDir = func() (string, error) { return dir, nil }
+	ResetEncKeyCache()
 	return dir
 }
 
@@ -695,6 +700,10 @@ func TestReadAndVerify_KeyLoss_SingleWarning(t *testing.T) {
 	_ = store.Delete(AuditEncryptionKeyKey)
 	// Force a new key to be created
 	_ = store.Delete(AuditChainHeadKey)
+	// Clear the in-process cache so a fresh key is generated
+	cachedEncKeyMu.Lock()
+	cachedEncKey = nil
+	cachedEncKeyMu.Unlock()
 
 	// Load with new key — all old entries fail decryption
 	encKey, _ := getOrCreateEncryptionKey(store)
@@ -976,7 +985,14 @@ func TestRecord_TriggersCompaction(t *testing.T) {
 	}
 }
 
+func resetEncKeyCache(t *testing.T) {
+	t.Helper()
+	ResetEncKeyCache()
+	t.Cleanup(func() { ResetEncKeyCache() })
+}
+
 func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	key, err := getOrCreateEncryptionKey(store)
 	if err != nil {
@@ -996,6 +1012,7 @@ func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
 }
 
 func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	// Store a legacy 32-byte raw key
 	raw32 := strings.Repeat("A", 32)
@@ -1016,6 +1033,7 @@ func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
 }
 
 func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	// Store an invalid key (not 32 bytes, not valid base64 of 32 bytes)
 	_ = store.Set(AuditEncryptionKeyKey, "too-short")
