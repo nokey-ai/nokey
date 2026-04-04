@@ -329,7 +329,10 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 	for _, k := range keys {
 		item, err := s.ring.Get(k)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read key %q: %w", k, err)
+			// Skip non-keyring files that live in the same directory
+			// (e.g. audit.log, config.yaml, policies.yaml)
+			fmt.Fprintf(os.Stderr, "Warning: skipping %q during migration: %v\n", k, err)
+			continue
 		}
 		entries = append(entries, entry{key: k, item: item})
 	}
