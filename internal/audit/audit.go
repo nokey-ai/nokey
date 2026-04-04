@@ -285,6 +285,12 @@ func Clear(store *nokeyKeyring.Store) error {
 // migrateFromKeyring converts the old keyring-based audit log to the new file format.
 // No-op if old key doesn't exist or file already exists.
 func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []byte, filePath string) error {
+	// If audit file already exists, migration is done or unnecessary.
+	// Skip the keyring lookup entirely to avoid a keychain prompt.
+	if _, err := os.Stat(filePath); err == nil {
+		return nil
+	}
+
 	// Check if old keyring blob exists
 	oldData, err := store.Get(AuditLogKey)
 	if err != nil {
@@ -292,13 +298,6 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 			return nil // Nothing to migrate
 		}
 		return fmt.Errorf("failed to read old audit log: %w", err)
-	}
-
-	// If file already exists, migration was already done (old key just not cleaned up)
-	if _, err := os.Stat(filePath); err == nil {
-		// Clean up old key
-		_ = store.Delete(AuditLogKey)
-		return nil
 	}
 
 	// Decrypt old blob
