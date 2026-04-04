@@ -101,12 +101,13 @@ func TestComputeLineHMAC_Deterministic(t *testing.T) {
 }
 
 func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
-	store := newTestStore()
+	dir := t.TempDir()
+	chPath := dir + "/chain_head.json"
 	head := &chainHead{HMAC: "abc123", Count: 42}
-	if err := saveChainHead(store, head); err != nil {
+	if err := saveChainHead(chPath, head); err != nil {
 		t.Fatalf("saveChainHead: %v", err)
 	}
-	loaded, err := loadChainHead(store)
+	loaded, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -116,8 +117,9 @@ func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
 }
 
 func TestLoadChainHead_NotFound_ReturnsZero(t *testing.T) {
-	store := newTestStore()
-	head, err := loadChainHead(store)
+	dir := t.TempDir()
+	chPath := dir + "/chain_head.json"
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -551,15 +553,16 @@ func TestRecord_FilePermissions(t *testing.T) {
 
 func TestRecord_ChainHeadUpdated(t *testing.T) {
 	store := newTestStore()
-	withTestAuditDir(t)
+	dir := withTestAuditDir(t)
+	chPath := dir + "/chain_head.json"
 
 	for i := 0; i < 3; i++ {
-		headBefore, _ := loadChainHead(store)
+		headBefore, _ := loadChainHead(chPath)
 		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
 		if err := Record(store, entry, 1000, 90); err != nil {
 			t.Fatalf("Record %d: %v", i, err)
 		}
-		headAfter, _ := loadChainHead(store)
+		headAfter, _ := loadChainHead(chPath)
 
 		if headAfter.Count != i+1 {
 			t.Errorf("after Record %d: count = %d, want %d", i, headAfter.Count, i+1)
@@ -741,8 +744,9 @@ func TestClear_RemovesFileAndChainHead(t *testing.T) {
 		t.Error("file should be removed after clear")
 	}
 
-	// Chain head should be gone
-	head, err := loadChainHead(store)
+	// Chain head file should be gone
+	chPath := dir + "/chain_head.json"
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -821,7 +825,7 @@ func TestMigrateFromKeyring_WithData(t *testing.T) {
 	}
 
 	// Chain head should be set
-	head, _ := loadChainHead(store)
+	head, _ := loadChainHead(dir + "/chain_head.json")
 	if head.Count != 2 {
 		t.Errorf("chain head count = %d, want 2", head.Count)
 	}
@@ -911,7 +915,8 @@ func TestCompactFile_ReducesEntries(t *testing.T) {
 	hmacKey := deriveHMACKey(encKey)
 	filePath := dir + "/audit.log"
 
-	if err := compactFile(store, filePath, encKey, hmacKey, 5, 90); err != nil {
+	chPath := dir + "/chain_head.json"
+	if err := compactFile(filePath, chPath, encKey, hmacKey, 5, 90); err != nil {
 		t.Fatalf("compactFile: %v", err)
 	}
 
@@ -932,7 +937,7 @@ func TestCompactFile_ReducesEntries(t *testing.T) {
 	}
 
 	// Chain head should reflect compacted state
-	head, _ := loadChainHead(store)
+	head, _ := loadChainHead(chPath)
 	if head.Count != 5 {
 		t.Errorf("chain head count = %d, want 5", head.Count)
 	}
