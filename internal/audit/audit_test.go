@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/99designs/keyring"
+	"github.com/byteness/keyring"
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 )
 

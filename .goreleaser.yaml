@@ -15,6 +15,10 @@ builds:
     goarch:
       - amd64
       - arm64
+    hooks:
+      post:
+        - cmd: sh -c 'case "{{ .Target }}" in darwin_*) command -v codesign >/dev/null && codesign -s - "{{ .Path }}" && echo "Signed {{ .Target }} for Touch ID" || echo "codesign not available, skipping {{ .Target }}" ;; esac'
+          output: true
 
 archives:
   - format: tar.gz

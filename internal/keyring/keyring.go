@@ -12,7 +12,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/sensitive"
 
-	"github.com/99designs/keyring"
+	"github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/auth"
 	"golang.org/x/term"
 )
@@ -54,9 +54,10 @@ func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
 	return &Store{ring: ring, serviceName: serviceName, cache: make(map[string]keyring.Item)}
 }
 
-// New creates a new keyring store with the specified backend and service name
-// If backend is empty, the default backend for the platform is used
-func New(backend, serviceName string) (*Store, error) {
+// New creates a new keyring store with the specified backend and service name.
+// If backend is empty, the default backend for the platform is used.
+// If useBiometrics is true, Touch ID is enabled for macOS keychain access.
+func New(backend, serviceName string, useBiometrics bool) (*Store, error) {
 	if serviceName == "" {
 		serviceName = "nokey"
 	}
@@ -75,6 +76,9 @@ func New(backend, serviceName string) (*Store, error) {
 		KeychainTrustApplication: true,
 		FileDir:                  getFileBackendDir(),
 		FilePasswordFunc:         filePasswordPrompt,
+		UseBiometrics:            useBiometrics,
+		TouchIDAccount:           "com.nokey.biometrics",
+		TouchIDService:           serviceName,
 	}
 
 	// If no specific backend, allow all backends
@@ -325,7 +329,10 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 	for _, k := range keys {
 		item, err := s.ring.Get(k)
 		if err != nil {
-			return 0, fmt.Errorf("failed to read key %q: %w", k, err)
+			// Skip non-keyring files that live in the same directory
+			// (e.g. audit.log, config.yaml, policies.yaml)
+			fmt.Fprintf(os.Stderr, "Warning: skipping %q during migration: %v\n", k, err)
+			continue
 		}
 		entries = append(entries, entry{key: k, item: item})
 	}

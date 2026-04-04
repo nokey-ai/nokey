@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/99designs/keyring"
+	"github.com/byteness/keyring"
 )
 
 // mockRing is an in-memory keyring.Keyring for testing.
@@ -369,6 +369,19 @@ func (m *errorRing) Keys() ([]string, error) {
 	return m.mockRing.Keys()
 }
 
+// selectiveErrorRing is a mock keyring that returns errors for specific keys.
+type selectiveErrorRing struct {
+	mockRing
+	getErrKeys map[string]error
+}
+
+func (m *selectiveErrorRing) Get(key string) (keyring.Item, error) {
+	if err, ok := m.getErrKeys[key]; ok {
+		return keyring.Item{}, err
+	}
+	return m.mockRing.Get(key)
+}
+
 // --- Ring error tests ---
 
 func TestStore_Set_RingError(t *testing.T) {
@@ -508,7 +521,7 @@ func TestNew_DefaultBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "myservice")
+	s, err := New("", "myservice", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -527,7 +540,7 @@ func TestNew_SpecificBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("file", "")
+	s, err := New("file", "", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -543,7 +556,7 @@ func TestNew_OpenError(t *testing.T) {
 		return nil, fmt.Errorf("keyring unavailable")
 	}
 
-	_, err := New("", "test")
+	_, err := New("", "test", false)
 	if err == nil {
 		t.Fatal("New should fail when keyring.Open fails")
 	}
@@ -562,7 +575,7 @@ func TestNew_DefaultServiceName(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "")
+	s, err := New("", "", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -793,7 +806,7 @@ func TestStore_MigrateAllItems_KeysError(t *testing.T) {
 	}
 }
 
-func TestStore_MigrateAllItems_GetError(t *testing.T) {
+func TestStore_MigrateAllItems_GetError_SkipsUnreadable(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("MigrateAllItems is macOS-only")
 	}
@@ -803,9 +816,41 @@ func TestStore_MigrateAllItems_GetError(t *testing.T) {
 	ring.items["KEY"] = keyring.Item{Key: "KEY", Data: []byte("val")}
 	ring.getErr = errors.New("get failed")
 
-	_, err := s.MigrateAllItems(false)
-	if err == nil {
-		t.Error("MigrateAllItems should fail when Get() errors")
+	count, err := s.MigrateAllItems(false)
+	if err != nil {
+		t.Fatalf("MigrateAllItems should skip unreadable keys, got error: %v", err)
+	}
+	if count != 0 {
+		t.Errorf("count = %d, want 0 (all keys unreadable)", count)
+	}
+}
+
+func TestStore_MigrateAllItems_PartialGetError(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("MigrateAllItems is macOS-only")
+	}
+	ring := &selectiveErrorRing{
+		mockRing:   *newMockRing(),
+		getErrKeys: map[string]error{"bad_key": errors.New("illegal base64 data")},
+	}
+	s := NewWithRing(ring, "test")
+	_ = s.Set("GOOD_KEY", "val1")
+	// Insert a key that will fail on Get
+	ring.items["bad_key"] = keyring.Item{Key: "bad_key", Data: []byte("corrupt")}
+
+	count, err := s.MigrateAllItems(false)
+	if err != nil {
+		t.Fatalf("MigrateAllItems should skip bad keys: %v", err)
+	}
+	if count != 1 {
+		t.Errorf("count = %d, want 1 (one good key migrated)", count)
+	}
+	v, err := s.Get("GOOD_KEY")
+	if err != nil {
+		t.Fatalf("Get GOOD_KEY after migration: %v", err)
+	}
+	if v != "val1" {
+		t.Errorf("GOOD_KEY = %q, want %q", v, "val1")
 	}
 }
 
@@ -913,7 +958,7 @@ func TestNew_KeychainTrustEnabled(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	_, err := New("", "test")
+	_, err := New("", "test", false)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
