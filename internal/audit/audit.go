@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/config"
@@ -32,6 +33,7 @@ const (
 	AuditChainHeadKey = "__nokey_audit_chain_head__"
 
 	auditLogFileName  = "audit.log"
+	chainHeadFileName = "chain_head.json"
 	hmacDerivationTag = "nokey-audit-chain-v1"
 
 	// zeroHMAC is the prev_hmac for the first entry in a chain
@@ -113,12 +115,22 @@ func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
 		return nil, err
 	}
 
+	chPath, err := chainHeadPath()
+	if err != nil {
+		return nil, err
+	}
+
 	// Auto-migrate from old keyring format if needed
 	if err := migrateFromKeyring(store, encKey, hmacKey, filePath); err != nil {
 		return nil, fmt.Errorf("failed to migrate audit log: %w", err)
 	}
 
-	head, err := loadChainHead(store)
+	// Migrate chain head from keyring to file (one-time, after audit log migration)
+	if err := migrateChainHeadFromKeyring(store, chPath); err != nil {
+		return nil, fmt.Errorf("failed to migrate chain head: %w", err)
+	}
+
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		return nil, err
 	}
@@ -140,23 +152,33 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 		return err
 	}
 
+	chPath, err := chainHeadPath()
+	if err != nil {
+		return err
+	}
+
 	// Auto-migrate from old keyring format if needed
 	if err := migrateFromKeyring(store, encKey, hmacKey, filePath); err != nil {
 		return fmt.Errorf("failed to migrate audit log: %w", err)
 	}
 
-	head, err := loadChainHead(store)
+	// Migrate chain head from keyring to file (one-time, after audit log migration)
+	if err := migrateChainHeadFromKeyring(store, chPath); err != nil {
+		return fmt.Errorf("failed to migrate chain head: %w", err)
+	}
+
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		return err
 	}
 
 	// Lazy compaction when file grows to 2x max entries
 	if maxEntries > 0 && head.Count >= 2*maxEntries {
-		if err := compactFile(store, filePath, encKey, hmacKey, maxEntries, retentionDays); err != nil {
+		if err := compactFile(filePath, chPath, encKey, hmacKey, maxEntries, retentionDays); err != nil {
 			return fmt.Errorf("failed to compact audit log: %w", err)
 		}
 		// Reload head after compaction
-		head, err = loadChainHead(store)
+		head, err = loadChainHead(chPath)
 		if err != nil {
 			return err
 		}
@@ -199,14 +221,14 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 	head.HMAC = newHMAC
 	head.Count++
 
-	return saveChainHead(store, head)
+	return saveChainHead(chPath, head)
 }
 
 // compactFile rewrites the audit log keeping only entries that pass retention.
 // Resets the hash chain from scratch.
-func compactFile(store *nokeyKeyring.Store, filePath string, encKey *[32]byte, hmacKey []byte, maxEntries, retentionDays int) error {
+func compactFile(filePath, chainHeadPath string, encKey *[32]byte, hmacKey []byte, maxEntries, retentionDays int) error {
 	// Read all entries from current file
-	head, err := loadChainHead(store)
+	head, err := loadChainHead(chainHeadPath)
 	if err != nil {
 		return err
 	}
@@ -260,10 +282,10 @@ func compactFile(store *nokeyKeyring.Store, filePath string, encKey *[32]byte, h
 
 	// Update chain head
 	newHead := &chainHead{HMAC: lastHMAC, Count: count}
-	return saveChainHead(store, newHead)
+	return saveChainHead(chainHeadPath, newHead)
 }
 
-// Clear removes the audit log file and chain head from keyring.
+// Clear removes the audit log file and chain head file.
 func Clear(store *nokeyKeyring.Store) error {
 	filePath, err := auditLogPath()
 	if err != nil {
@@ -274,9 +296,14 @@ func Clear(store *nokeyKeyring.Store) error {
 		return fmt.Errorf("failed to remove audit log: %w", err)
 	}
 
-	// Clean up chain head
+	// Clean up chain head file
+	chPath, chErr := chainHeadPath()
+	if chErr == nil {
+		_ = os.Remove(chPath)
+	}
+
+	// Clean up legacy keyring keys if present
 	_ = store.Delete(AuditChainHeadKey)
-	// Clean up old keyring format if present
 	_ = store.Delete(AuditLogKey)
 
 	return nil
@@ -285,6 +312,12 @@ func Clear(store *nokeyKeyring.Store) error {
 // migrateFromKeyring converts the old keyring-based audit log to the new file format.
 // No-op if old key doesn't exist or file already exists.
 func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []byte, filePath string) error {
+	// If audit file already exists, migration is done or unnecessary.
+	// Skip the keyring lookup entirely to avoid a keychain prompt.
+	if _, err := os.Stat(filePath); err == nil {
+		return nil
+	}
+
 	// Check if old keyring blob exists
 	oldData, err := store.Get(AuditLogKey)
 	if err != nil {
@@ -292,13 +325,6 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 			return nil // Nothing to migrate
 		}
 		return fmt.Errorf("failed to read old audit log: %w", err)
-	}
-
-	// If file already exists, migration was already done (old key just not cleaned up)
-	if _, err := os.Stat(filePath); err == nil {
-		// Clean up old key
-		_ = store.Delete(AuditLogKey)
-		return nil
 	}
 
 	// Decrypt old blob
@@ -358,9 +384,10 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 		return fmt.Errorf("failed to close audit log: %w", err)
 	}
 
-	// Save chain head
+	// Save chain head to file alongside the audit log
+	chPath := filepath.Join(filepath.Dir(filePath), chainHeadFileName)
 	head := &chainHead{HMAC: lastHMAC, Count: count}
-	if err := saveChainHead(store, head); err != nil {
+	if err := saveChainHead(chPath, head); err != nil {
 		return err
 	}
 
@@ -643,6 +670,15 @@ func auditLogPath() (string, error) {
 	return filepath.Join(dir, auditLogFileName), nil
 }
 
+// chainHeadPath returns the full path to the chain head file.
+func chainHeadPath() (string, error) {
+	dir, err := AuditLogDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, chainHeadFileName), nil
+}
+
 // truncHex returns the first 8 chars of a hex string for display.
 func truncHex(h string) string {
 	if len(h) > 8 {
@@ -665,37 +701,104 @@ func computeLineHMAC(hmacKey, lineBytes []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// loadChainHead reads the chain head checkpoint from the keyring.
-// Returns a zero-value chainHead if not found.
-func loadChainHead(store *nokeyKeyring.Store) (*chainHead, error) {
-	data, err := store.Get(AuditChainHeadKey)
+// loadChainHead reads the chain head checkpoint from a file.
+// Returns a zero-value chainHead if the file does not exist.
+func loadChainHead(chainHeadPath string) (*chainHead, error) {
+	data, err := os.ReadFile(chainHeadPath)
 	if err != nil {
-		if nokeyKeyring.IsNotFound(err) {
+		if os.IsNotExist(err) {
 			return &chainHead{}, nil
 		}
 		return nil, fmt.Errorf("failed to load chain head: %w", err)
 	}
 	var head chainHead
-	if err := json.Unmarshal([]byte(data), &head); err != nil {
+	if err := json.Unmarshal(data, &head); err != nil {
 		return nil, fmt.Errorf("failed to parse chain head: %w", err)
 	}
 	return &head, nil
 }
 
-// saveChainHead writes the chain head checkpoint to the keyring.
-func saveChainHead(store *nokeyKeyring.Store, head *chainHead) error {
+// saveChainHead writes the chain head checkpoint atomically to a file.
+func saveChainHead(chainHeadPath string, head *chainHead) error {
 	data, err := json.Marshal(head)
 	if err != nil {
 		return fmt.Errorf("failed to serialize chain head: %w", err)
 	}
-	if err := store.Set(AuditChainHeadKey, string(data)); err != nil {
+	tmpPath := chainHeadPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write chain head: %w", err)
+	}
+	if err := os.Rename(tmpPath, chainHeadPath); err != nil {
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to save chain head: %w", err)
 	}
 	return nil
 }
 
+// migrateChainHeadFromKeyring moves the chain head from keyring to file.
+// No-op if the file already exists or the keyring has no chain head.
+func migrateChainHeadFromKeyring(store *nokeyKeyring.Store, chainHeadPath string) error {
+	if _, err := os.Stat(chainHeadPath); err == nil {
+		return nil // already migrated
+	}
+	data, err := store.Get(AuditChainHeadKey)
+	if err != nil {
+		if nokeyKeyring.IsNotFound(err) {
+			return nil // nothing to migrate
+		}
+		return fmt.Errorf("failed to read chain head from keyring: %w", err)
+	}
+	// Validate it parses before writing
+	var head chainHead
+	if err := json.Unmarshal([]byte(data), &head); err != nil {
+		return fmt.Errorf("failed to parse chain head from keyring: %w", err)
+	}
+	if err := saveChainHead(chainHeadPath, &head); err != nil {
+		return err
+	}
+	_ = store.Delete(AuditChainHeadKey)
+	return nil
+}
+
+// ResetEncKeyCache clears the in-process encryption key cache.
+// Exported for use in tests that swap the keyring store between runs.
+func ResetEncKeyCache() {
+	cachedEncKeyMu.Lock()
+	cachedEncKey = nil
+	cachedEncKeyMu.Unlock()
+}
+
+// cachedEncKey holds the audit encryption key for the lifetime of the process.
+// The key never changes once created (Clear does not delete it), so caching
+// avoids repeated keychain prompts — especially for MCP where each audit call
+// creates a fresh keyring Store. If key rotation is ever added, this cache
+// must be invalidated.
+var (
+	cachedEncKey   *[32]byte
+	cachedEncKeyMu sync.Mutex
+)
+
 // getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
 func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
+	cachedEncKeyMu.Lock()
+	if cachedEncKey != nil {
+		k := cachedEncKey
+		cachedEncKeyMu.Unlock()
+		return k, nil
+	}
+	cachedEncKeyMu.Unlock()
+
+	key, err := loadOrCreateEncryptionKey(store)
+	if err != nil {
+		return nil, err
+	}
+	cachedEncKeyMu.Lock()
+	cachedEncKey = key
+	cachedEncKeyMu.Unlock()
+	return key, nil
+}
+
+func loadOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 	// Try to load existing key
 	keyStr, err := store.Get(AuditEncryptionKeyKey)
 	if err == nil {

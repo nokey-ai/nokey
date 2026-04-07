@@ -58,13 +58,18 @@ func newTestStore() *nokeyKeyring.Store {
 	return nokeyKeyring.NewWithRing(newMockRing(), "test")
 }
 
-// withTestAuditDir overrides AuditLogDir to use a temp directory.
+// withTestAuditDir overrides AuditLogDir to use a temp directory
+// and resets the in-process encryption key cache.
 func withTestAuditDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	old := AuditLogDir
-	t.Cleanup(func() { AuditLogDir = old })
+	t.Cleanup(func() {
+		AuditLogDir = old
+		ResetEncKeyCache()
+	})
 	AuditLogDir = func() (string, error) { return dir, nil }
+	ResetEncKeyCache()
 	return dir
 }
 
@@ -101,12 +106,13 @@ func TestComputeLineHMAC_Deterministic(t *testing.T) {
 }
 
 func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
-	store := newTestStore()
+	dir := t.TempDir()
+	chPath := dir + "/chain_head.json"
 	head := &chainHead{HMAC: "abc123", Count: 42}
-	if err := saveChainHead(store, head); err != nil {
+	if err := saveChainHead(chPath, head); err != nil {
 		t.Fatalf("saveChainHead: %v", err)
 	}
-	loaded, err := loadChainHead(store)
+	loaded, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -116,8 +122,9 @@ func TestLoadSaveChainHead_RoundTrip(t *testing.T) {
 }
 
 func TestLoadChainHead_NotFound_ReturnsZero(t *testing.T) {
-	store := newTestStore()
-	head, err := loadChainHead(store)
+	dir := t.TempDir()
+	chPath := dir + "/chain_head.json"
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -551,15 +558,16 @@ func TestRecord_FilePermissions(t *testing.T) {
 
 func TestRecord_ChainHeadUpdated(t *testing.T) {
 	store := newTestStore()
-	withTestAuditDir(t)
+	dir := withTestAuditDir(t)
+	chPath := dir + "/chain_head.json"
 
 	for i := 0; i < 3; i++ {
-		headBefore, _ := loadChainHead(store)
+		headBefore, _ := loadChainHead(chPath)
 		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
 		if err := Record(store, entry, 1000, 90); err != nil {
 			t.Fatalf("Record %d: %v", i, err)
 		}
-		headAfter, _ := loadChainHead(store)
+		headAfter, _ := loadChainHead(chPath)
 
 		if headAfter.Count != i+1 {
 			t.Errorf("after Record %d: count = %d, want %d", i, headAfter.Count, i+1)
@@ -692,6 +700,10 @@ func TestReadAndVerify_KeyLoss_SingleWarning(t *testing.T) {
 	_ = store.Delete(AuditEncryptionKeyKey)
 	// Force a new key to be created
 	_ = store.Delete(AuditChainHeadKey)
+	// Clear the in-process cache so a fresh key is generated
+	cachedEncKeyMu.Lock()
+	cachedEncKey = nil
+	cachedEncKeyMu.Unlock()
 
 	// Load with new key — all old entries fail decryption
 	encKey, _ := getOrCreateEncryptionKey(store)
@@ -741,8 +753,9 @@ func TestClear_RemovesFileAndChainHead(t *testing.T) {
 		t.Error("file should be removed after clear")
 	}
 
-	// Chain head should be gone
-	head, err := loadChainHead(store)
+	// Chain head file should be gone
+	chPath := dir + "/chain_head.json"
+	head, err := loadChainHead(chPath)
 	if err != nil {
 		t.Fatalf("loadChainHead: %v", err)
 	}
@@ -821,7 +834,7 @@ func TestMigrateFromKeyring_WithData(t *testing.T) {
 	}
 
 	// Chain head should be set
-	head, _ := loadChainHead(store)
+	head, _ := loadChainHead(dir + "/chain_head.json")
 	if head.Count != 2 {
 		t.Errorf("chain head count = %d, want 2", head.Count)
 	}
@@ -911,7 +924,8 @@ func TestCompactFile_ReducesEntries(t *testing.T) {
 	hmacKey := deriveHMACKey(encKey)
 	filePath := dir + "/audit.log"
 
-	if err := compactFile(store, filePath, encKey, hmacKey, 5, 90); err != nil {
+	chPath := dir + "/chain_head.json"
+	if err := compactFile(filePath, chPath, encKey, hmacKey, 5, 90); err != nil {
 		t.Fatalf("compactFile: %v", err)
 	}
 
@@ -932,7 +946,7 @@ func TestCompactFile_ReducesEntries(t *testing.T) {
 	}
 
 	// Chain head should reflect compacted state
-	head, _ := loadChainHead(store)
+	head, _ := loadChainHead(chPath)
 	if head.Count != 5 {
 		t.Errorf("chain head count = %d, want 5", head.Count)
 	}
@@ -971,7 +985,14 @@ func TestRecord_TriggersCompaction(t *testing.T) {
 	}
 }
 
+func resetEncKeyCache(t *testing.T) {
+	t.Helper()
+	ResetEncKeyCache()
+	t.Cleanup(func() { ResetEncKeyCache() })
+}
+
 func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	key, err := getOrCreateEncryptionKey(store)
 	if err != nil {
@@ -991,6 +1012,7 @@ func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
 }
 
 func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	// Store a legacy 32-byte raw key
 	raw32 := strings.Repeat("A", 32)
@@ -1011,6 +1033,7 @@ func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
 }
 
 func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
+	resetEncKeyCache(t)
 	store := newTestStore()
 	// Store an invalid key (not 32 bytes, not valid base64 of 32 bytes)
 	_ = store.Set(AuditEncryptionKeyKey, "too-short")
