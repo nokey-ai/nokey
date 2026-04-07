@@ -14,6 +14,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/mcpserver"
+	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/version"
 )
 
@@ -72,9 +73,9 @@ func TestMCPIntegration_InitializeAndListTools(t *testing.T) {
 	c.Audit.Enabled = false
 
 	h := mcpserver.New(mcpserver.Deps{
-		GetStore: func() (mcpserver.SecretStore, error) { return store, nil },
-		Policy:   nil,
-		Config:   c,
+		GetStore:  func() (mcpserver.SecretStore, error) { return store, nil },
+		GetPolicy: func() *policy.Policy { return nil },
+		Config:    c,
 		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 			return nil
 		},

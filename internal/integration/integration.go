@@ -15,7 +15,10 @@ type SecretMapping struct {
 // Deps holds shared dependencies injected into integration tools.
 type Deps struct {
 	GetSecret func(name string) (string, error)
-	Policy    *policy.Policy
+	// GetPolicy returns the current policy, reloading from disk when the
+	// source file has changed. Called per-request; must be safe for
+	// concurrent use. A nil return value or nil GetPolicy means allow-all.
+	GetPolicy func() *policy.Policy
 	Requester *server.MCPServer
 	AuditFn   func(op, target, secrets string, ok bool, errMsg string)
 	UseToken  func(id string, secrets []string) error // nil = no token support

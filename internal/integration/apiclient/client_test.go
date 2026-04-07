@@ -23,13 +23,18 @@ type auditRecord struct {
 	ErrMsg  string
 }
 
+// staticPolicy returns a GetPolicy provider that always returns p.
+func staticPolicy(p *policy.Policy) func() *policy.Policy {
+	return func() *policy.Policy { return p }
+}
+
 func testDeps(secrets map[string]string) (integration.Deps, *[]auditRecord) {
 	var audits []auditRecord
 	return integration.Deps{
 		GetSecret: func(name string) (string, error) {
 			return secrets[name], nil
 		},
-		Policy:    nil, // nil policy allows everything
+		// GetPolicy nil → apiclient.Do treats as allow-all
 		Requester: nil, // no approval needed with nil policy
 		AuditFn: func(op, target, secretList string, ok bool, errMsg string) {
 			audits = append(audits, auditRecord{op, target, secretList, ok, errMsg})
@@ -111,7 +116,7 @@ func TestDo_PolicyDenial(t *testing.T) {
 	}
 
 	deps, audits := testDeps(map[string]string{"MY_TOKEN": "val"})
-	deps.Policy = pol
+	deps.GetPolicy = staticPolicy(pol)
 
 	mappings := []integration.SecretMapping{{
 		SecretName: "MY_TOKEN",
@@ -275,7 +280,7 @@ func TestDo_SecretFetchError(t *testing.T) {
 		GetSecret: func(name string) (string, error) {
 			return "", fmt.Errorf("secret not found: %s", name)
 		},
-		Policy: nil,
+		// GetPolicy nil → allow-all
 	}
 
 	mappings := []integration.SecretMapping{{
@@ -321,7 +326,6 @@ func TestDo_NoAuditFunction(t *testing.T) {
 
 	deps := integration.Deps{
 		GetSecret: func(name string) (string, error) { return "val", nil },
-		Policy:    nil,
 		AuditFn:   nil, // No audit function
 	}
 
@@ -415,7 +419,7 @@ func TestDo_ApprovalRequired(t *testing.T) {
 	}
 
 	deps, audits := testDeps(map[string]string{"TK": "val"})
-	deps.Policy = pol
+	deps.GetPolicy = staticPolicy(pol)
 	// No Requester set, so approval.Request will fail
 	deps.Requester = nil
 
@@ -442,7 +446,6 @@ func TestDo_SecretFetchErrorWithAudit(t *testing.T) {
 		GetSecret: func(name string) (string, error) {
 			return "", fmt.Errorf("keyring locked")
 		},
-		Policy: nil,
 		AuditFn: func(op, target, secretList string, ok bool, errMsg string) {
 			audits = append(audits, auditRecord{op, target, secretList, ok, errMsg})
 		},

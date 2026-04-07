@@ -47,8 +47,11 @@ type AuditFunc func(operation, command, target string, success bool, errMsg stri
 
 // Deps holds the injected dependencies for a Handler.
 type Deps struct {
-	GetStore     func() (SecretStore, error)
-	Policy       *policy.Policy
+	GetStore func() (SecretStore, error)
+	// GetPolicy returns the current policy, reloading from disk when the
+	// source file has changed. Called per-request; must be safe for
+	// concurrent use. A nil return value means allow-all.
+	GetPolicy    func() *policy.Policy
 	Config       *config.Config
 	ApprovalFn   ApprovalFunc
 	AuditFn      AuditFunc
@@ -58,7 +61,7 @@ type Deps struct {
 // Handler holds session-scoped state and serves MCP tool requests.
 type Handler struct {
 	getStore     func() (SecretStore, error)
-	policy       *policy.Policy
+	getPolicy    func() *policy.Policy
 	cfg          *config.Config
 	approvalFn   ApprovalFunc
 	auditFn      AuditFunc
@@ -78,7 +81,7 @@ func New(deps Deps) *Handler {
 	}
 	return &Handler{
 		getStore:     deps.GetStore,
-		policy:       deps.Policy,
+		getPolicy:    deps.GetPolicy,
 		cfg:          deps.Config,
 		approvalFn:   deps.ApprovalFn,
 		auditFn:      auditFn,
@@ -242,7 +245,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			}
 			return store.Get(name)
 		},
-		Policy:    h.policy,
+		GetPolicy: h.getPolicy,
 		Requester: s,
 		AuditFn:   h.recordAudit,
 		UseToken: func(id string, secrets []string) error {
@@ -272,8 +275,10 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get config directory: %s", err)), nil
 	}
 
-	// Load proxy rules from the already-loaded policy.
-	rules := h.policy.ProxyRules()
+	// Load proxy rules from the current policy (reloaded from disk if the
+	// source file has changed since the last call).
+	pol := h.getPolicy()
+	rules := pol.ProxyRules()
 	if len(rules) == 0 {
 		return mcp.NewToolResultError("no proxy rules found in policies.yaml — add a proxy: section with rules"), nil
 	}
@@ -302,7 +307,7 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 
 	addr := request.GetString("addr", "127.0.0.1:0")
 
-	srv := proxy.NewServer(ca, rules, secrets, h.policy, h.recordAudit)
+	srv := proxy.NewServer(ca, rules, secrets, pol, h.recordAudit)
 
 	actualAddr, err := srv.Start(addr)
 	if err != nil {
@@ -404,7 +409,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	for name := range secrets {
 		secretNames = append(secretNames, name)
 	}
-	if err := h.policy.Check(command, secretNames); err != nil {
+	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -489,7 +494,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	secretNames := placeholder.Extract("", args)
 
 	// Enforce scoped policy before touching the keyring
-	if err := h.policy.Check(command, secretNames); err != nil {
+	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -678,8 +683,11 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 		h.sessionTokenID = ""
 	}
 
-	// No token provided — check if policy requires one.
-	if h.policy.RequiresToken(command, secretNames) {
+	// No token provided — check if policy requires one. Snapshot the
+	// current policy once so the token-required and approval checks see a
+	// consistent view even if the file is rewritten mid-request.
+	pol := h.getPolicy()
+	if pol.RequiresToken(command, secretNames) {
 		return fmt.Errorf("token required by policy — use mint_token to create an access lease")
 	}
 
@@ -692,7 +700,7 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	}
 
 	// Fall through to existing approval gateway.
-	if h.policy.RequiresApproval(command, secretNames) {
+	if pol.RequiresApproval(command, secretNames) {
 		if err := h.approvalFn(ctx, h.mcpSrv, command, secretNames); err != nil {
 			return fmt.Errorf("approval denied: %w", err)
 		}

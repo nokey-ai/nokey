@@ -55,14 +55,14 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get config directory: %w", err)
 	}
-	pol, err := policy.Load(configDir)
+	polStore, err := policy.NewStore(configDir)
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
 
 	h := mcpserver.New(mcpserver.Deps{
 		GetStore:     func() (mcpserver.SecretStore, error) { return getKeyring() },
-		Policy:       pol,
+		GetPolicy:    polStore.Current,
 		Config:       cfg,
 		ApprovalFn:   approval.Request,
 		AuditFn:      recordAudit,
