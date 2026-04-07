@@ -27,11 +27,27 @@ jobs:
 
   release:
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      # The indirect dependency on github.com/1password/onepassword-sdk-go
+      # (pulled in via byteness/keyring's opdesktop.go) fails to cross-compile
+      # darwin/linux without CGO. We build darwin natively with Apple clang
+      # (no osxcross needed) and install real Linux cross-toolchains from
+      # messense/macos-cross-toolchains so the Linux targets can also link
+      # with CGO. Windows stays CGO-free.
+      - name: Install Linux cross-toolchains
+        run: |
+          brew tap messense/macos-cross-toolchains
+          brew install x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 
       - name: Generate tap token
         id: tap-token
@@ -42,23 +58,11 @@ jobs:
           owner: nokey-ai
           repositories: homebrew-tap
 
-      # The indirect dependency on github.com/1password/onepassword-sdk-go
-      # (pulled in via byteness/keyring's opdesktop.go) fails to cross-compile
-      # for darwin/linux without CGO — its !cgo build tag file emits a
-      # deliberate undefined-symbol error. Running GoReleaser inside the
-      # goreleaser-cross image gives us the native CGO toolchains for each
-      # target OS/arch, which `.goreleaser.yaml` references via per-build
-      # CC env vars.
-      - name: Run GoReleaser via goreleaser-cross
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          version: latest
+          args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
-        run: |
-          docker run --rm \
-            -v "$GITHUB_WORKSPACE:/go/src/github.com/nokey-ai/nokey" \
-            -w /go/src/github.com/nokey-ai/nokey \
-            -e GITHUB_TOKEN \
-            -e HOMEBREW_TAP_TOKEN \
-            --entrypoint /bin/bash \
-            ghcr.io/goreleaser/goreleaser-cross:v1.26.0 \
-            -c 'git config --global --add safe.directory /go/src/github.com/nokey-ai/nokey && goreleaser release --clean'
