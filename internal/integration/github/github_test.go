@@ -21,7 +21,7 @@ func testClient(ts *httptest.Server) *apiclient.Client {
 		GetSecret: func(name string) (string, error) {
 			return "test-token-value", nil
 		},
-		Policy:    nil,
+		// GetPolicy nil → apiclient.Do treats as allow-all
 		Requester: nil,
 		AuditFn:   func(op, target, secrets string, ok bool, errMsg string) {},
 	}

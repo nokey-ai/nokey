@@ -9,6 +9,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/integration"
+	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/token"
 )
@@ -48,8 +49,16 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 		secretNames[i] = m.SecretName
 	}
 
+	// Resolve the current policy via the injected provider. A nil provider
+	// or a nil returned Policy means allow-all — (*Policy).Check and friends
+	// are nil-safe.
+	var pol *policy.Policy
+	if c.deps.GetPolicy != nil {
+		pol = c.deps.GetPolicy()
+	}
+
 	// 1. Policy check.
-	if err := c.deps.Policy.Check(command, secretNames); err != nil {
+	if err := pol.Check(command, secretNames); err != nil {
 		c.audit(target, secretNames, false, err.Error())
 		return "", 0, err
 	}
@@ -64,7 +73,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 		tokenUsed = true
 	}
 	if !tokenUsed {
-		if c.deps.Policy.RequiresApproval(command, secretNames) {
+		if pol.RequiresApproval(command, secretNames) {
 			if err := approval.Request(ctx, c.deps.Requester, command, secretNames); err != nil {
 				c.audit(target, secretNames, false, err.Error())
 				return "", 0, err

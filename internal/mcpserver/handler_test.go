@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/nokey-ai/nokey/internal/approval"
@@ -83,6 +84,11 @@ func makeCallToolRequest(args map[string]any) mcp.CallToolRequest {
 	}
 }
 
+// staticPolicy returns a GetPolicy provider that always returns p.
+func staticPolicy(p *policy.Policy) func() *policy.Policy {
+	return func() *policy.Policy { return p }
+}
+
 // newTestHandler constructs a Handler with test-friendly defaults.
 func newTestHandler(t *testing.T, store SecretStore, pol *policy.Policy, approvalFn ApprovalFunc) *Handler {
 	t.Helper()
@@ -95,7 +101,7 @@ func newTestHandler(t *testing.T, store SecretStore, pol *policy.Policy, approva
 	c.Audit.Enabled = false
 	return New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       pol,
+		GetPolicy:    staticPolicy(pol),
 		Config:       c,
 		ApprovalFn:   approvalFn,
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -888,7 +894,7 @@ func TestHandleExec_WithAudit(t *testing.T) {
 	var audited bool
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
@@ -965,7 +971,7 @@ func TestHandleStartProxy_FullFlow(t *testing.T) {
 	c.Audit.Enabled = false
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       loadedPol,
+		GetPolicy:    staticPolicy(loadedPol),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1017,7 +1023,7 @@ func TestHandleStartProxy_SecretNotFound(t *testing.T) {
 	c.Audit.Enabled = false
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       loadedPol,
+		GetPolicy:    staticPolicy(loadedPol),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1046,7 +1052,7 @@ func TestHandleListSecrets_WithAudit(t *testing.T) {
 	var audited bool
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
@@ -1146,7 +1152,7 @@ func TestCheckTokenOrApproval_WrongSecret(t *testing.T) {
 func TestHandleListSecrets_GetKeyringError(t *testing.T) {
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       config.DefaultConfig(),
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1260,7 +1266,7 @@ func TestHandleMintToken_WithAudit(t *testing.T) {
 	var audited bool
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return store, nil },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
@@ -1360,9 +1366,9 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 
 	approvalCount := 0
 	h := New(Deps{
-		GetStore: func() (SecretStore, error) { return store, nil },
-		Policy:   nil,
-		Config:   c,
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
 		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 			approvalCount++
 			return nil
@@ -1401,9 +1407,9 @@ func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
 	c.Audit.Enabled = false
 
 	h := New(Deps{
-		GetStore: func() (SecretStore, error) { return store, nil },
-		Policy:   nil,
-		Config:   c,
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
 		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 			return fmt.Errorf("user declined")
 		},
@@ -1453,9 +1459,9 @@ func TestCheckTokenOrApproval_AutoMint_Expired(t *testing.T) {
 
 	approvalCount := 0
 	h := New(Deps{
-		GetStore: func() (SecretStore, error) { return store, nil },
-		Policy:   nil,
-		Config:   c,
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
 		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 			approvalCount++
 			return nil
@@ -1498,9 +1504,9 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 
 	approvalCount := 0
 	h := New(Deps{
-		GetStore: func() (SecretStore, error) { return store, nil },
-		Policy:   nil,
-		Config:   c,
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
 		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
 			approvalCount++
 			return nil
@@ -1538,7 +1544,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 func TestHandleExec_GetKeyringError(t *testing.T) {
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       config.DefaultConfig(),
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1583,7 +1589,7 @@ func TestHandleExec_GetSecretsError(t *testing.T) {
 func TestHandleExecWithSecrets_GetKeyringError(t *testing.T) {
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		Policy:       nil,
+		GetPolicy:    staticPolicy(nil),
 		Config:       config.DefaultConfig(),
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1694,7 +1700,7 @@ func TestHandleStartProxy_GetKeyringError(t *testing.T) {
 	c.Audit.Enabled = false
 	h := New(Deps{
 		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring error") },
-		Policy:       polObj,
+		GetPolicy:    staticPolicy(polObj),
 		Config:       c,
 		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1746,4 +1752,113 @@ func TestHandleMintToken_MintError(t *testing.T) {
 	// The mint error path is hard to trigger with a real token store.
 	// Skip this test -- the error path would require a custom token store interface.
 	t.Skip("mint error path requires injectable token store")
+}
+
+// TestHandleExec_ReloadsPolicyWhenFileChanges mirrors the reported bug:
+// after editing policies.yaml to add a new rule, the running MCP daemon
+// must pick up the change on the next request without being restarted.
+func TestHandleExec_ReloadsPolicyWhenFileChanges(t *testing.T) {
+	configDir := t.TempDir()
+	policyPath := filepath.Join(configDir, "policies.yaml")
+
+	// Initial policy: allow echo to access SECRET_A only (denies SECRET_B).
+	initialYAML := `rules:
+  - commands: ["echo"]
+    secrets: ["SECRET_A"]
+`
+	if err := os.WriteFile(policyPath, []byte(initialYAML), 0600); err != nil {
+		t.Fatalf("write initial policy: %v", err)
+	}
+
+	polStore, err := policy.NewStore(configDir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	store := &mapStore{secrets: map[string]string{
+		"SECRET_A": "val-a",
+		"SECRET_B": "val-b",
+	}}
+
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	h := New(Deps{
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: polStore.Current,
+		Config:    c,
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+			return nil
+		},
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return configDir, nil },
+	})
+
+	// First call: allowed under the initial policy — filter to SECRET_A only.
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"hello"},
+		"only":    "SECRET_A",
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("first HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	if !strings.Contains(text, "hello") {
+		t.Fatalf("first call: result = %q, want stdout 'hello'", text)
+	}
+	if strings.Contains(text, "policy denied") {
+		t.Fatalf("first call unexpectedly denied: %s", text)
+	}
+
+	// Rewrite policies.yaml to deny echo entirely (only curl is allowed now).
+	// Bump mtime explicitly so the stat-based reload check fires reliably on
+	// filesystems with coarse timestamps.
+	updatedYAML := `rules:
+  - commands: ["curl"]
+    secrets: ["SECRET_A"]
+`
+	if err := os.WriteFile(policyPath, []byte(updatedYAML), 0600); err != nil {
+		t.Fatalf("write updated policy: %v", err)
+	}
+	future := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(policyPath, future, future); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	// Second call: must pick up the new policy and deny echo.
+	result, err = h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("second HandleExec: %v", err)
+	}
+	text = getResultText(t, result)
+	if !strings.Contains(text, "policy denied") {
+		t.Fatalf("second call: result = %q, want policy denial after reload", text)
+	}
+
+	// Rewrite again to allow echo for SECRET_A and SECRET_B. Bump mtime again.
+	reenabledYAML := `rules:
+  - commands: ["echo"]
+    secrets: ["SECRET_*"]
+`
+	if err := os.WriteFile(policyPath, []byte(reenabledYAML), 0600); err != nil {
+		t.Fatalf("write reenabled policy: %v", err)
+	}
+	future = time.Now().Add(4 * time.Second)
+	if err := os.Chtimes(policyPath, future, future); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+
+	// Third call: allowed again.
+	result, err = h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("third HandleExec: %v", err)
+	}
+	text = getResultText(t, result)
+	if strings.Contains(text, "policy denied") {
+		t.Fatalf("third call: result = %q, want success after re-allowing", text)
+	}
+	if !strings.Contains(text, "hello") {
+		t.Fatalf("third call: result = %q, want stdout 'hello'", text)
+	}
 }
