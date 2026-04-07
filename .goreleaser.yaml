@@ -1,31 +1,101 @@
 version: 2
 
+# Multiple build entries are required because the indirect dependency on
+# github.com/1password/onepassword-sdk-go (pulled in via byteness/keyring's
+# opdesktop.go) has a build tag `!cgo && (darwin || linux)` that produces a
+# deliberate compile error, so darwin and linux targets MUST be built with
+# CGO enabled. Each target specifies the cross-compiler provided by the
+# goreleaser-cross Docker image that the release workflow runs in. Windows
+# builds stay CGO-free because the 1password SDK's windows-tagged file is
+# selected regardless of CGO.
 builds:
-  - main: .
+  - id: darwin-amd64
+    main: .
     binary: nokey
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+      - CXX=o64-clang++
+    goos: [darwin]
+    goarch: [amd64]
     ldflags:
       - -s -w
       - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
       - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
       - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
-    goos:
-      - darwin
-      - linux
-      - windows
-    goarch:
-      - amd64
-      - arm64
     hooks:
       post:
         - cmd: sh -c 'case "{{ .Target }}" in darwin_*) command -v codesign >/dev/null && codesign -s - "{{ .Path }}" && echo "Signed {{ .Target }} for Touch ID" || echo "codesign not available, skipping {{ .Target }}" ;; esac'
           output: true
 
+  - id: darwin-arm64
+    main: .
+    binary: nokey
+    env:
+      - CGO_ENABLED=1
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+    goos: [darwin]
+    goarch: [arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
+      - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
+    hooks:
+      post:
+        - cmd: sh -c 'case "{{ .Target }}" in darwin_*) command -v codesign >/dev/null && codesign -s - "{{ .Path }}" && echo "Signed {{ .Target }} for Touch ID" || echo "codesign not available, skipping {{ .Target }}" ;; esac'
+          output: true
+
+  - id: linux-amd64
+    main: .
+    binary: nokey
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
+    goos: [linux]
+    goarch: [amd64]
+    ldflags:
+      - -s -w
+      - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
+      - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
+
+  - id: linux-arm64
+    main: .
+    binary: nokey
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+    goos: [linux]
+    goarch: [arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
+      - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
+
+  - id: windows
+    main: .
+    binary: nokey
+    env:
+      - CGO_ENABLED=0
+    goos: [windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
+      - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
+
 archives:
-  - format: tar.gz
+  - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats: [zip]
 
 checksum:
   name_template: "checksums.txt"
