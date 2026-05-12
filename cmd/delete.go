@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/nokey-ai/nokey/internal/metadata"
 	"github.com/spf13/cobra"
 )
 
@@ -41,6 +42,10 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to delete secret %q: %w", key, err)
+	}
+
+	if ms, msErr := metadata.DefaultStore(); msErr == nil {
+		_ = ms.Remove(key)
 	}
 
 	fmt.Printf("Secret '%s' deleted successfully\n", key)

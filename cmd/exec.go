@@ -12,6 +12,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
+	"github.com/nokey-ai/nokey/internal/metadata"
 	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
@@ -38,6 +39,7 @@ var (
 	exceptSecrets string
 	skipConfirm   bool
 	authMethod    string
+	dryRun        bool
 )
 
 var execCmd = &cobra.Command{
@@ -54,6 +56,7 @@ Security Options:
   --yes           Skip confirmation prompt (use with caution)
   --auth-method   Override authentication method (pin, oauth, both, none)
   --isolate       Block network egress to hosts without a proxy rule
+  --dry-run       Show what secrets would be injected without running the command
 
 Examples:
   # Confirm before injecting (default - shows what will be injected)
@@ -92,6 +95,7 @@ func init() {
 	execCmd.Flags().BoolVar(&skipConfirm, "yes", false, "Skip confirmation prompt (inject all secrets without asking)")
 	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Override authentication method (pin, oauth, both, none)")
 	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Block network egress to hosts without a proxy rule")
+	execCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what secrets would be injected without running the command")
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
@@ -99,6 +103,12 @@ func runExec(cmd *cobra.Command, args []string) error {
 	store, err := getKeyring()
 	if err != nil {
 		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
+	}
+
+	// Load policy for auth_method override and isolate mode
+	var pol *policy.Policy
+	if configDir, dirErr := getConfigDir(); dirErr == nil {
+		pol, _ = policy.Load(configDir)
 	}
 
 	// Determine which authentication method to use
@@ -117,6 +127,24 @@ func runExec(cmd *cobra.Command, args []string) error {
 			authMethodConfig = "pin"
 		} else {
 			authMethodConfig = "none"
+		}
+	}
+
+	// Policy auth_method override: if no explicit flag, check policy rules
+	if authMethod == "" && pol != nil {
+		// We need to know which secrets will be accessed to check policy.
+		// Use --only filter if specified, otherwise check all secrets.
+		var checkNames []string
+		if onlySecrets != "" {
+			checkNames = strings.Split(onlySecrets, ",")
+			for i := range checkNames {
+				checkNames[i] = strings.TrimSpace(checkNames[i])
+			}
+		} else {
+			checkNames, _ = store.List()
+		}
+		if override := pol.RequiredAuthMethod(args[0], checkNames); override != "" {
+			authMethodConfig = override
 		}
 	}
 
@@ -211,6 +239,11 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Dry-run: show what would happen without executing
+	if dryRun {
+		return printDryRun(secrets, args[0], args[1:], authMethodUsed)
+	}
+
 	// Show confirmation prompt unless --yes flag or skip_confirm config is set
 	if !skipConfirm && !cfg.Auth.SkipConfirm {
 		confirmed, err := confirmSecrets(secrets, args[0])
@@ -220,6 +253,15 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if !confirmed {
 			return fmt.Errorf("aborted")
 		}
+	}
+
+	// Record secret access metadata
+	if ms, msErr := metadata.DefaultStore(); msErr == nil {
+		accessKeys := make([]string, 0, len(secrets))
+		for name := range secrets {
+			accessKeys = append(accessKeys, name)
+		}
+		_ = ms.RecordAccess(accessKeys)
 	}
 
 	if len(secrets) == 0 {
@@ -362,6 +404,29 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 	}
 
 	return envVars, cleanup, nil
+}
+
+func printDryRun(secrets map[string]string, command string, args []string, authMethodUsed string) error {
+	names := make([]string, 0, len(secrets))
+	for name := range secrets {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fmt.Fprintf(os.Stderr, "\n[dry-run] Command: %s %s\n", command, strings.Join(args, " "))
+	fmt.Fprintf(os.Stderr, "[dry-run] Auth method: %s\n", authMethodUsed)
+	fmt.Fprintf(os.Stderr, "[dry-run] Secrets that would be injected (%d):\n", len(names))
+	for _, name := range names {
+		fmt.Fprintf(os.Stderr, "  • %s\n", name)
+	}
+	if enableRedact {
+		fmt.Fprintf(os.Stderr, "[dry-run] Output redaction: enabled\n")
+	}
+	if enableIsolate {
+		fmt.Fprintf(os.Stderr, "[dry-run] Network isolation: enabled\n")
+	}
+	fmt.Fprintf(os.Stderr, "\nNo command was executed.\n")
+	return nil
 }
 
 // validateOAuthToken validates that a valid OAuth token exists for the configured provider
