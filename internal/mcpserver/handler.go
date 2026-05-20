@@ -384,31 +384,27 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		timeoutSecs = MaxTimeoutSecs
 	}
 
-	// Get all secrets from keyring (no PIN auth — OS keyring ACL is the gate)
+	// Open keyring (no PIN auth — OS keyring ACL is the gate). Enumerate names
+	// first so we can apply policy/approval *before* reading any secret values.
 	store, err := h.getStore()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
 	}
 
-	allSecrets, err := store.GetAll()
+	allNames, err := store.List()
 	if err != nil {
 		h.recordAudit("mcp:exec", command, "all", false, err.Error())
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get secrets: %s", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list secrets: %s", err)), nil
 	}
-	defer sensitive.ClearMap(allSecrets)
 
-	// Filter secrets based on only/except
-	secrets, err := env.FilterSecrets(allSecrets, only, except)
+	// Filter names by only/except before touching the keyring for values.
+	secretNames, err := env.FilterNames(allNames, only, except)
 	if err != nil {
 		h.recordAudit("mcp:exec", command, "all", false, err.Error())
 		return mcp.NewToolResultError(fmt.Sprintf("failed to filter secrets: %s", err)), nil
 	}
 
-	// Enforce scoped policy
-	secretNames := make([]string, 0, len(secrets))
-	for name := range secrets {
-		secretNames = append(secretNames, name)
-	}
+	// Enforce scoped policy before reading any secret values.
 	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
@@ -420,6 +416,18 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		h.recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+
+	// Fetch values only for the secrets that survived filtering and policy.
+	secrets := make(map[string]string, len(secretNames))
+	for _, name := range secretNames {
+		val, err := store.Get(name)
+		if err != nil {
+			h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
+			return mcp.NewToolResultError(fmt.Sprintf("failed to get secret %q: %s", name, err)), nil
+		}
+		secrets[name] = val
+	}
+	defer sensitive.ClearMap(secrets)
 
 	// Execute command with timeout
 	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)

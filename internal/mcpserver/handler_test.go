@@ -1565,7 +1565,7 @@ func TestHandleExec_GetKeyringError(t *testing.T) {
 	}
 }
 
-// --- HandleExec store.GetAll error ---
+// --- HandleExec store.List error ---
 
 func TestHandleExec_GetSecretsError(t *testing.T) {
 	store := &mapStore{secrets: nil, err: fmt.Errorf("keys failed")}
@@ -1579,8 +1579,8 @@ func TestHandleExec_GetSecretsError(t *testing.T) {
 		t.Fatalf("HandleExec: %v", err)
 	}
 	text := getResultText(t, result)
-	if !strings.Contains(text, "failed to get secrets") {
-		t.Errorf("result = %q, want 'failed to get secrets'", text)
+	if !strings.Contains(text, "failed to list secrets") {
+		t.Errorf("result = %q, want 'failed to list secrets'", text)
 	}
 }
 

@@ -44,6 +44,49 @@ func FilterSecrets(allSecrets map[string]string, only, except string) (map[strin
 	return allSecrets, nil
 }
 
+// FilterNames filters a list of secret names by only/except, returning the
+// names that would survive a FilterSecrets call. Use this to apply the same
+// scoping rules before any secret values are loaded from the keyring.
+func FilterNames(allNames []string, only, except string) ([]string, error) {
+	if only != "" && except != "" {
+		return nil, fmt.Errorf("cannot use both --only and --except flags")
+	}
+
+	all := make(map[string]bool, len(allNames))
+	for _, n := range allNames {
+		all[n] = true
+	}
+
+	if only != "" {
+		onlyList := ParseCommaSeparated(only)
+		out := make([]string, 0, len(onlyList))
+		for _, name := range onlyList {
+			if !all[name] {
+				return nil, fmt.Errorf("secret not found: %s", name)
+			}
+			out = append(out, name)
+		}
+		return out, nil
+	}
+
+	if except != "" {
+		exceptList := ParseCommaSeparated(except)
+		exceptMap := make(map[string]bool, len(exceptList))
+		for _, n := range exceptList {
+			exceptMap[n] = true
+		}
+		out := make([]string, 0, len(allNames))
+		for _, name := range allNames {
+			if !exceptMap[name] {
+				out = append(out, name)
+			}
+		}
+		return out, nil
+	}
+
+	return allNames, nil
+}
+
 // ParseCommaSeparated parses a comma-separated string into a slice of trimmed strings.
 func ParseCommaSeparated(s string) []string {
 	if s == "" {
