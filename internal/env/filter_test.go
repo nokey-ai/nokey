@@ -59,6 +59,55 @@ func TestFilterSecrets_BothOnlyAndExcept(t *testing.T) {
 	}
 }
 
+func TestFilterNames_NoFilter(t *testing.T) {
+	got, err := FilterNames([]string{"A", "B", "C"}, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Errorf("len = %d, want 3", len(got))
+	}
+}
+
+func TestFilterNames_Only(t *testing.T) {
+	got, err := FilterNames([]string{"A", "B", "C"}, "A,C", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got[0] != "A" || got[1] != "C" {
+		t.Errorf("got = %v, want [A C]", got)
+	}
+}
+
+func TestFilterNames_OnlyNotFound(t *testing.T) {
+	_, err := FilterNames([]string{"A"}, "NOPE", "")
+	if err == nil || !strings.Contains(err.Error(), "secret not found") {
+		t.Errorf("expected 'secret not found' error, got: %v", err)
+	}
+}
+
+func TestFilterNames_Except(t *testing.T) {
+	got, err := FilterNames([]string{"A", "B", "C"}, "", "B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Errorf("len = %d, want 2", len(got))
+	}
+	for _, n := range got {
+		if n == "B" {
+			t.Error("B should be excluded")
+		}
+	}
+}
+
+func TestFilterNames_BothOnlyAndExcept(t *testing.T) {
+	_, err := FilterNames(nil, "A", "B")
+	if err == nil || !strings.Contains(err.Error(), "cannot use both") {
+		t.Errorf("expected 'cannot use both' error, got: %v", err)
+	}
+}
+
 func TestParseCommaSeparated(t *testing.T) {
 	tests := []struct {
 		input string
