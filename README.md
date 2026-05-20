@@ -664,6 +664,12 @@ This starts a local proxy with `--isolate` that rejects connections to any host 
 
 `~/.config/nokey/policies.yaml` controls which commands can access which secrets, approval requirements, and proxy rules.
 
+> **Heads-up:** if `policies.yaml` is **absent**, nokey runs in allow-all
+> mode — every command can request every secret with no rule-based
+> approval gate (interactive prompts still apply for `nokey exec`). The
+> fail-closed behaviour described below only kicks in once you have a
+> `policies.yaml` file. Run `nokey init` to scaffold a starter policy.
+
 ### Full Reference
 
 ```yaml
