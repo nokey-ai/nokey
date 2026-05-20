@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/integration"
@@ -31,7 +32,7 @@ func New(integrationName, baseURL string, mappings []integration.SecretMapping, 
 		baseURL:         baseURL,
 		mappings:        mappings,
 		deps:            deps,
-		http:            &http.Client{},
+		http:            &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
