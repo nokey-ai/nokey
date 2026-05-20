@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
 	"html/template"
@@ -111,7 +112,7 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 	code := r.URL.Query().Get("code")
 
 	// Validate state (CSRF protection)
-	if receivedState != cs.state {
+	if subtle.ConstantTimeCompare([]byte(receivedState), []byte(cs.state)) != 1 {
 		cs.errChan <- fmt.Errorf("invalid state token (possible CSRF attack)")
 		cs.renderError(w, "Invalid state token")
 		return
