@@ -174,23 +174,20 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	// The proxy's CONNECT handler dials the upstream using http.DefaultTransport.
-	// Override it to trust the test server's self-signed cert.
-	origTransport := http.DefaultTransport
+	// The proxy's CONNECT handler dials the upstream using its configured
+	// transport. Inject one that trusts the test server's self-signed cert.
 	upstreamPool := x509.NewCertPool()
 	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
 	if err != nil {
 		t.Fatalf("parse upstream cert: %v", err)
 	}
 	upstreamPool.AddCert(upstreamCert)
-
-	http.DefaultTransport = &http.Transport{
+	srv.SetTransport(&http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:    upstreamPool,
 			MinVersion: tls.VersionTLS12,
 		},
-	}
-	defer func() { http.DefaultTransport = origTransport }()
+	})
 
 	// Client trusts the proxy CA for the MITM cert.
 	proxyPool := x509.NewCertPool()
@@ -580,21 +577,19 @@ func TestHTTPSConnectApprovalDenied(t *testing.T) {
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	// Override DefaultTransport to trust the upstream TLS cert.
-	origTransport := http.DefaultTransport
+	// Inject a transport that trusts the upstream TLS cert.
 	upstreamPool := x509.NewCertPool()
 	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
 	if err != nil {
 		t.Fatalf("parse upstream cert: %v", err)
 	}
 	upstreamPool.AddCert(upstreamCert)
-	http.DefaultTransport = &http.Transport{
+	srv.SetTransport(&http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:    upstreamPool,
 			MinVersion: tls.VersionTLS12,
 		},
-	}
-	defer func() { http.DefaultTransport = origTransport }()
+	})
 
 	// Client trusts the proxy CA for the MITM cert.
 	proxyPool := x509.NewCertPool()
@@ -648,21 +643,19 @@ func TestHTTPSConnectHeaderResolveError(t *testing.T) {
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	// Override DefaultTransport to trust the upstream TLS cert.
-	origTransport := http.DefaultTransport
+	// Inject a transport that trusts the upstream TLS cert.
 	upstreamPool := x509.NewCertPool()
 	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
 	if err != nil {
 		t.Fatalf("parse upstream cert: %v", err)
 	}
 	upstreamPool.AddCert(upstreamCert)
-	http.DefaultTransport = &http.Transport{
+	srv.SetTransport(&http.Transport{
 		TLSClientConfig: &tls.Config{
 			RootCAs:    upstreamPool,
 			MinVersion: tls.VersionTLS12,
 		},
-	}
-	defer func() { http.DefaultTransport = origTransport }()
+	})
 
 	// Client trusts the proxy CA for the MITM cert.
 	proxyPool := x509.NewCertPool()

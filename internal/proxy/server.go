@@ -32,7 +32,25 @@ type Server struct {
 	certCache      sync.Map // host → *tls.Certificate
 	mu             sync.Mutex
 	running        bool
-	blockUnmatched bool // if true, reject requests to hosts with no matching proxy rule
+	blockUnmatched bool              // if true, reject requests to hosts with no matching proxy rule
+	transport      http.RoundTripper // forward transport; nil falls back to http.DefaultTransport
+}
+
+// SetTransport overrides the round-tripper used to forward proxied
+// requests upstream. Intended for tests; production callers can rely on
+// the default (http.DefaultTransport).
+func (s *Server) SetTransport(rt http.RoundTripper) {
+	s.transport = rt
+}
+
+// forwardTransport returns the configured transport or the package
+// default. Resolving once per request avoids reading http.DefaultTransport
+// concurrently with anything else that might write it (e.g. legacy tests).
+func (s *Server) forwardTransport() http.RoundTripper {
+	if s.transport != nil {
+		return s.transport
+	}
+	return http.DefaultTransport
 }
 
 // NewServer creates a new proxy server. Secrets are held in memory for the
@@ -158,7 +176,7 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Forward the request.
 	r.RequestURI = ""
-	resp, err := http.DefaultTransport.RoundTrip(r)
+	resp, err := s.forwardTransport().RoundTrip(r)
 	if err != nil {
 		s.audit("proxy:http", host, secretNames, false, err.Error())
 		http.Error(w, fmt.Sprintf("nokey proxy: upstream error: %s", err), http.StatusBadGateway)
@@ -278,7 +296,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Forward upstream.
-		resp, err := http.DefaultTransport.RoundTrip(req)
+		resp, err := s.forwardTransport().RoundTrip(req)
 		if err != nil {
 			s.audit("proxy:https", host, secretNames, false, err.Error())
 			errResp := &http.Response{
