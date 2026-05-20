@@ -3,12 +3,12 @@
 package redact
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -36,63 +36,68 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	// Merge secrets into environment
 	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 
+	// Capture stdin once. The spawned goroutines hold this *os.File for
+	// their entire lifetime, so callers (notably tests) can safely swap
+	// os.Stdin after Run returns without racing the goroutines.
+	stdin := os.Stdin
+
 	// Start command with a PTY
 	ptmx, err := ptyStartFn(cmd)
 	if err != nil {
 		return 1, fmt.Errorf("failed to start command with PTY: %w", err)
 	}
-	defer ptmx.Close()
+
+	var wg sync.WaitGroup
 
 	// Handle terminal resize signals
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGWINCH)
+	winchCh := make(chan os.Signal, 1)
+	signal.Notify(winchCh, syscall.SIGWINCH)
+	wg.Add(1)
 	go func() {
-		for range ch {
-			_ = ptyInheritSizeFn(os.Stdin, ptmx)
+		defer wg.Done()
+		for range winchCh {
+			_ = ptyInheritSizeFn(stdin, ptmx)
 		}
 	}()
-	ch <- syscall.SIGWINCH // Initial resize
-	defer func() { signal.Stop(ch); close(ch) }()
+	winchCh <- syscall.SIGWINCH // Initial resize
 
 	// Set stdin to raw mode if it's a terminal
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	oldState, err := term.MakeRaw(int(stdin.Fd()))
 	if err != nil {
 		// Not a terminal, that's okay
 		oldState = nil
 	}
 	if oldState != nil {
-		defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
+		defer func() { _ = term.Restore(int(stdin.Fd()), oldState) }()
 	}
 
 	// Setup signal forwarding
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for sig := range sigChan {
 			if cmd.Process != nil {
 				_ = cmd.Process.Signal(sig)
 			}
 		}
 	}()
-	defer func() { signal.Stop(sigChan); close(sigChan) }()
 
 	// Build redactor
 	redactor := newRedactor(secrets)
 	defer redactor.Clear()
 
-	// Copy stdin to PTY with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	// Copy stdin to PTY. The goroutine unblocks when stdin reaches EOF
+	// or when ptmx is closed below.
+	wg.Add(1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			_, _ = io.Copy(ptmx, os.Stdin)
-		}
+		defer wg.Done()
+		_, _ = io.Copy(ptmx, stdin)
 	}()
 
-	// Copy PTY output to stdout with redaction
+	// Copy PTY output to stdout with redaction. Returns when the child
+	// closes the slave side (typically when it exits).
 	_, _ = io.Copy(os.Stdout, &redactingReader{
 		reader:   ptmx,
 		redactor: redactor,
@@ -101,8 +106,16 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	// Wait for command to complete
 	err = cmd.Wait()
 
-	// Cancel stdin copy goroutine
-	cancel()
+	// Tear down: close ptmx so the stdin-copy goroutine unblocks, then
+	// stop and close the signal channels so the signal goroutines exit.
+	// Wait for all spawned goroutines to finish before returning so the
+	// caller can safely mutate any state the goroutines were reading.
+	_ = ptmx.Close()
+	signal.Stop(winchCh)
+	close(winchCh)
+	signal.Stop(sigChan)
+	close(sigChan)
+	wg.Wait()
 
 	// Get exit code
 	exitCode := 0
