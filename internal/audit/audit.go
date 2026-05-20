@@ -778,23 +778,20 @@ var (
 	cachedEncKeyMu sync.Mutex
 )
 
-// getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs
+// getOrCreateEncryptionKey retrieves or creates the encryption key for audit logs.
+// The lock is held across the load so that concurrent first callers do not each
+// trigger their own keyring write — that race would cost an extra keychain prompt.
 func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 	cachedEncKeyMu.Lock()
+	defer cachedEncKeyMu.Unlock()
 	if cachedEncKey != nil {
-		k := cachedEncKey
-		cachedEncKeyMu.Unlock()
-		return k, nil
+		return cachedEncKey, nil
 	}
-	cachedEncKeyMu.Unlock()
-
 	key, err := loadOrCreateEncryptionKey(store)
 	if err != nil {
 		return nil, err
 	}
-	cachedEncKeyMu.Lock()
 	cachedEncKey = key
-	cachedEncKeyMu.Unlock()
 	return key, nil
 }
 
