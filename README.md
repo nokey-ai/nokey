@@ -395,7 +395,9 @@ Audit Entries (3):
 
 ## Configuration
 
-Config file location: `~/.config/nokey/config.yaml`
+Config file location:
+- macOS / Linux: `~/.config/nokey/config.yaml`
+- Windows: `%APPDATA%\nokey\config.yaml`
 
 ### Full Configuration Example
 
@@ -418,6 +420,22 @@ audit:
 # Authentication configuration
 auth:
   default_method: "pin"  # pin, oauth, both, or none
+
+  # How long a successful PIN entry stays valid before re-prompting.
+  # Duration string (e.g. "15m", "1h"). Default 15m, max 8h.
+  session_ttl: "15m"
+
+  # Skip the y/N confirmation prompt in `nokey exec`. Use with care —
+  # this removes the human-in-the-loop check for the exec path.
+  skip_confirm: false
+
+  # On first MCP approval, mint a 1h session token automatically so the
+  # AI client doesn't re-prompt for every subsequent call in the session.
+  auto_mint_token: false
+
+  # On macOS, gate keychain access with Touch ID. Defaults to true on
+  # macOS; ignored on other platforms. Set false to disable.
+  # use_biometrics: true
 
   # OAuth provider selection
   # Note: OAuth tokens and credentials are stored in OS keyring after running
