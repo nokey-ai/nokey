@@ -471,6 +471,22 @@ export NOKEY_BACKEND=file
 nokey set API_KEY
 ```
 
+### macOS: enabling Touch ID for existing secrets (`nokey keychain migrate`)
+
+Secrets created by older builds may prompt for a Keychain password on every
+access. Re-creating those items lets Touch ID gate them instead:
+
+```bash
+# Preview which items would be re-created (no changes made)
+nokey keychain migrate --dry-run
+
+# Re-create all nokey keychain items so Touch ID can unlock them
+nokey keychain migrate
+```
+
+`nokey` will also print a one-time hint pointing at this command the first time
+it sees keychain items that look like they need migrating.
+
 ---
 
 ## Use Cases
