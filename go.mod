@@ -2,6 +2,8 @@ module github.com/nokey-ai/nokey
 
 go 1.26
 
+toolchain go1.26.3
+
 require (
 	github.com/byteness/keyring v1.9.0
 	github.com/creack/pty v1.1.24
