@@ -498,6 +498,9 @@ func readAndVerifyFile(filePath string, encKey *[32]byte, hmacKey []byte, head *
 		if lineCount < head.Count {
 			warnings = append(warnings, fmt.Sprintf("truncation detected: expected %d entries, found %d", head.Count, lineCount))
 		}
+		if lineCount > head.Count {
+			warnings = append(warnings, fmt.Sprintf("appended entries detected: expected %d entries, found %d (possible tampering)", head.Count, lineCount))
+		}
 		if lineCount > 0 && lastLineHMAC != head.HMAC {
 			if lineCount == head.Count {
 				warnings = append(warnings, "chain head HMAC mismatch (possible tampering of last entry)")

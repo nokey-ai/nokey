@@ -619,6 +619,43 @@ func TestReadAndVerify_DetectsTruncation(t *testing.T) {
 	}
 }
 
+func TestReadAndVerify_DetectsAppendedEntries(t *testing.T) {
+	store := newTestStore()
+	dir := withTestAuditDir(t)
+
+	for i := 0; i < 3; i++ {
+		entry := NewAuditEntry("exec", fmt.Sprintf("cmd-%d", i), "pin", nil, true, "")
+		if err := Record(store, entry, 1000, 90); err != nil {
+			t.Fatalf("Record: %v", err)
+		}
+	}
+
+	// Append an extra line — chain head still records 3 entries.
+	filePath := dir + "/audit.log"
+	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if _, err := f.WriteString("rogue-entry-bytes\n"); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	_ = f.Close()
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	found := false
+	for _, w := range log.Warnings {
+		if strings.Contains(w, "appended entries") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, expected appended-entries warning", log.Warnings)
+	}
+}
+
 func TestReadAndVerify_DetectsTampering(t *testing.T) {
 	store := newTestStore()
 	dir := withTestAuditDir(t)
