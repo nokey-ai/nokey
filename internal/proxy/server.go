@@ -274,7 +274,10 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// Inject headers.
+		// Inject headers. If any rule fails to resolve, surface 502 to
+		// the client and skip the upstream RoundTrip — otherwise we
+		// would still send the request without the intended header.
+		headerErr := false
 		for _, rule := range matched {
 			headers, err := ResolveHeaders(rule, s.secrets)
 			if err != nil {
@@ -288,11 +291,15 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 				}
 				resp.Header.Set("Content-Type", "text/plain")
 				_ = resp.Write(tlsConn)
-				continue
+				headerErr = true
+				break
 			}
 			for k, v := range headers {
 				req.Header.Set(k, v)
 			}
+		}
+		if headerErr {
+			continue
 		}
 
 		// Forward upstream.
