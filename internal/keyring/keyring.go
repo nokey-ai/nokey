@@ -70,11 +70,21 @@ func New(backend, serviceName string, useBiometrics bool) (*Store, error) {
 		backendType = keyring.BackendType("")
 	}
 
+	fileDir := getFileBackendDir()
+	// Migrate any legacy file-backend entries from the parent config dir
+	// (where they used to live) into the dedicated subdirectory. No-op on
+	// non-file backends, on already-migrated installs, and on first runs.
+	if oldDir := legacyFileBackendDir(); oldDir != "" && oldDir != fileDir {
+		if err := migrateFileBackendDir(oldDir, fileDir); err != nil {
+			return nil, fmt.Errorf("migrate legacy file-backend layout: %w", err)
+		}
+	}
+
 	config := keyring.Config{
 		ServiceName:              serviceName,
 		AllowedBackends:          []keyring.BackendType{backendType},
 		KeychainTrustApplication: true,
-		FileDir:                  getFileBackendDir(),
+		FileDir:                  fileDir,
 		FilePasswordFunc:         filePasswordPrompt,
 		UseBiometrics:            useBiometrics,
 		TouchIDAccount:           "com.nokey.biometrics",
@@ -206,8 +216,23 @@ func (s *Store) GetAll() (map[string]string, error) {
 	return secrets, nil
 }
 
-// getFileBackendDir returns the directory for the encrypted file backend
+// getFileBackendDir returns the directory for the encrypted file backend.
+// We use a dedicated subdirectory under ConfigDir because the underlying
+// keyring library treats every file in FileDir as a keyring entry — if
+// the directory were shared with config.yaml/policies.yaml/audit.log
+// those would be misread as secrets.
 func getFileBackendDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return homeDir + "/.config/nokey/keyring"
+}
+
+// legacyFileBackendDir returns the directory that earlier nokey releases
+// used as the file-backend FileDir (the same as ConfigDir). Used only by
+// the one-time migration; never as a runtime path.
+func legacyFileBackendDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return ""

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- File backend: store keyring entries in `~/.config/nokey/keyring/` instead
+  of the parent config dir. The library treated every file in `FileDir`
+  as a keyring entry, so once `nokey init` (or audit/session) wrote
+  `config.yaml`/`policies.yaml`/`audit.log`/`session_ticket` alongside
+  secrets, `nokey list` would show those as fake "secrets" and `nokey
+  exec`/`mcp` failed with `illegal base64 data`. Existing file-backend
+  installs are migrated automatically on first run; aux files stay put.
+
 ## [0.2.0] - 2026-03-24
 
 ### Added
