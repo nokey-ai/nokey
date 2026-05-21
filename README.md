@@ -437,6 +437,11 @@ auth:
   # macOS; ignored on other platforms. Set false to disable.
   # use_biometrics: true
 
+  # Enforce policies.yaml rules on `nokey exec` invocations. Defaults to
+  # true. Set false to bypass policy for the local CLI while still
+  # enforcing it for MCP and the proxy.
+  cli_enforce_policy: true
+
   # OAuth provider selection
   # Note: OAuth tokens and credentials are stored in OS keyring after running
   # 'nokey auth oauth setup --provider <name> --client-id ... --client-secret ...'

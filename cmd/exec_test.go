@@ -54,6 +54,152 @@ func TestConfirmSecrets_UserInput(t *testing.T) {
 	}
 }
 
+// --- policy enforcement on CLI exec ---
+
+// withTestConfigDir overrides config.ConfigDir to a temp dir and writes the
+// given policies.yaml content into it (if non-empty). Returns the dir.
+func withTestConfigDir(t *testing.T, policiesYAML string) string {
+	t.Helper()
+	dir := t.TempDir()
+	old := config.ConfigDir
+	t.Cleanup(func() { config.ConfigDir = old })
+	config.ConfigDir = func() (string, error) { return dir, nil }
+	if policiesYAML != "" {
+		if err := os.WriteFile(dir+"/policies.yaml", []byte(policiesYAML), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+func TestRunExec_PolicyDenies(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	withTestConfigDir(t, "approval: never\nrules:\n  - commands: [\"ls\"]\n    secrets: [\"OTHER\"]\n")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		t.Fatal("execRunFn should not run when policy denies")
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	err := runExec(cmd, []string{"echo", "hi"})
+	if err == nil {
+		t.Fatal("expected policy denial error, got nil")
+	}
+	if !strings.Contains(err.Error(), "policy denied") {
+		t.Errorf("error = %v, want policy denial", err)
+	}
+}
+
+func TestRunExec_PolicyAllows(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	withTestConfigDir(t, "approval: never\nrules:\n  - commands: [\"echo\"]\n    secrets: [\"MY_SECRET\"]\n")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	called := false
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		called = true
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	if err := runExec(cmd, []string{"echo", "hi"}); err != nil {
+		t.Fatalf("runExec: %v", err)
+	}
+	if !called {
+		t.Error("execRunFn should run when policy allows")
+	}
+}
+
+func TestRunExec_PolicyOptOut(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	off := false
+	c.Auth.CLIEnforcePolicy = &off
+	withTestConfig(t, c)
+	// Policy would deny if enforced.
+	withTestConfigDir(t, "approval: never\nrules:\n  - commands: [\"ls\"]\n    secrets: [\"OTHER\"]\n")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	called := false
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		called = true
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	if err := runExec(cmd, []string{"echo", "hi"}); err != nil {
+		t.Fatalf("runExec: %v", err)
+	}
+	if !called {
+		t.Error("execRunFn should run when cli_enforce_policy=false bypasses denial")
+	}
+}
+
+func TestRunExec_NoPolicyFileAllows(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	// No policies.yaml written → allow-all.
+	withTestConfigDir(t, "")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	called := false
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		called = true
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	if err := runExec(cmd, []string{"echo", "hi"}); err != nil {
+		t.Fatalf("runExec: %v", err)
+	}
+	if !called {
+		t.Error("execRunFn should run when no policies.yaml exists (allow-all)")
+	}
+}
+
 // --- runExec ---
 
 func TestRunExec_AuthNone(t *testing.T) {

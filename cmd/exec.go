@@ -211,6 +211,30 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Enforce policy rules from policies.yaml (defaults on; opt out with
+	// auth.cli_enforce_policy: false). The MCP server and proxy enforce
+	// the same rules — applying them here keeps the CLI consistent with
+	// what the policy file actually promises.
+	if cfg.Auth.CLIEnforcePolicy == nil || *cfg.Auth.CLIEnforcePolicy {
+		configDir, dirErr := getConfigDir()
+		if dirErr != nil {
+			return fmt.Errorf("failed to resolve config dir for policy check: %w", dirErr)
+		}
+		pol, polErr := policy.Load(configDir)
+		if polErr != nil {
+			return fmt.Errorf("failed to load policy: %w", polErr)
+		}
+		secretNames := make([]string, 0, len(secrets))
+		for name := range secrets {
+			secretNames = append(secretNames, name)
+		}
+		sort.Strings(secretNames)
+		if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
+			AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
+			return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this, or set auth.cli_enforce_policy: false in config.yaml to bypass policy for CLI exec", checkErr, configDir)
+		}
+	}
+
 	// Show confirmation prompt unless --yes flag or skip_confirm config is set
 	if !skipConfirm && !cfg.Auth.SkipConfirm {
 		confirmed, err := confirmSecrets(secrets, args[0])

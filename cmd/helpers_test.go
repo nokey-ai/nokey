@@ -88,11 +88,20 @@ func withTestKeyring(t *testing.T, store *nkeyring.Store) {
 }
 
 // withTestConfig overrides the global cfg and restores it on cleanup.
+// Also isolates config.ConfigDir to a fresh temp dir so any policy/config
+// file reads during the test don't accidentally pick up the developer's
+// real ~/.config/nokey contents.
 func withTestConfig(t *testing.T, c *config.Config) {
 	t.Helper()
 	old := cfg
-	t.Cleanup(func() { cfg = old })
+	oldDir := config.ConfigDir
+	dir := t.TempDir()
+	t.Cleanup(func() {
+		cfg = old
+		config.ConfigDir = oldDir
+	})
 	cfg = c
+	config.ConfigDir = func() (string, error) { return dir, nil }
 }
 
 // captureStdout captures stdout writes during fn() and returns the captured text.

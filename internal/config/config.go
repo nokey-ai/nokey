@@ -42,12 +42,16 @@ type OAuthConfig struct {
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	DefaultMethod string      `yaml:"default_method,omitempty"`  // "pin", "oauth", "both", "none"
-	SessionTTL    string      `yaml:"session_ttl,omitempty"`     // duration string, e.g. "15m" (default), max "8h"
-	SkipConfirm   bool        `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
-	AutoMintToken bool        `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
-	UseBiometrics *bool       `yaml:"use_biometrics,omitempty"`  // use Touch ID on macOS (default: true on macOS)
-	OAuth         OAuthConfig `yaml:"oauth,omitempty"`
+	DefaultMethod string `yaml:"default_method,omitempty"`  // "pin", "oauth", "both", "none"
+	SessionTTL    string `yaml:"session_ttl,omitempty"`     // duration string, e.g. "15m" (default), max "8h"
+	SkipConfirm   bool   `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
+	AutoMintToken bool   `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
+	UseBiometrics *bool  `yaml:"use_biometrics,omitempty"`  // use Touch ID on macOS (default: true on macOS)
+	// CLIEnforcePolicy controls whether policies.yaml rules are applied to
+	// `nokey exec` invocations. Defaults to true. Set false to bypass policy
+	// for the local CLI while still enforcing it for MCP and the proxy.
+	CLIEnforcePolicy *bool       `yaml:"cli_enforce_policy,omitempty"`
+	OAuth            OAuthConfig `yaml:"oauth,omitempty"`
 }
 
 // Config represents the nokey configuration

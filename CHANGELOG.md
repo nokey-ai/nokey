@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `nokey exec` now enforces `policies.yaml` rules. Previously the policy
+  file was honoured only by the MCP server and the proxy, so a user who
+  wrote rules expecting them to apply at the CLI was silently bypassed.
+  When no `policies.yaml` exists the behaviour is unchanged (allow-all).
+  To restore the old CLI-bypass behaviour, set
+  `auth.cli_enforce_policy: false` in `config.yaml`.
+
 ### Fixed
 - File backend: store keyring entries in `~/.config/nokey/keyring/` instead
   of the parent config dir. The library treated every file in `FileDir`
