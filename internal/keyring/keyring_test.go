@@ -5,13 +5,16 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/byteness/keyring"
 )
 
-// mockRing is an in-memory keyring.Keyring for testing.
+// mockRing is an in-memory keyring.Keyring for testing. The mutex makes
+// it safe to use from concurrent tests; Store has its own cache mutex.
 type mockRing struct {
+	mu    sync.Mutex
 	items map[string]keyring.Item
 }
 
@@ -20,6 +23,8 @@ func newMockRing() *mockRing {
 }
 
 func (m *mockRing) Get(key string) (keyring.Item, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	item, ok := m.items[key]
 	if !ok {
 		return keyring.Item{}, keyring.ErrKeyNotFound
@@ -32,11 +37,15 @@ func (m *mockRing) GetMetadata(_ string) (keyring.Metadata, error) {
 }
 
 func (m *mockRing) Set(item keyring.Item) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.items[item.Key] = item
 	return nil
 }
 
 func (m *mockRing) Remove(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, ok := m.items[key]; !ok {
 		return keyring.ErrKeyNotFound
 	}
@@ -45,6 +54,8 @@ func (m *mockRing) Remove(key string) error {
 }
 
 func (m *mockRing) Keys() ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	keys := make([]string, 0, len(m.items))
 	for k := range m.items {
 		keys = append(keys, k)
@@ -962,4 +973,37 @@ func TestNew_KeychainTrustEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+}
+
+// TestStore_Cache_ConcurrentAccess exercises Set/Get/Delete from many
+// goroutines so the race detector can flag any unsynchronized access to
+// Store.cache. Failure mode without the mutex: -race reports a data race
+// on the cache map.
+func TestStore_Cache_ConcurrentAccess(t *testing.T) {
+	s := newTestStore()
+	const workers = 16
+	const ops = 200
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < ops; i++ {
+				key := fmt.Sprintf("KEY_%d_%d", w, i%4)
+				if err := s.Set(key, fmt.Sprintf("v%d", i)); err != nil {
+					t.Errorf("Set: %v", err)
+					return
+				}
+				if _, err := s.Get(key); err != nil {
+					t.Errorf("Get: %v", err)
+					return
+				}
+				if i%3 == 0 {
+					_ = s.Delete(key)
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
 }

@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/nokey-ai/nokey/internal/sensitive"
@@ -42,6 +43,7 @@ func ValidateSecretName(name string) error {
 type Store struct {
 	ring        keyring.Keyring
 	serviceName string
+	mu          sync.RWMutex // guards cache
 	cache       map[string]keyring.Item
 }
 
@@ -132,7 +134,9 @@ func (s *Store) Set(key, value string) error {
 		return fmt.Errorf("failed to store secret: %w", err)
 	}
 
+	s.mu.Lock()
 	s.cache[key] = item
+	s.mu.Unlock()
 	return nil
 }
 
@@ -142,9 +146,12 @@ func (s *Store) Get(key string) (string, error) {
 		return "", fmt.Errorf("key cannot be empty")
 	}
 
+	s.mu.RLock()
 	if item, ok := s.cache[key]; ok {
+		s.mu.RUnlock()
 		return string(item.Data), nil
 	}
+	s.mu.RUnlock()
 
 	item, err := s.ring.Get(key)
 	if err != nil {
@@ -154,7 +161,9 @@ func (s *Store) Get(key string) (string, error) {
 		return "", fmt.Errorf("failed to retrieve secret: %w", err)
 	}
 
+	s.mu.Lock()
 	s.cache[key] = item
+	s.mu.Unlock()
 	return string(item.Data), nil
 }
 
@@ -171,7 +180,9 @@ func (s *Store) Delete(key string) error {
 		return fmt.Errorf("failed to delete secret: %w", err)
 	}
 
+	s.mu.Lock()
 	delete(s.cache, key)
+	s.mu.Unlock()
 	return nil
 }
 
@@ -397,7 +408,9 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 		// Cache a deep copy — the deferred zeroing will zero entries' backing arrays
 		cached := e.item
 		cached.Data = bytes.Clone(e.item.Data)
+		s.mu.Lock()
 		s.cache[e.key] = cached
+		s.mu.Unlock()
 	}
 
 	return len(entries), nil
