@@ -34,6 +34,12 @@ type Server struct {
 	running        bool
 	blockUnmatched bool              // if true, reject requests to hosts with no matching proxy rule
 	transport      http.RoundTripper // forward transport; nil falls back to http.DefaultTransport
+	// inflight tracks hijacked CONNECT goroutines. http.Server.Shutdown
+	// does not wait on hijacked connections, so Stop uses this to drain
+	// them before clearing s.secrets — otherwise an in-flight request
+	// loop in handleConnect would read a nil secrets map mid-RoundTrip.
+	inflight      sync.WaitGroup
+	inflightConns sync.Map // *tls.Conn → struct{}; force-closed on Stop to unblock ReadRequest
 }
 
 // SetTransport overrides the round-tripper used to forward proxied
@@ -107,17 +113,37 @@ func (s *Server) Start(addr string) (string, error) {
 }
 
 // Stop gracefully shuts down the proxy server.
+// Order matters: shut down the http.Server first to refuse new
+// connections, wait for in-flight hijacked CONNECT goroutines to
+// finish, and only then clear the secrets map. Reversing this risks
+// in-flight goroutines reading a nil map mid-request.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if !s.running {
+		s.mu.Unlock()
 		return nil
 	}
 	s.running = false
+	srv := s.server
+	s.mu.Unlock()
+
+	shutdownErr := srv.Shutdown(ctx)
+
+	// Force-close hijacked TLS conns so blocked ReadRequest calls
+	// inside handleConnect return immediately; otherwise idle clients
+	// (between requests on the same tunnel) would hang inflight.Wait.
+	s.inflightConns.Range(func(k, _ any) bool {
+		_ = k.(*tls.Conn).Close()
+		return true
+	})
+	s.inflight.Wait()
+
+	s.mu.Lock()
 	sensitive.ClearMap(s.secrets)
 	s.secrets = nil
-	return s.server.Shutdown(ctx)
+	s.mu.Unlock()
+
+	return shutdownErr
 }
 
 // Addr returns the proxy's listen address, or empty if not running.
@@ -218,6 +244,10 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	// Register the hijacked goroutine so Stop can wait for it to drain
+	// before clearing s.secrets.
+	s.inflight.Add(1)
+	defer s.inflight.Done()
 	defer clientConn.Close()
 
 	// Clear deadlines for the tunneled connection
@@ -242,6 +272,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tlsConn.Close()
+
+	// Track the live TLS conn so Stop can force-close it to unblock the
+	// read loop below.
+	s.inflightConns.Store(tlsConn, struct{}{})
+	defer s.inflightConns.Delete(tlsConn)
 
 	// Read requests from the TLS connection.
 	reader := bufio.NewReader(tlsConn)

@@ -295,6 +295,107 @@ func TestGracefulShutdown(t *testing.T) {
 	}
 }
 
+// TestStopDrainsInflightCONNECT verifies that Stop blocks until any
+// hijacked CONNECT goroutine has exited. Without the drain, Stop would
+// return while the read loop in handleConnect was still alive, and an
+// in-flight RoundTrip could call ResolveHeaders against a nil secrets
+// map (silently dropping secrets from the response).
+func TestStopDrainsInflightCONNECT(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "ok")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
+	host := stripPort(upstreamHost)
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{{
+		Hosts:   []string{host},
+		Headers: map[string]string{"X-Api-Key": "$KEY"},
+		Secrets: []string{"KEY"},
+	}}
+	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	upstreamPool := x509.NewCertPool()
+	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatalf("parse upstream cert: %v", err)
+	}
+	upstreamPool.AddCert(upstreamCert)
+	srv.SetTransport(&http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: upstreamPool, MinVersion: tls.VersionTLS12},
+	})
+
+	proxyPool := x509.NewCertPool()
+	proxyPool.AddCert(ca.Cert)
+
+	proxyURL, _ := url.Parse("http://" + addr)
+	clientTransport := &http.Transport{
+		Proxy: http.ProxyURL(proxyURL),
+		TLSClientConfig: &tls.Config{
+			RootCAs:    proxyPool,
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	client := &http.Client{Transport: clientTransport}
+
+	// Fire one request through the CONNECT tunnel. After the response,
+	// the client keeps the tunnel open in its idle pool, so the
+	// handleConnect goroutine returns to ReadRequest and blocks
+	// indefinitely — that's the state we need Stop to drain.
+	resp, err := client.Get(upstream.URL + "/")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
+
+	// Sanity check: the tunnel goroutine is still alive.
+	srv.inflight.Add(0) // no-op, just for clarity
+	if !inflightAlive(srv) {
+		t.Fatal("expected an in-flight tunnel goroutine after request — test setup is wrong")
+	}
+
+	if err := srv.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop: %v", err)
+	}
+
+	// After Stop returns, the inflight goroutine must be gone — that's
+	// the guarantee. Without the fix, Stop returns immediately and the
+	// goroutine is still parked in ReadRequest.
+	if inflightAlive(srv) {
+		t.Fatal("inflight CONNECT goroutine still alive after Stop returned")
+	}
+
+	// Secrets must have been zeroed only after drain — verify they're nil
+	// now (defense-in-depth that Stop actually completed cleanup).
+	srv.mu.Lock()
+	secretsAfter := srv.secrets
+	srv.mu.Unlock()
+	if secretsAfter != nil {
+		t.Errorf("secrets not cleared after Stop: %v", secretsAfter)
+	}
+
+	clientTransport.CloseIdleConnections()
+}
+
+// inflightAlive reports whether any tunnel goroutine is currently
+// tracked in s.inflightConns. Used by the drain test to assert the
+// goroutine is gone after Stop returns.
+func inflightAlive(s *Server) bool {
+	alive := false
+	s.inflightConns.Range(func(_, _ any) bool {
+		alive = true
+		return false
+	})
+	return alive
+}
+
 func TestBlockUnmatchedHTTP(t *testing.T) {
 	// Upstream should never be reached when egress is blocked.
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
