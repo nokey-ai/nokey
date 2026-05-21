@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-05-21
+
+### Security
+- Proxy CONNECT now validates the TLS SNI and inner request `Host`
+  header against the CONNECT-line host. Previously a client could
+  CONNECT to an allow-listed host (binding that host's rules and
+  injected headers to the tunnel) and then send inner requests for
+  any other host — the proxy would still inject the allow-listed
+  host's secrets because rule matching keyed off the outer host. SNI
+  mismatch terminates the tunnel; inner `Host` mismatch returns 421
+  Misdirected Request and skips the upstream call. Literal-IP
+  CONNECT hosts are exempt from the SNI check (RFC 6066).
+
+### Fixed
+- `nokey set --stdin` now preserves multi-line values. Previously
+  `bufio.Scanner` returned only the first line, so piping a PEM
+  block, JSON service-account, or any newline-containing secret
+  silently stored just the first line.
+- Concurrent `audit.Record` calls (e.g. parallel MCP tool calls) no
+  longer break the hash chain. The load-head / append / save-head
+  sequence is now serialized; two concurrent callers could previously
+  both append with the same `prev_hmac` and one chain-head write
+  would clobber the other, producing permanent "chain break"
+  warnings on subsequent loads.
+- Proxy `Stop()` now drains in-flight CONNECT goroutines before
+  clearing the secrets map. Hijacked TLS conns are not tracked by
+  `http.Server.Shutdown`, so in-flight ResolveHeaders calls could
+  read a nil map and silently drop injected headers from concurrent
+  requests.
+- Proxy CONNECT now skips the upstream RoundTrip when
+  `ResolveHeaders` fails. The 502 was already returned to the
+  client, but execution still fell through to the upstream call
+  without the intended header.
+- `keyring.Store.cache` map is now guarded by a mutex. Safe today
+  because MCP creates a fresh `Store` per request, but any future
+  caller that retains a `Store` across goroutines would race.
+
 ### Changed
 - `nokey exec` now enforces `policies.yaml` rules. Previously the policy
   file was honoured only by the MCP server and the proxy, so a user who
@@ -14,8 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   When no `policies.yaml` exists the behaviour is unchanged (allow-all).
   To restore the old CLI-bypass behaviour, set
   `auth.cli_enforce_policy: false` in `config.yaml`.
-
-### Fixed
 - File backend: store keyring entries in `~/.config/nokey/keyring/` instead
   of the parent config dir. The library treated every file in `FileDir`
   as a keyring entry, so once `nokey init` (or audit/session) wrote
