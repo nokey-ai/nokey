@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -41,14 +42,13 @@ func runSet(cmd *cobra.Command, args []string) error {
 	var err error
 
 	if useStdin {
-		// Read from stdin
-		scanner := bufio.NewScanner(os.Stdin)
-		if scanner.Scan() {
-			value = scanner.Text()
-		}
-		if err := scanner.Err(); err != nil {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
 			return fmt.Errorf("failed to read from stdin: %w", err)
 		}
+		// Preserve interior content (PEM blocks, JSON, multi-line tokens)
+		// but strip a single trailing newline added by most shells.
+		value = strings.TrimRight(string(data), "\r\n")
 	} else {
 		// Prompt for value securely (no echo)
 		fmt.Fprintf(os.Stderr, "Enter value for %s: ", key)
@@ -72,10 +72,8 @@ func runSet(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("failed to read value: %w", err)
 			}
 		}
+		value = strings.TrimSpace(value)
 	}
-
-	// Trim whitespace
-	value = strings.TrimSpace(value)
 
 	if value == "" {
 		return fmt.Errorf("value cannot be empty")

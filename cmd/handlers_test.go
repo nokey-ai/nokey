@@ -201,6 +201,35 @@ func TestRunSet_Stdin(t *testing.T) {
 	}
 }
 
+func TestRunSet_Stdin_Multiline(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	withTestConfig(t, c)
+
+	oldUseStdin := useStdin
+	t.Cleanup(func() { useStdin = oldUseStdin })
+	useStdin = true
+
+	pem := "-----BEGIN PRIVATE KEY-----\nline1\nline2\n-----END PRIVATE KEY-----\n"
+	withStdin(t, pem)
+
+	if err := runSet(nil, []string{"PEM_KEY"}); err != nil {
+		t.Fatalf("runSet: %v", err)
+	}
+
+	got, err := store.Get("PEM_KEY")
+	if err != nil {
+		t.Fatalf("store.Get: %v", err)
+	}
+	// Trailing newline stripped, interior preserved.
+	want := "-----BEGIN PRIVATE KEY-----\nline1\nline2\n-----END PRIVATE KEY-----"
+	if got != want {
+		t.Errorf("stored value = %q, want %q", got, want)
+	}
+}
+
 func TestRunSet_EmptyValue(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
