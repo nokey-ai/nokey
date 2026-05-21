@@ -273,6 +273,21 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tlsConn.Close()
 
+	// Validate the TLS SNI matches the CONNECT-line host. Without this,
+	// a client could CONNECT to an allow-listed host (and get policy rules
+	// + secret injection bound to it) but then negotiate TLS for any
+	// other host. RFC 6066 forbids SNI for literal IPs, so we only
+	// enforce the check when the CONNECT host is a DNS name. Missing SNI
+	// on a DNS host is rejected — every modern HTTPS client sends it,
+	// and silence would let a hostile client bypass this check.
+	if net.ParseIP(host) == nil {
+		sni := tlsConn.ConnectionState().ServerName
+		if sni == "" || !strings.EqualFold(sni, host) {
+			s.audit("proxy:https:blocked", host, nil, false, fmt.Sprintf("SNI %q does not match CONNECT host %q", sni, host))
+			return
+		}
+	}
+
 	// Track the live TLS conn so Stop can force-close it to unblock the
 	// read loop below.
 	s.inflightConns.Store(tlsConn, struct{}{})
@@ -284,6 +299,26 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		req, err := http.ReadRequest(reader)
 		if err != nil {
 			return // Client closed connection or read error.
+		}
+
+		// Validate the inner request Host matches the CONNECT-line host.
+		// Even with SNI pinned, the inner HTTP/1.1 request can carry an
+		// arbitrary Host header — without this check a client could
+		// tunnel CONNECT example.com:443 and then send GET /
+		// Host: api.attacker.com and have api.attacker.com's secrets
+		// injected if both rules matched.
+		if !strings.EqualFold(stripPort(req.Host), host) {
+			s.audit("proxy:https:blocked", host, nil, false, fmt.Sprintf("inner Host %q does not match CONNECT host %q", req.Host, host))
+			resp := &http.Response{
+				StatusCode: http.StatusMisdirectedRequest,
+				ProtoMajor: 1,
+				ProtoMinor: 1,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader("nokey proxy: inner Host header does not match CONNECT host")),
+			}
+			resp.Header.Set("Content-Type", "text/plain")
+			_ = resp.Write(tlsConn)
+			return
 		}
 
 		// Set the full URL for the upstream request.

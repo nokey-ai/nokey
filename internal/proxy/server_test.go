@@ -1,11 +1,13 @@
 package proxy
 
 import (
+	"bufio"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -394,6 +396,97 @@ func inflightAlive(s *Server) bool {
 		return false
 	})
 	return alive
+}
+
+// TestCONNECTRejectsHostMismatch verifies that an inner request whose
+// Host header differs from the CONNECT-line host is rejected with 421
+// and no upstream RoundTrip fires. Without this check, a client could
+// CONNECT to an allow-listed host and then tunnel requests for any
+// other host, smuggling the allow-listed host's headers/secrets onto
+// an unrelated origin.
+func TestCONNECTRejectsHostMismatch(t *testing.T) {
+	upstreamReached := false
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamReached = true
+		fmt.Fprint(w, "ok")
+	}))
+	defer upstream.Close()
+
+	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
+	host := stripPort(upstreamHost)
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{{
+		Hosts:   []string{host},
+		Headers: map[string]string{"X-Api-Key": "$KEY"},
+		Secrets: []string{"KEY"},
+	}}
+	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	upstreamPool := x509.NewCertPool()
+	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
+	if err != nil {
+		t.Fatalf("parse upstream cert: %v", err)
+	}
+	upstreamPool.AddCert(upstreamCert)
+	srv.SetTransport(&http.Transport{
+		TLSClientConfig: &tls.Config{RootCAs: upstreamPool, MinVersion: tls.VersionTLS12},
+	})
+
+	proxyPool := x509.NewCertPool()
+	proxyPool.AddCert(ca.Cert)
+
+	// Dial the proxy, CONNECT to the allow-listed upstream host:port,
+	// complete TLS using upstream host as ServerName, then send an
+	// inner request whose Host header is a different origin.
+	rawConn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Dial proxy: %v", err)
+	}
+	defer rawConn.Close()
+
+	if _, err := fmt.Fprintf(rawConn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", upstreamHost, upstreamHost); err != nil {
+		t.Fatalf("write CONNECT: %v", err)
+	}
+	br := bufio.NewReader(rawConn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: "CONNECT"})
+	if err != nil {
+		t.Fatalf("read CONNECT response: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("CONNECT status = %d, want 200", resp.StatusCode)
+	}
+
+	tlsClient := tls.Client(rawConn, &tls.Config{
+		ServerName: host, // matches CONNECT host so SNI check passes
+		RootCAs:    proxyPool,
+		MinVersion: tls.VersionTLS12,
+	})
+	if err := tlsClient.Handshake(); err != nil {
+		t.Fatalf("client handshake: %v", err)
+	}
+
+	// Smuggle a request with a different Host header.
+	if _, err := fmt.Fprintf(tlsClient, "GET / HTTP/1.1\r\nHost: api.attacker.com\r\nConnection: close\r\n\r\n"); err != nil {
+		t.Fatalf("write smuggled request: %v", err)
+	}
+	innerResp, err := http.ReadResponse(bufio.NewReader(tlsClient), nil)
+	if err != nil {
+		t.Fatalf("read smuggled response: %v", err)
+	}
+	defer innerResp.Body.Close()
+
+	if innerResp.StatusCode != http.StatusMisdirectedRequest {
+		t.Errorf("smuggled request status = %d, want 421", innerResp.StatusCode)
+	}
+	if upstreamReached {
+		t.Error("upstream was hit by smuggled request")
+	}
 }
 
 func TestBlockUnmatchedHTTP(t *testing.T) {
