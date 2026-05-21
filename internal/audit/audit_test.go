@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,8 +13,10 @@ import (
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 )
 
-// mockRing is an in-memory keyring.Keyring for testing.
+// mockRing is an in-memory keyring.Keyring for testing. The mutex makes
+// it safe for concurrent-access tests.
 type mockRing struct {
+	mu    sync.Mutex
 	items map[string]keyring.Item
 }
 
@@ -22,6 +25,8 @@ func newMockRing() *mockRing {
 }
 
 func (m *mockRing) Get(key string) (keyring.Item, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	item, ok := m.items[key]
 	if !ok {
 		return keyring.Item{}, keyring.ErrKeyNotFound
@@ -34,11 +39,15 @@ func (m *mockRing) GetMetadata(_ string) (keyring.Metadata, error) {
 }
 
 func (m *mockRing) Set(item keyring.Item) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.items[item.Key] = item
 	return nil
 }
 
 func (m *mockRing) Remove(key string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if _, ok := m.items[key]; !ok {
 		return keyring.ErrKeyNotFound
 	}
@@ -47,6 +56,8 @@ func (m *mockRing) Remove(key string) error {
 }
 
 func (m *mockRing) Keys() ([]string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	keys := make([]string, 0, len(m.items))
 	for k := range m.items {
 		keys = append(keys, k)
@@ -534,6 +545,56 @@ func TestRecord_MultipleEntries(t *testing.T) {
 	}
 	if len(log.Warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", log.Warnings)
+	}
+}
+
+// TestRecord_ConcurrentAppend verifies that concurrent Record calls
+// produce a well-formed chain with no break warnings. Without the
+// in-process mutex, two callers can both load the same head, both
+// append, and one chain-head write overwrites the other — the next
+// Load would then report a chain break on the displaced entry.
+func TestRecord_ConcurrentAppend(t *testing.T) {
+	store := newTestStore()
+	withTestAuditDir(t)
+
+	// Prime the encryption key so concurrent Record calls don't all try
+	// to create it. (Not strictly required for correctness — getOrCreate
+	// is locked — but keeps the test focused on the chain race.)
+	if err := Record(store, NewAuditEntry("setup", "prime", "none", nil, true, ""), 1000, 90); err != nil {
+		t.Fatalf("prime: %v", err)
+	}
+
+	const workers = 8
+	const perWorker = 15
+	const want = 1 + workers*perWorker
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < perWorker; i++ {
+				e := NewAuditEntry("exec", fmt.Sprintf("w%d-%d", w, i), "pin", nil, true, "")
+				if err := Record(store, e, 1000, 90); err != nil {
+					t.Errorf("Record: %v", err)
+					return
+				}
+			}
+		}(w)
+	}
+	wg.Wait()
+
+	log, err := Load(store)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(log.Entries) != want {
+		t.Errorf("got %d entries, want %d", len(log.Entries), want)
+	}
+	for _, w := range log.Warnings {
+		if strings.Contains(w, "chain break") || strings.Contains(w, "tampering") || strings.Contains(w, "truncation") {
+			t.Errorf("unexpected integrity warning: %s", w)
+		}
 	}
 }
 

@@ -138,9 +138,19 @@ func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
 	return readAndVerifyFile(filePath, encKey, hmacKey, head)
 }
 
+// recordMu serializes the load-head / append / save-head sequence in
+// Record so concurrent in-process callers (e.g. parallel MCP tool calls)
+// cannot interleave and produce a broken hash chain. Cross-process
+// concurrent writes are still a hazard — a separate file lock would be
+// needed for that case, but today only one nokey process writes the log.
+var recordMu sync.Mutex
+
 // Record appends a new entry to the audit log file with chain integrity.
 // maxEntries and retentionDays control lazy compaction (triggered at 2x maxEntries).
 func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionDays int) error {
+	recordMu.Lock()
+	defer recordMu.Unlock()
+
 	encKey, err := getOrCreateEncryptionKey(store)
 	if err != nil {
 		return fmt.Errorf("failed to get encryption key: %w", err)
