@@ -19,6 +19,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mismatch terminates the tunnel; inner `Host` mismatch returns 421
   Misdirected Request and skips the upstream call. Literal-IP
   CONNECT hosts are exempt from the SNI check (RFC 6066).
+- Pin Go toolchain to 1.26.3, closing 9 stdlib vulnerabilities
+  reachable from nokey under 1.26.1: GO-2026-4865/4866/4946/4947
+  (crypto/x509), GO-2026-4870 (crypto/tls KeyUpdate DoS), GO-2026-4918
+  (net/http HTTP/2 loop), GO-2026-4971 (net Dial NUL panic on Windows),
+  GO-2026-4865/4980/4982 (html/template XSS in the OAuth callback page).
+- MCP `HandleExec` now consults the policy before reading any secret
+  values. Previously it called `store.GetAll()` first, so a request
+  policy ultimately denied still unlocked the keyring and pulled every
+  secret into memory. New ordering: list names → filter by `only`/
+  `except` → policy check → token/approval → fetch surviving values.
+- OAuth callback state comparison now uses `subtle.ConstantTimeCompare`
+  instead of string `!=`, removing a faint timing oracle on the CSRF
+  token. Practical exposure was small (32 random bytes) but a secrets
+  manager should not offer any.
 
 ### Fixed
 - `nokey set --stdin` now preserves multi-line values. Previously
@@ -31,6 +45,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   both append with the same `prev_hmac` and one chain-head write
   would clobber the other, producing permanent "chain break"
   warnings on subsequent loads.
+- Audit chain verifier now warns when the log file has more entries
+  than the chain head records. Truncation was already flagged; the
+  append case relied on the encrypted-payload check incidentally
+  failing on the crafted bytes, which isn't a guaranteed signal.
+- Audit encryption-key cache holds its mutex across the load. The
+  previous double-checked-lock dropped the lock between the nil check
+  and the load, so two concurrent first callers could both write to
+  the keyring — causing an extra user-visible keychain prompt on
+  fresh installs.
 - Proxy `Stop()` now drains in-flight CONNECT goroutines before
   clearing the secrets map. Hijacked TLS conns are not tracked by
   `http.Server.Shutdown`, so in-flight ResolveHeaders calls could
@@ -40,6 +63,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `ResolveHeaders` fails. The 502 was already returned to the
   client, but execution still fell through to the upstream call
   without the intended header.
+- Redact `Run()` now waits for its three spawned goroutines (SIGWINCH
+  handler, signal forwarder, stdin→PTY copy) before returning. They
+  previously outlived the call, racing with any caller that swapped
+  `os.Stdin` after `Run` returned (race detector flagged this in
+  `TestRun_NoSecrets` / `TestRun_BasicExecution`).
 - `keyring.Store.cache` map is now guarded by a mutex. Safe today
   because MCP creates a fresh `Store` per request, but any future
   caller that retains a `Store` across goroutines would race.
@@ -58,6 +86,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   secrets, `nokey list` would show those as fake "secrets" and `nokey
   exec`/`mcp` failed with `illegal base64 data`. Existing file-backend
   installs are migrated automatically on first run; aux files stay put.
+- Integration HTTP client now has a 30s default timeout. The caller's
+  context deadline still applies; this is defence in depth against a
+  caller that forgets to set one.
+- Proxy now uses a per-instance forward transport (`Server.SetTransport`)
+  instead of mutating `http.DefaultTransport`. Production behaviour
+  unchanged — `forwardTransport()` falls back to `http.DefaultTransport`
+  when unset — but tests that previously swapped the global no longer
+  race with in-flight CONNECT goroutines.
 
 ## [0.2.0] - 2026-03-24
 
