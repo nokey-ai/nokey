@@ -578,6 +578,102 @@ unknown_field: true
 	}
 }
 
+func TestDefaultConfig_KeyringDefaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Keyring.Dedicated != nil {
+		t.Errorf("Keyring.Dedicated should be nil by default, got %v", *cfg.Keyring.Dedicated)
+	}
+	if cfg.Keyring.Name != "" {
+		t.Errorf("Keyring.Name should be empty by default, got %q", cfg.Keyring.Name)
+	}
+}
+
+func TestSaveAndLoad_KeyringConfig(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	dedicated := true
+	cfg := &Config{
+		ServiceName: "nokey",
+		Keyring: KeyringConfig{
+			Dedicated: &dedicated,
+			Name:      "custom-keychain",
+		},
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.Keyring.Dedicated == nil {
+		t.Fatal("Keyring.Dedicated should not be nil after round-trip")
+	}
+	if *loaded.Keyring.Dedicated != true {
+		t.Errorf("Keyring.Dedicated = %v, want true", *loaded.Keyring.Dedicated)
+	}
+	if loaded.Keyring.Name != "custom-keychain" {
+		t.Errorf("Keyring.Name = %q, want %q", loaded.Keyring.Name, "custom-keychain")
+	}
+}
+
+func TestSaveAndLoad_KeyringConfig_NilDedicated(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	cfg := &Config{
+		ServiceName: "nokey",
+		Keyring:     KeyringConfig{}, // both zero
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.Keyring.Dedicated != nil {
+		t.Errorf("Keyring.Dedicated should remain nil after round-trip of zero value")
+	}
+	if loaded.Keyring.Name != "" {
+		t.Errorf("Keyring.Name = %q, want empty", loaded.Keyring.Name)
+	}
+}
+
+func TestSaveAndLoad_KeyringConfig_ExplicitFalse(t *testing.T) {
+	tempDir := t.TempDir()
+	t.Setenv("HOME", tempDir)
+
+	dedicated := false
+	cfg := &Config{
+		ServiceName: "nokey",
+		Keyring:     KeyringConfig{Dedicated: &dedicated},
+	}
+
+	if err := Save(cfg); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	if loaded.Keyring.Dedicated == nil {
+		t.Fatal("Keyring.Dedicated should not be nil when explicitly set to false")
+	}
+	if *loaded.Keyring.Dedicated != false {
+		t.Errorf("Keyring.Dedicated = %v, want false", *loaded.Keyring.Dedicated)
+	}
+}
+
 func TestLoadStrict_NoFile(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)

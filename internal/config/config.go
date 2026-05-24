@@ -40,6 +40,14 @@ type OAuthConfig struct {
 	Custom OAuthCustomConfig `yaml:"custom,omitempty"`
 }
 
+// KeyringConfig contains keyring backend configuration.
+// Lives at the top level of Config (not under Auth) because it controls
+// the storage backend, not authentication policy.
+type KeyringConfig struct {
+	Dedicated *bool  `yaml:"dedicated,omitempty"` // use a dedicated keychain file on macOS (default false in v0.5.0; opt-in)
+	Name      string `yaml:"name,omitempty"`      // keychain file name (default "nokey"; only meaningful when Dedicated=true)
+}
+
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
 	DefaultMethod string `yaml:"default_method,omitempty"`  // "pin", "oauth", "both", "none"
@@ -76,6 +84,10 @@ type Config struct {
 
 	// Auth contains authentication configuration
 	Auth AuthConfig `yaml:"auth,omitempty"`
+
+	// Keyring controls keyring backend behaviour (e.g. dedicated macOS
+	// keychain file). Additive and nil-safe; absent means use defaults.
+	Keyring KeyringConfig `yaml:"keyring,omitempty"`
 }
 
 // DefaultConfig returns a config with sensible defaults
