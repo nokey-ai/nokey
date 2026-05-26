@@ -236,7 +236,13 @@ func init() {
 	rootCmd.AddCommand(keychainCmd)
 }
 
-// checkKeychainMigrationHint prints a one-time hint if existing items need migration.
+// checkKeychainMigrationHint prints a one-time hint if existing items need
+// migration. The hint advertises the legacy `keychain migrate` command
+// (re-ACLs login-keychain items to trust the current binary). It is
+// suppressed on every install where the legacy command would be the wrong
+// advice: non-macOS, biometrics explicitly disabled, already migrated to
+// the dedicated keychain, or running in dedicated-keychain mode at all —
+// users on dedicated mode use `to-dedicated`, not the legacy migrate.
 func checkKeychainMigrationHint() {
 	if keychainGOOS != "darwin" {
 		return
@@ -244,11 +250,14 @@ func checkKeychainMigrationHint() {
 	if cfg == nil || (cfg.Auth.UseBiometrics != nil && !*cfg.Auth.UseBiometrics) {
 		return
 	}
+	if dedicatedConfigEnabled() {
+		return
+	}
 	store, err := getKeyring()
 	if err != nil {
 		return
 	}
-	if store.IsKeychainMigrated() {
+	if store.IsKeychainMigrated() || store.IsMigratedToDedicated() {
 		return
 	}
 	keys, err := store.AllKeys()

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -650,6 +651,72 @@ func withFromDedicatedGlobals(t *testing.T) {
 	// Default both to no-ops so tests don't shell out or touch the real FS.
 	deleteOrphanStashFn = func() error { return nil }
 	fileExistsFn = func(string) bool { return false }
+}
+
+func TestCheckKeychainMigrationHint(t *testing.T) {
+	// Capture stderr around a single call.
+	run := func(t *testing.T, setup func(t *testing.T)) string {
+		t.Helper()
+		old := os.Stderr
+		r, w, _ := os.Pipe()
+		os.Stderr = w
+		defer func() { os.Stderr = old }()
+		setup(t)
+		checkKeychainMigrationHint()
+		_ = w.Close()
+		out, _ := io.ReadAll(r)
+		return string(out)
+	}
+
+	t.Run("suppressed_when_dedicated_enabled", func(t *testing.T) {
+		store, _ := newTestStore()
+		store.Set("FOO", "bar")
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		// Dedicated enabled — hint must NOT print even if items exist and
+		// legacy migrate sentinel is absent.
+		c := config.DefaultConfig()
+		c.Keyring.Dedicated = dedicatedTrue()
+		withTestConfig(t, c)
+
+		got := run(t, func(t *testing.T) {})
+		if got != "" {
+			t.Errorf("expected no hint when dedicated enabled, got: %q", got)
+		}
+	})
+
+	t.Run("suppressed_when_migrated_to_dedicated_sentinel_present", func(t *testing.T) {
+		store, _ := newTestStore()
+		store.Set("FOO", "bar")
+		// Simulate post-to-dedicated state: sentinel present in the current
+		// (dedicated) store.
+		if err := store.SetMigratedToDedicated(); err != nil {
+			t.Fatal(err)
+		}
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		// Even if config got toggled off, the sentinel itself signals the
+		// user already moved on — legacy hint is wrong.
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if got != "" {
+			t.Errorf("expected no hint when dedicated sentinel set, got: %q", got)
+		}
+	})
+
+	t.Run("prints_for_legacy_install_with_items", func(t *testing.T) {
+		store, _ := newTestStore()
+		store.Set("FOO", "bar")
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if !strings.Contains(got, "keychain migrate") {
+			t.Errorf("expected legacy hint, got: %q", got)
+		}
+	})
 }
 
 func TestPrintDedicatedSetupBannerIfFresh(t *testing.T) {
