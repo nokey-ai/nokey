@@ -90,5 +90,12 @@ func initConfig() {
 // It is a variable so tests can override it.
 var getKeyring = func() (*keyring.Store, error) {
 	bio := cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics
-	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio, false, "")
+	dedicated := cfg.Keyring.Dedicated != nil && *cfg.Keyring.Dedicated
+	// When the user opts in to a dedicated keychain, default the file name
+	// to "nokey" so config.yaml needs only a single boolean toggle.
+	keychainName := cfg.Keyring.Name
+	if dedicated && keychainName == "" {
+		keychainName = "nokey"
+	}
+	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio, dedicated, keychainName)
 }
