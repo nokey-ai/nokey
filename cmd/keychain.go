@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -52,7 +53,34 @@ var (
 
 	toDedicatedNoBackup bool
 	toDedicatedYes      bool
+
+	fromDedicatedYes  bool
+	pruneOrphanDryRun bool
 )
+
+// deleteOrphanStashFn deletes the orphan biometrics stash entry from the
+// login keychain via `security delete-generic-password`. Best-effort —
+// the entry may not exist. Wrapped so tests can no-op it.
+var deleteOrphanStashFn = func() error {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	// -s service, -a account; matches what byteness/keyring uses for the
+	// Touch ID stash.
+	cmd := exec.Command("/usr/bin/security", "delete-generic-password", "-s", "nokey", "-a", "com.nokey.biometrics")
+	_ = cmd.Run() // best-effort
+	return nil
+}
+
+// fileExistsFn reports whether path exists as a regular file. Wrapped so
+// prune-orphan tests don't have to fabricate ~/Library/Keychains entries.
+var fileExistsFn = func(path string) bool {
+	if path == "" {
+		return false
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
 
 // openKeyringForFn opens either the login (dedicated=false) or dedicated
 // (dedicated=true) keychain using the current config's biometrics setting
@@ -106,6 +134,32 @@ The resulting file can be re-imported with 'nokey keychain restore'.`,
 	RunE: runKeychainBackup,
 }
 
+var keychainFromDedicatedCmd = &cobra.Command{
+	Use:   "from-dedicated",
+	Short: "Roll back a to-dedicated migration: copy secrets from dedicated back to login keychain",
+	Long: `Reverses 'nokey keychain to-dedicated'. Requires the migration sentinel
+to be present on the dedicated keychain — refuses to run otherwise so the
+command cannot quietly do nothing on a never-migrated install. Same conflict
+semantics as to-dedicated: aborts atomically if any login-keychain value
+differs from what is being restored.
+
+The dedicated keychain file itself is left on disk; this command prints
+the exact 'security delete-keychain' invocation if you want to remove it.`,
+	RunE: runKeychainFromDedicated,
+}
+
+var keychainPruneOrphanCmd = &cobra.Command{
+	Use:   "prune-orphan",
+	Short: "Remove a stranded Touch ID stash from the login keychain",
+	Long: `byteness/keyring stashes a passphrase under nokey/com.nokey.biometrics
+in the login keychain to back the dedicated keychain's Touch ID prompt.
+If the dedicated keychain file is deleted manually, that stash becomes
+an orphan — this command detects and removes it.
+
+Use --dry-run to see what would be removed without modifying anything.`,
+	RunE: runKeychainPruneOrphan,
+}
+
 var keychainToDedicatedCmd = &cobra.Command{
 	Use:   "to-dedicated",
 	Short: "Migrate secrets from the login keychain into the configured dedicated keychain",
@@ -147,10 +201,15 @@ func init() {
 	keychainToDedicatedCmd.Flags().BoolVar(&toDedicatedNoBackup, "no-backup", false, "Skip the pre-migration encrypted backup (not recommended)")
 	keychainToDedicatedCmd.Flags().BoolVar(&toDedicatedYes, "yes", false, "Skip confirmation prompt")
 
+	keychainFromDedicatedCmd.Flags().BoolVar(&fromDedicatedYes, "yes", false, "Skip confirmation prompt")
+	keychainPruneOrphanCmd.Flags().BoolVar(&pruneOrphanDryRun, "dry-run", false, "Show what would be removed without modifying")
+
 	keychainCmd.AddCommand(keychainMigrateCmd)
 	keychainCmd.AddCommand(keychainBackupCmd)
 	keychainCmd.AddCommand(keychainRestoreCmd)
 	keychainCmd.AddCommand(keychainToDedicatedCmd)
+	keychainCmd.AddCommand(keychainFromDedicatedCmd)
+	keychainCmd.AddCommand(keychainPruneOrphanCmd)
 	rootCmd.AddCommand(keychainCmd)
 }
 
@@ -528,4 +587,149 @@ func effectiveKeychainName() string {
 		return cfg.Keyring.Name
 	}
 	return "nokey"
+}
+
+func runKeychainFromDedicated(cmd *cobra.Command, args []string) error {
+	srcStore, err := openKeyringForFn(true) // dedicated is the SOURCE for rollback
+	if err != nil {
+		return fmt.Errorf("open dedicated keychain: %w", err)
+	}
+	if !srcStore.IsMigratedToDedicated() {
+		return fmt.Errorf("no migration sentinel found on the dedicated keychain — nothing to roll back. Run 'nokey keychain to-dedicated' first or check that keyring.dedicated is enabled in config")
+	}
+
+	dstStore, err := openKeyringForFn(false) // login is the destination
+	if err != nil {
+		return fmt.Errorf("open login keychain: %w", err)
+	}
+
+	if !fromDedicatedYes {
+		fmt.Print("This will copy every secret from the dedicated keychain back into the login keychain.\nContinue? [y/N] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	secrets, err := loadAllSecretsFn(srcStore)
+	if err != nil {
+		return fmt.Errorf("load dedicated secrets: %w", err)
+	}
+	filtered := make(map[string]string, len(secrets))
+	for k, v := range secrets {
+		if strings.HasPrefix(k, "__nokey_") {
+			continue
+		}
+		filtered[k] = v
+	}
+
+	var toWrite, alreadyPresent, conflicts []string
+	for k, v := range filtered {
+		existing, err := dstStore.Get(k)
+		if err != nil {
+			if nkeyring.IsNotFound(err) {
+				toWrite = append(toWrite, k)
+				continue
+			}
+			return fmt.Errorf("inspect login %s: %w", k, err)
+		}
+		if existing == v {
+			alreadyPresent = append(alreadyPresent, k)
+		} else {
+			conflicts = append(conflicts, k)
+		}
+	}
+
+	if len(conflicts) > 0 {
+		return fmt.Errorf("login keychain already contains conflicting values for %d secret(s): %s\n\nDelete the conflicting login-keychain entries (security delete-generic-password -s %s -a <name>) and re-run",
+			len(conflicts), strings.Join(conflicts, ", "), cfg.ServiceName)
+	}
+
+	for _, k := range toWrite {
+		if err := dstStore.Set(k, filtered[k]); err != nil {
+			return fmt.Errorf("write %s to login keychain: %w", k, err)
+		}
+	}
+
+	// Roundtrip verify before clearing the sentinel — if any value
+	// failed to land we want the migration to remain "in progress" so a
+	// re-run picks up the rest.
+	for _, k := range toWrite {
+		got, err := dstStore.Get(k)
+		if err != nil {
+			return fmt.Errorf("verify %s: %w", k, err)
+		}
+		if got != filtered[k] {
+			return fmt.Errorf("verify %s: login value differs from dedicated source", k)
+		}
+	}
+
+	if err := srcStore.DeleteMigratedToDedicated(); err != nil {
+		return fmt.Errorf("clear migration sentinel: %w", err)
+	}
+
+	// Drop the orphan Touch ID stash from the login keychain — once the
+	// dedicated keychain is no longer in use, this entry has nothing to
+	// authorise but would still survive a manual file delete and confuse
+	// future runs.
+	_ = deleteOrphanStashFn()
+
+	fmt.Printf("Rolled back %d secret(s) to the login keychain (%d already present).\n", len(toWrite), len(alreadyPresent))
+	if dstPath := nkeyring.DedicatedKeychainPath(effectiveKeychainName()); dstPath != "" {
+		fmt.Printf("Dedicated keychain file left at %s\n", dstPath)
+		fmt.Printf("Delete it manually with: security delete-keychain %s\n", dstPath)
+	}
+	return nil
+}
+
+func runKeychainPruneOrphan(cmd *cobra.Command, args []string) error {
+	if keychainGOOS != "darwin" {
+		fmt.Println("prune-orphan is only meaningful on macOS.")
+		return nil
+	}
+
+	// The stash entry is stored as a login-keychain item under service
+	// "nokey" and account "com.nokey.biometrics" — opening the LOGIN
+	// store (dedicated=false) is how we check for it.
+	loginStore, err := openKeyringForFn(false)
+	if err != nil {
+		return fmt.Errorf("open login keychain: %w", err)
+	}
+
+	// Use AllKeys (not List) so we can see internal-style names too.
+	allKeys, err := loginStore.AllKeys()
+	if err != nil {
+		return fmt.Errorf("list login keychain: %w", err)
+	}
+	stashPresent := false
+	for _, k := range allKeys {
+		if k == "com.nokey.biometrics" {
+			stashPresent = true
+			break
+		}
+	}
+
+	if !stashPresent {
+		fmt.Println("No orphan Touch ID stash detected.")
+		return nil
+	}
+
+	keychainFile := nkeyring.DedicatedKeychainPath(effectiveKeychainName())
+	if fileExistsFn(keychainFile) {
+		fmt.Printf("Touch ID stash present and dedicated keychain (%s) still exists — no action needed.\n", keychainFile)
+		return nil
+	}
+
+	if pruneOrphanDryRun {
+		fmt.Printf("Dry-run: would delete orphan stash (nokey:com.nokey.biometrics) from login keychain.\n")
+		return nil
+	}
+
+	if err := deleteOrphanStashFn(); err != nil {
+		return fmt.Errorf("delete orphan stash: %w", err)
+	}
+	fmt.Println("Deleted orphan Touch ID stash from login keychain.")
+	return nil
 }

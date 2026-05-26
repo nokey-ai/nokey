@@ -587,3 +587,240 @@ func TestKeychainToDedicated_Idempotent(t *testing.T) {
 		t.Errorf("expected 'already present' count, got: %s", out)
 	}
 }
+
+// --- from-dedicated ---
+
+// withFromDedicatedGlobals scrubs the from-dedicated/prune-orphan flag
+// and stash-deletion globals between tests.
+func withFromDedicatedGlobals(t *testing.T) {
+	t.Helper()
+	oldYes := fromDedicatedYes
+	oldDry := pruneOrphanDryRun
+	oldDel := deleteOrphanStashFn
+	oldExists := fileExistsFn
+	t.Cleanup(func() {
+		fromDedicatedYes = oldYes
+		pruneOrphanDryRun = oldDry
+		deleteOrphanStashFn = oldDel
+		fileExistsFn = oldExists
+	})
+	fromDedicatedYes = false
+	pruneOrphanDryRun = false
+	// Default both to no-ops so tests don't shell out or touch the real FS.
+	deleteOrphanStashFn = func() error { return nil }
+	fileExistsFn = func(string) bool { return false }
+}
+
+func TestKeychainFromDedicated_RefusesWithoutSentinel(t *testing.T) {
+	src, _ := newTestStore()
+	dst, _ := newTestStore() // login
+	withTestKeyring(t, dst)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	// In from-dedicated, the dedicated store is the SOURCE — open it
+	// where dedicated=true. Provide an empty dedicated store, no sentinel.
+	withTwoStoreOpener(t, dst, src) // login=dst, dedicated=src (empty)
+
+	fromDedicatedYes = true
+	rootCmd.SetArgs([]string{"keychain", "from-dedicated", "--yes"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when sentinel absent")
+	}
+	if !strings.Contains(err.Error(), "no migration sentinel") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestKeychainFromDedicated_ReversesToDedicated(t *testing.T) {
+	login, _ := newTestStore()
+	dedicated, _ := newTestStore()
+	// Simulate post-to-dedicated state: dedicated holds the secrets + sentinel.
+	dedicated.Set("A", "1")
+	dedicated.Set("B", "2")
+	if err := dedicated.SetMigratedToDedicated(); err != nil {
+		t.Fatal(err)
+	}
+
+	withTestKeyring(t, login)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, login, dedicated)
+
+	stashDeleted := false
+	deleteOrphanStashFn = func() error { stashDeleted = true; return nil }
+
+	fromDedicatedYes = true
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "from-dedicated", "--yes"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("from-dedicated: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Rolled back 2") {
+		t.Errorf("unexpected output: %s", out)
+	}
+	for _, k := range []string{"A", "B"} {
+		v, err := login.Get(k)
+		if err != nil {
+			t.Fatalf("login.Get(%s): %v", k, err)
+		}
+		want, _ := dedicated.Get(k)
+		if v != want {
+			t.Errorf("%s: got %q want %q", k, v, want)
+		}
+	}
+	if dedicated.IsMigratedToDedicated() {
+		t.Error("sentinel should have been cleared")
+	}
+	if !stashDeleted {
+		t.Error("deleteOrphanStashFn was not called")
+	}
+}
+
+func TestKeychainFromDedicated_RefusesOnConflict(t *testing.T) {
+	login, loginRing := newTestStore()
+	dedicated, _ := newTestStore()
+	dedicated.Set("OK", "ok")
+	dedicated.Set("CONFLICT", "from-dedicated")
+	dedicated.SetMigratedToDedicated()
+	login.Set("CONFLICT", "stale-in-login")
+
+	withTestKeyring(t, login)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, login, dedicated)
+
+	fromDedicatedYes = true
+	rootCmd.SetArgs([]string{"keychain", "from-dedicated", "--yes"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on conflict")
+	}
+	if !strings.Contains(err.Error(), "CONFLICT") {
+		t.Errorf("error should name conflict: %v", err)
+	}
+	if _, ok := loginRing.items["OK"]; ok {
+		t.Error("OK was written despite conflict in batch")
+	}
+}
+
+// --- prune-orphan ---
+
+func TestKeychainPruneOrphan_NoStash(t *testing.T) {
+	src, _ := newTestStore() // empty login keychain
+	dst, _ := newTestStore()
+	withTestKeyring(t, src)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+	withKeychainGOOS(t, "darwin")
+
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "prune-orphan"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("prune-orphan: %v", err)
+		}
+	})
+	if !strings.Contains(out, "No orphan") {
+		t.Errorf("expected 'No orphan' message, got: %s", out)
+	}
+}
+
+func TestKeychainPruneOrphan_DetectsAndDeletes(t *testing.T) {
+	login, _ := newTestStore()
+	// Inject the stash entry as if byteness/keyring had stored it.
+	if err := login.Set("com.nokey.biometrics", "stash-passphrase"); err != nil {
+		t.Fatal(err)
+	}
+	dedicated, _ := newTestStore()
+
+	withTestKeyring(t, login)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, login, dedicated)
+	withKeychainGOOS(t, "darwin")
+	// fileExistsFn defaults to false (set in withFromDedicatedGlobals),
+	// simulating a missing dedicated keychain file → stash is orphaned.
+
+	deleted := false
+	deleteOrphanStashFn = func() error { deleted = true; return nil }
+
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "prune-orphan"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("prune-orphan: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Deleted orphan") {
+		t.Errorf("expected 'Deleted orphan', got: %s", out)
+	}
+	if !deleted {
+		t.Error("deleteOrphanStashFn was not invoked")
+	}
+}
+
+func TestKeychainPruneOrphan_DryRunDoesNotDelete(t *testing.T) {
+	login, _ := newTestStore()
+	login.Set("com.nokey.biometrics", "stash")
+	dedicated, _ := newTestStore()
+
+	withTestKeyring(t, login)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, login, dedicated)
+	withKeychainGOOS(t, "darwin")
+
+	deleted := false
+	deleteOrphanStashFn = func() error { deleted = true; return nil }
+	pruneOrphanDryRun = true
+
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "prune-orphan", "--dry-run"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("prune-orphan --dry-run: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Dry-run") {
+		t.Errorf("expected dry-run output, got: %s", out)
+	}
+	if deleted {
+		t.Error("dry-run should not have called deleteOrphanStashFn")
+	}
+}
+
+func TestKeychainPruneOrphan_NotOrphanWhenKeychainExists(t *testing.T) {
+	login, _ := newTestStore()
+	login.Set("com.nokey.biometrics", "stash")
+	dedicated, _ := newTestStore()
+
+	withTestKeyring(t, login)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, login, dedicated)
+	withKeychainGOOS(t, "darwin")
+	fileExistsFn = func(string) bool { return true } // dedicated file still on disk
+
+	deleted := false
+	deleteOrphanStashFn = func() error { deleted = true; return nil }
+
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "prune-orphan"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("prune-orphan: %v", err)
+		}
+	})
+	if !strings.Contains(out, "no action needed") {
+		t.Errorf("expected 'no action needed' message, got: %s", out)
+	}
+	if deleted {
+		t.Error("should not delete stash when dedicated keychain still exists")
+	}
+}
