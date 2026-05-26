@@ -7,6 +7,99 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-25
+
+### Added
+- Opt-in dedicated-keychain mode on macOS. Setting `keyring.dedicated: true`
+  in `config.yaml` stores secrets in `~/Library/Keychains/nokey.keychain-db`
+  instead of the login keychain, which lets Touch ID actually gate the
+  keychain. The login-keychain ignored `UseBiometrics` because
+  byteness/keyring only wires Touch ID for named keychain files. Combined
+  with ad-hoc-signed local builds (whose code-signing identity changes on
+  every `make build`, invalidating the per-item ACL), users were getting
+  a macOS password prompt on every launch. With a dedicated keychain,
+  Touch ID unlocks the keychain once per nokey process.
+- `nokey keychain backup --out FILE [--password PASS]` — write an
+  Argon2id + NaCl-secretbox encrypted snapshot of every user secret.
+  PIN-gated when a PIN is configured. Internal `__nokey_` entries are
+  skipped so a backup is never a vector for swapping the PIN hash.
+- `nokey keychain restore --in FILE [--password PASS] [--dry-run]` —
+  restore secrets from a snapshot. Skips secrets that already exist with
+  the same value; aborts atomically (writes nothing) if any secret
+  exists with a different value, so an in-place value is never silently
+  clobbered.
+- `nokey keychain to-dedicated [--no-backup] [--yes]` — migrate from the
+  login keychain into the dedicated keychain. PIN-gated; writes a
+  mandatory encrypted backup under
+  `~/.config/nokey/backups/v0.5.0-pre-migration-<timestamp>.enc` first;
+  refuses atomically on any destination value conflict and prints the
+  exact `security delete-generic-password ...` commands to resolve it;
+  roundtrip-verifies every written value before stamping the
+  `__nokey_migrated_to_dedicated__` sentinel, so a crash mid-migration
+  is safe to retry.
+- `nokey keychain from-dedicated [--yes]` — roll the migration back into
+  the login keychain. Refuses to run without the sentinel so it cannot
+  quietly do nothing on a never-migrated install. Same atomic-conflict
+  semantics as `to-dedicated`; on success cleans up the orphan
+  `nokey/com.nokey.biometrics` Touch ID stash and prints the
+  `security delete-keychain` invocation if you want to remove the
+  dedicated file too.
+- `nokey keychain prune-orphan [--dry-run]` — detect and remove the
+  Touch ID passphrase stash that byteness/keyring writes under
+  `nokey/com.nokey.biometrics` in the login keychain when the dedicated
+  keychain file has been deleted out from under nokey.
+- `keyring.dedicated` (bool, default false) and `keyring.name` (string,
+  default `"nokey"`) config keys controlling the new mode.
+
+### Fixed
+- Test runs no longer hang for the macOS Security framework timeout
+  when the per-binary ACL cache has expired. `rootCmd.PersistentPreRun`
+  calls `checkKeychainMigrationHint`, which reaches the real login
+  keychain via cgo `SecItemCopyMatching` through `getKeyring()`. Tests
+  that drove `rootCmd.Execute()` without a `withTestKeyring` seam
+  (`TestCompletionBash` and friends) hung waiting on a UI dialog that
+  has no surface inside `go test`. `TestMain` now installs a no-op
+  `getKeyring` stub; tests that need a real keyring still override it
+  via `withTestKeyring`. The latent hang had shipped since v0.2.0 — it
+  was invisible whenever the ACL was already cached (which is most of
+  the time during a full suite run) and reproduced deterministically
+  after roughly 5 minutes of idle.
+
+### Changed
+- Nothing breaking for default users. The dedicated keychain is opt-in;
+  on existing installs nokey continues to use the macOS login keychain
+  unchanged. v0.5.0 is safe to upgrade with no action required.
+
+### Upgrade guide
+
+Default users have nothing to do — the new keychain mode is opt-in for
+v0.5.0. If your local nokey build prompts for a Keychain password every
+launch (typically after `make build` produces a new ad-hoc-signed
+binary), opt in once:
+
+```bash
+# 1. enable the dedicated keychain in ~/.config/nokey/config.yaml
+keyring:
+  dedicated: true
+
+# 2. migrate (writes an encrypted pre-migration backup first)
+nokey keychain to-dedicated
+```
+
+Subsequent nokey runs unlock the dedicated keychain with Touch ID once
+per process. Login-keychain entries are left in place; a future
+`keychain prune-login` step (v0.6.0+) will clean them up after a
+deprecation window. Roll back any time with
+`nokey keychain from-dedicated`.
+
+The dedicated keychain is a separate file from "login" in Keychain
+Access, does not sync via iCloud Keychain, and does not auto-unlock at
+OS login — Touch ID handles that on first nokey use.
+
+The default-on rollout is planned for v0.6.0 (with a deprecation
+warning) and removal of the login-keychain code path on macOS for
+v0.7.0.
+
 ## [0.4.2] - 2026-05-21
 
 ### Security
