@@ -59,7 +59,13 @@ func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
 // New creates a new keyring store with the specified backend and service name.
 // If backend is empty, the default backend for the platform is used.
 // If useBiometrics is true, Touch ID is enabled for macOS keychain access.
-func New(backend, serviceName string, useBiometrics bool) (*Store, error) {
+// If dedicated is true AND keychainName is non-empty, the macOS backend uses
+// a dedicated keychain file (~/Library/Keychains/<keychainName>.keychain-db)
+// instead of the user's login keychain. Touch ID only actually works in this
+// mode because byteness/keyring v1.9.0 silently ignores UseBiometrics for
+// login-keychain access.
+// dedicated and keychainName are ignored on non-macOS platforms.
+func New(backend, serviceName string, useBiometrics bool, dedicated bool, keychainName string) (*Store, error) {
 	if serviceName == "" {
 		serviceName = "nokey"
 	}
@@ -91,6 +97,13 @@ func New(backend, serviceName string, useBiometrics bool) (*Store, error) {
 		UseBiometrics:            useBiometrics,
 		TouchIDAccount:           "com.nokey.biometrics",
 		TouchIDService:           serviceName,
+	}
+
+	// Dedicated keychain mode: setting KeychainName makes the library use
+	// <name>.keychain-db. This is the only mode where the library actually
+	// honours UseBiometrics — login-keychain access silently ignores it.
+	if dedicated && keychainName != "" {
+		config.KeychainName = keychainName
 	}
 
 	// If no specific backend, allow all backends

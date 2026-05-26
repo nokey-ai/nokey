@@ -90,5 +90,5 @@ func initConfig() {
 // It is a variable so tests can override it.
 var getKeyring = func() (*keyring.Store, error) {
 	bio := cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics
-	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio)
+	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio, false, "")
 }

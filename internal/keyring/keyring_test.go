@@ -532,7 +532,7 @@ func TestNew_DefaultBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "myservice", false)
+	s, err := New("", "myservice", false, false, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -551,7 +551,7 @@ func TestNew_SpecificBackend(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("file", "", false)
+	s, err := New("file", "", false, false, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -567,7 +567,7 @@ func TestNew_OpenError(t *testing.T) {
 		return nil, fmt.Errorf("keyring unavailable")
 	}
 
-	_, err := New("", "test", false)
+	_, err := New("", "test", false, false, "")
 	if err == nil {
 		t.Fatal("New should fail when keyring.Open fails")
 	}
@@ -586,7 +586,7 @@ func TestNew_DefaultServiceName(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	s, err := New("", "", false)
+	s, err := New("", "", false, false, "")
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -969,8 +969,56 @@ func TestNew_KeychainTrustEnabled(t *testing.T) {
 		return newMockRing(), nil
 	}
 
-	_, err := New("", "test", false)
+	_, err := New("", "test", false, false, "")
 	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+// --- Dedicated keychain tests ---
+
+func TestNew_DedicatedKeychain_SetsKeychainName(t *testing.T) {
+	old := keyringOpenFn
+	defer func() { keyringOpenFn = old }()
+	keyringOpenFn = func(config keyring.Config) (keyring.Keyring, error) {
+		if config.KeychainName != "nokey" {
+			t.Errorf("KeychainName = %q, want %q", config.KeychainName, "nokey")
+		}
+		return newMockRing(), nil
+	}
+
+	if _, err := New("", "test", false, true, "nokey"); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+func TestNew_DedicatedFalse_NoKeychainName(t *testing.T) {
+	old := keyringOpenFn
+	defer func() { keyringOpenFn = old }()
+	keyringOpenFn = func(config keyring.Config) (keyring.Keyring, error) {
+		if config.KeychainName != "" {
+			t.Errorf("KeychainName = %q, want empty when dedicated=false", config.KeychainName)
+		}
+		return newMockRing(), nil
+	}
+
+	// Even with a non-empty name, dedicated=false must not set KeychainName.
+	if _, err := New("", "test", false, false, "nokey"); err != nil {
+		t.Fatalf("New: %v", err)
+	}
+}
+
+func TestNew_DedicatedTrue_EmptyName_NoKeychainName(t *testing.T) {
+	old := keyringOpenFn
+	defer func() { keyringOpenFn = old }()
+	keyringOpenFn = func(config keyring.Config) (keyring.Keyring, error) {
+		if config.KeychainName != "" {
+			t.Errorf("KeychainName = %q, want empty when name is empty", config.KeychainName)
+		}
+		return newMockRing(), nil
+	}
+
+	if _, err := New("", "test", false, true, ""); err != nil {
 		t.Fatalf("New: %v", err)
 	}
 }
