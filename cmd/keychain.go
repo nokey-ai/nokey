@@ -619,12 +619,27 @@ func effectiveKeychainName() string {
 }
 
 func runKeychainFromDedicated(cmd *cobra.Command, args []string) error {
+	// Mirror to-dedicated's config gate: refuse to run unless the user has
+	// explicitly enabled the dedicated keychain. The sentinel check below
+	// is the real safety guard, but failing early on the config also gives
+	// the user a clear error before any Touch ID prompt fires.
+	if !dedicatedConfigEnabled() {
+		path, _ := config.ConfigPath()
+		return fmt.Errorf(`dedicated keychain is not enabled in config — nothing to roll back from.
+
+If you previously migrated and want to roll back, add this to %s
+and re-run:
+
+%s
+`, path, dedicatedConfigSnippet)
+	}
+
 	srcStore, err := openKeyringForFn(true) // dedicated is the SOURCE for rollback
 	if err != nil {
 		return fmt.Errorf("open dedicated keychain: %w", err)
 	}
 	if !srcStore.IsMigratedToDedicated() {
-		return fmt.Errorf("no migration sentinel found on the dedicated keychain — nothing to roll back. Run 'nokey keychain to-dedicated' first or check that keyring.dedicated is enabled in config")
+		return fmt.Errorf("no migration sentinel found on the dedicated keychain — nothing to roll back. Run 'nokey keychain to-dedicated' first")
 	}
 
 	dstStore, err := openKeyringForFn(false) // login is the destination

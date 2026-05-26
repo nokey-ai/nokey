@@ -651,11 +651,39 @@ func withFromDedicatedGlobals(t *testing.T) {
 	fileExistsFn = func(string) bool { return false }
 }
 
+func TestKeychainFromDedicated_RefusesWhenConfigDisabled(t *testing.T) {
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	withTestKeyring(t, dst)
+	// Default config — keyring.dedicated is nil/false.
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+	withFromDedicatedGlobals(t)
+	withTwoStoreOpener(t, dst, src)
+
+	// Catch any attempt to actually open the dedicated keychain — the guard
+	// must fire before any keyring access happens.
+	openKeyringForFn = func(bool) (*nkeyring.Store, error) {
+		t.Fatal("openKeyringForFn should not be called when config gate refuses")
+		return nil, nil
+	}
+
+	fromDedicatedYes = true
+	rootCmd.SetArgs([]string{"keychain", "from-dedicated", "--yes"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when dedicated not enabled in config")
+	}
+	if !strings.Contains(err.Error(), "not enabled in config") {
+		t.Errorf("error should mention config: %v", err)
+	}
+}
+
 func TestKeychainFromDedicated_RefusesWithoutSentinel(t *testing.T) {
 	src, _ := newTestStore()
 	dst, _ := newTestStore() // login
 	withTestKeyring(t, dst)
-	withTestConfig(t, config.DefaultConfig())
+	withDedicatedConfig(t)
 	withTestBackupGlobals(t)
 	withFromDedicatedGlobals(t)
 	// In from-dedicated, the dedicated store is the SOURCE — open it
@@ -684,7 +712,7 @@ func TestKeychainFromDedicated_ReversesToDedicated(t *testing.T) {
 	}
 
 	withTestKeyring(t, login)
-	withTestConfig(t, config.DefaultConfig())
+	withDedicatedConfig(t)
 	withTestBackupGlobals(t)
 	withFromDedicatedGlobals(t)
 	withTwoStoreOpener(t, login, dedicated)
@@ -729,7 +757,7 @@ func TestKeychainFromDedicated_RefusesOnConflict(t *testing.T) {
 	login.Set("CONFLICT", "stale-in-login")
 
 	withTestKeyring(t, login)
-	withTestConfig(t, config.DefaultConfig())
+	withDedicatedConfig(t)
 	withTestBackupGlobals(t)
 	withFromDedicatedGlobals(t)
 	withTwoStoreOpener(t, login, dedicated)
