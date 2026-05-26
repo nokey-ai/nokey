@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,12 +45,12 @@ var (
 	migrateDryRun bool
 	migrateYes    bool
 
-	backupOut      string
-	backupPassword string
+	backupOut        string
+	backupPasswordIn bool
 
-	restoreIn       string
-	restorePassword string
-	restoreDryRun   bool
+	restoreIn         string
+	restorePasswordIn bool
+	restoreDryRun     bool
 
 	toDedicatedNoBackup bool
 	toDedicatedYes      bool
@@ -123,12 +124,30 @@ var promptPasswordFn = func(prompt string) (string, error) {
 	return string(pw), nil
 }
 
+// readPasswordStdinFn reads a single line from stdin and returns it as the
+// password. Refuses if stdin is a terminal — --password-stdin is for piping
+// (e.g. `pass show foo | nokey keychain backup ... --password-stdin`), not
+// interactive entry. Overridable in tests.
+var readPasswordStdinFn = func() (string, error) {
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		return "", fmt.Errorf("--password-stdin requires a non-terminal stdin (pipe the password in)")
+	}
+	r := bufio.NewReader(os.Stdin)
+	line, err := r.ReadString('\n')
+	if err != nil && err != io.EOF {
+		return "", fmt.Errorf("read password from stdin: %w", err)
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
 var keychainBackupCmd = &cobra.Command{
 	Use:   "backup --out FILE",
 	Short: "Write an encrypted snapshot of every secret to FILE",
 	Long: `Loads every secret (PIN-gated when a PIN is configured) and writes them
-to FILE as an Argon2id + NaCl-secretbox sealed blob. The password defaults to
-the PIN; with no PIN, you are prompted for a one-shot passphrase.
+to FILE as an Argon2id + NaCl-secretbox sealed blob. You are prompted for a
+passphrase on the terminal; pass --password-stdin to read it from stdin
+instead (for scripting). The passphrase is never accepted as a CLI argument
+because argv is visible to every other process on macOS via 'ps aux'.
 
 The resulting file can be re-imported with 'nokey keychain restore'.`,
 	RunE: runKeychainBackup,
@@ -181,6 +200,10 @@ Secrets that already exist with the same value are skipped. Secrets that
 exist with a different value cause the entire restore to abort without
 writing anything, so an in-place value is never silently clobbered.
 
+You are prompted for the passphrase on the terminal; pass --password-stdin
+to read it from stdin instead. The passphrase is never accepted as a CLI
+argument because argv leaks to the process table on macOS.
+
 Use --dry-run to preview the plan without modifying the keyring.`,
 	RunE: runKeychainRestore,
 }
@@ -190,11 +213,11 @@ func init() {
 	keychainMigrateCmd.Flags().BoolVar(&migrateYes, "yes", false, "Skip confirmation prompt")
 
 	keychainBackupCmd.Flags().StringVar(&backupOut, "out", "", "Destination file path (required)")
-	keychainBackupCmd.Flags().StringVar(&backupPassword, "password", "", "Encryption password (default: PIN, else prompt)")
+	keychainBackupCmd.Flags().BoolVar(&backupPasswordIn, "password-stdin", false, "Read encryption password from stdin (one line) instead of prompting")
 	_ = keychainBackupCmd.MarkFlagRequired("out")
 
 	keychainRestoreCmd.Flags().StringVar(&restoreIn, "in", "", "Source backup file path (required)")
-	keychainRestoreCmd.Flags().StringVar(&restorePassword, "password", "", "Decryption password (default: prompt)")
+	keychainRestoreCmd.Flags().BoolVar(&restorePasswordIn, "password-stdin", false, "Read decryption password from stdin (one line) instead of prompting")
 	keychainRestoreCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would happen without modifying")
 	_ = keychainRestoreCmd.MarkFlagRequired("in")
 
@@ -289,14 +312,20 @@ func runKeychainMigrate(cmd *cobra.Command, args []string) error {
 }
 
 // resolveBackupPassword returns the password to use for a backup or restore.
-// Precedence: explicit --password flag → prompt. A PIN is not silently reused
-// as the password — we always require the user to confirm what they want so
-// a forgotten PIN doesn't lock them out of their own backup file.
-func resolveBackupPassword(explicit, promptText string) (string, error) {
-	if explicit != "" {
-		return explicit, nil
+// If passwordStdin is true the password is read from stdin (for scripting);
+// otherwise the user is prompted on the terminal. A passphrase is never
+// accepted via a CLI flag because argv is world-readable on macOS via
+// `ps aux` — the recovery passphrase must not leak to the process table.
+func resolveBackupPassword(passwordStdin bool, promptText string) (string, error) {
+	var (
+		pw  string
+		err error
+	)
+	if passwordStdin {
+		pw, err = readPasswordStdinFn()
+	} else {
+		pw, err = promptPasswordFn(promptText)
 	}
-	pw, err := promptPasswordFn(promptText)
 	if err != nil {
 		return "", err
 	}
@@ -328,7 +357,7 @@ func runKeychainBackup(cmd *cobra.Command, args []string) error {
 		filtered[k] = v
 	}
 
-	pw, err := resolveBackupPassword(backupPassword, "Backup password: ")
+	pw, err := resolveBackupPassword(backupPasswordIn, "Backup password: ")
 	if err != nil {
 		return err
 	}
@@ -365,7 +394,7 @@ func runKeychainRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	pw, err := resolveBackupPassword(restorePassword, "Restore password: ")
+	pw, err := resolveBackupPassword(restorePasswordIn, "Restore password: ")
 	if err != nil {
 		return err
 	}
@@ -484,7 +513,7 @@ Add this to %s and re-run:
 	// prompt the user. Skipping this is opt-in only.
 	backupPath := "skipped"
 	if !toDedicatedNoBackup {
-		pw, err := resolveBackupPassword("", "Backup password: ")
+		pw, err := resolveBackupPassword(false, "Backup password: ")
 		if err != nil {
 			return err
 		}

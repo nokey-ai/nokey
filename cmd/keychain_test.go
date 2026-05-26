@@ -15,28 +15,31 @@ import (
 // and the password prompt hook so tests can scrub state between runs.
 func withTestBackupGlobals(t *testing.T) {
 	t.Helper()
-	oldOut, oldBP := backupOut, backupPassword
-	oldIn, oldRP, oldDry := restoreIn, restorePassword, restoreDryRun
+	oldOut, oldBPin := backupOut, backupPasswordIn
+	oldIn, oldRPin, oldDry := restoreIn, restorePasswordIn, restoreDryRun
 	oldPrompt := promptPasswordFn
+	oldStdin := readPasswordStdinFn
 	oldLoad := loadAllSecretsFn
 	oldNoBak, oldYes := toDedicatedNoBackup, toDedicatedYes
 	oldOpen := openKeyringForFn
 	oldApply := applyKeychainSettingsFn
 	t.Cleanup(func() {
-		backupOut, backupPassword = oldOut, oldBP
-		restoreIn, restorePassword, restoreDryRun = oldIn, oldRP, oldDry
+		backupOut, backupPasswordIn = oldOut, oldBPin
+		restoreIn, restorePasswordIn, restoreDryRun = oldIn, oldRPin, oldDry
 		promptPasswordFn = oldPrompt
+		readPasswordStdinFn = oldStdin
 		loadAllSecretsFn = oldLoad
 		toDedicatedNoBackup, toDedicatedYes = oldNoBak, oldYes
 		openKeyringForFn = oldOpen
 		applyKeychainSettingsFn = oldApply
 	})
-	backupOut, backupPassword = "", ""
-	restoreIn, restorePassword, restoreDryRun = "", "", false
+	backupOut, backupPasswordIn = "", false
+	restoreIn, restorePasswordIn, restoreDryRun = "", false, false
 	toDedicatedNoBackup, toDedicatedYes = false, false
 	// Default tests to a deterministic password prompt so no test accidentally
 	// blocks on real TTY input.
 	promptPasswordFn = func(prompt string) (string, error) { return "test-pw", nil }
+	readPasswordStdinFn = func() (string, error) { return "test-pw", nil }
 	// Default to a no-op so tests don't shell out to `security`.
 	applyKeychainSettingsFn = func(string) error { return nil }
 }
@@ -215,10 +218,10 @@ func TestKeychainBackupRestore_RoundTrip(t *testing.T) {
 
 	dir := t.TempDir()
 	backupOut = filepath.Join(dir, "snap.enc")
-	backupPassword = "round-trip-pw"
+	promptPasswordFn = func(string) (string, error) { return "round-trip-pw", nil }
 
 	out := captureStdout(t, func() {
-		rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password", backupPassword})
+		rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("backup: %v", err)
 		}
@@ -232,9 +235,8 @@ func TestKeychainBackupRestore_RoundTrip(t *testing.T) {
 	withTestKeyring(t, dst)
 
 	restoreIn = backupOut
-	restorePassword = "round-trip-pw"
 	out = captureStdout(t, func() {
-		rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--password", restorePassword})
+		rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("restore: %v", err)
 		}
@@ -264,9 +266,9 @@ func TestKeychainRestore_DryRunDoesNotWrite(t *testing.T) {
 	src.Set("ONLY_KEY", "v")
 	dir := t.TempDir()
 	backupOut = filepath.Join(dir, "snap.enc")
-	backupPassword = "pw"
+	promptPasswordFn = func(string) (string, error) { return "pw", nil }
 
-	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password", backupPassword})
+	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
@@ -275,11 +277,10 @@ func TestKeychainRestore_DryRunDoesNotWrite(t *testing.T) {
 	withTestKeyring(t, dst)
 
 	restoreIn = backupOut
-	restorePassword = "pw"
 	restoreDryRun = true
 
 	out := captureStdout(t, func() {
-		rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--password", restorePassword, "--dry-run"})
+		rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--dry-run"})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("restore --dry-run: %v", err)
 		}
@@ -302,8 +303,8 @@ func TestKeychainRestore_RefusesOnConflict(t *testing.T) {
 	src.Set("CONFLICT", "from-backup")
 	dir := t.TempDir()
 	backupOut = filepath.Join(dir, "snap.enc")
-	backupPassword = "pw"
-	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password", backupPassword})
+	promptPasswordFn = func(string) (string, error) { return "pw", nil }
+	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
@@ -314,8 +315,7 @@ func TestKeychainRestore_RefusesOnConflict(t *testing.T) {
 	withTestKeyring(t, dst)
 
 	restoreIn = backupOut
-	restorePassword = "pw"
-	rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--password", restorePassword})
+	rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected restore to fail on conflict")
@@ -341,8 +341,8 @@ func TestKeychainRestore_WrongPassword(t *testing.T) {
 	src.Set("X", "y")
 	dir := t.TempDir()
 	backupOut = filepath.Join(dir, "snap.enc")
-	backupPassword = "real-pw"
-	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password", backupPassword})
+	promptPasswordFn = func(string) (string, error) { return "real-pw", nil }
+	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut})
 	if err := rootCmd.Execute(); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
@@ -351,14 +351,54 @@ func TestKeychainRestore_WrongPassword(t *testing.T) {
 	withTestKeyring(t, dst)
 
 	restoreIn = backupOut
-	restorePassword = "wrong-pw"
-	rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--password", restorePassword})
+	promptPasswordFn = func(string) (string, error) { return "wrong-pw", nil }
+	rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn})
 	err := rootCmd.Execute()
 	if err == nil {
 		t.Fatal("expected restore to fail with wrong password")
 	}
 	if !strings.Contains(err.Error(), "decryption failed") {
 		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestKeychainBackup_PasswordStdin(t *testing.T) {
+	src, _ := newTestStore()
+	withTestKeyring(t, src)
+	withTestConfig(t, config.DefaultConfig())
+	withTestBackupGlobals(t)
+
+	src.Set("A", "1")
+
+	dir := t.TempDir()
+	backupOut = filepath.Join(dir, "snap.enc")
+	backupPasswordIn = true
+	// Both backup and restore go through the stdin reader when
+	// --password-stdin is set; tests must not hit the real prompt.
+	readPasswordStdinFn = func() (string, error) { return "stdin-pw", nil }
+	// Sanity: this must NEVER be called when --password-stdin is set; if it
+	// does, the test fails loudly.
+	promptPasswordFn = func(string) (string, error) {
+		t.Fatal("prompt should not be called when --password-stdin is set")
+		return "", nil
+	}
+
+	rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password-stdin"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+
+	// Decrypt via the same stdin password — restore should succeed.
+	dst, _ := newTestStore()
+	withTestKeyring(t, dst)
+	restoreIn = backupOut
+	restorePasswordIn = true
+	rootCmd.SetArgs([]string{"keychain", "restore", "--in", restoreIn, "--password-stdin"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	if got, _ := dst.Get("A"); got != "1" {
+		t.Errorf("restored value = %q, want %q", got, "1")
 	}
 }
 
@@ -384,9 +424,9 @@ func TestKeychainBackup_StripsInternalKeys(t *testing.T) {
 
 	dir := t.TempDir()
 	backupOut = filepath.Join(dir, "snap.enc")
-	backupPassword = "pw"
+	promptPasswordFn = func(string) (string, error) { return "pw", nil }
 	out := captureStdout(t, func() {
-		rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut, "--password", backupPassword})
+		rootCmd.SetArgs([]string{"keychain", "backup", "--out", backupOut})
 		if err := rootCmd.Execute(); err != nil {
 			t.Fatalf("backup: %v", err)
 		}
