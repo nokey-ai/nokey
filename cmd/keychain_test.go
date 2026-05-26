@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -649,6 +650,37 @@ func withFromDedicatedGlobals(t *testing.T) {
 	// Default both to no-ops so tests don't shell out or touch the real FS.
 	deleteOrphanStashFn = func() error { return nil }
 	fileExistsFn = func(string) bool { return false }
+}
+
+func TestPrintDedicatedSetupBannerIfFresh(t *testing.T) {
+	t.Run("EmptyPathNoOp", func(t *testing.T) {
+		var buf bytes.Buffer
+		printDedicatedSetupBannerIfFresh("", &buf)
+		if buf.Len() != 0 {
+			t.Errorf("expected no output for empty path, got: %q", buf.String())
+		}
+	})
+	t.Run("ExistingFileNoBanner", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "fake.keychain-db")
+		if err := os.WriteFile(path, []byte("x"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		printDedicatedSetupBannerIfFresh(path, &buf)
+		if buf.Len() != 0 {
+			t.Errorf("expected no banner when file exists, got: %q", buf.String())
+		}
+	})
+	t.Run("MissingFilePrintsBanner", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), "does-not-exist.keychain-db")
+		var buf bytes.Buffer
+		printDedicatedSetupBannerIfFresh(path, &buf)
+		out := buf.String()
+		if !strings.Contains(out, "aws-vault") || !strings.Contains(out, "nokey dedicated keychain") {
+			t.Errorf("banner missing key phrases: %q", out)
+		}
+	})
 }
 
 func TestKeychainFromDedicated_RefusesWhenConfigDisabled(t *testing.T) {

@@ -452,6 +452,27 @@ func runKeychainRestore(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// printDedicatedSetupBannerIfFresh prints a nokey-flavored heads-up to w
+// when the dedicated keychain file at path does not yet exist. The
+// underlying byteness/keyring library prints its first-time setup
+// prompt using a hardcoded "aws-vault" string because the library was
+// originally written for that tool — this banner lets the user know
+// that the misnamed prompt that follows is in fact the nokey keychain
+// passphrase. The banner is suppressed when path is empty (non-macOS)
+// or when the file already exists (setupTouchID will not fire again).
+func printDedicatedSetupBannerIfFresh(path string, w io.Writer) {
+	if path == "" {
+		return
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return
+	}
+	fmt.Fprintln(w, `
+Note: the next prompt asks for a passphrase to protect the new
+nokey keychain. It says "aws-vault" because that string is hardcoded
+upstream; this is the nokey dedicated keychain. One-time setup.`)
+}
+
 // dedicatedConfigEnabled reports whether the user has opted in to the
 // dedicated keychain in their config. We require an explicit opt-in
 // because the migration changes which file holds the user's secrets —
@@ -489,6 +510,9 @@ Add this to %s and re-run:
 	if err != nil {
 		return fmt.Errorf("open login keychain: %w", err)
 	}
+
+	printDedicatedSetupBannerIfFresh(nkeyring.DedicatedKeychainPath(cfg.Keyring.Name), os.Stderr)
+
 	dstStore, err := openKeyringForFn(true)
 	if err != nil {
 		return fmt.Errorf("open dedicated keychain: %w", err)
