@@ -442,6 +442,27 @@ auth:
   # enforcing it for MCP and the proxy.
   cli_enforce_policy: true
 
+# Keyring backend behaviour (macOS-specific keys are ignored elsewhere).
+keyring:
+  # Opt in to a dedicated macOS keychain file
+  # (~/Library/Keychains/nokey.keychain-db) instead of the login
+  # keychain. Default false in v0.5.0. Enable this if you rebuild nokey
+  # from source and see a Keychain password prompt every launch —
+  # `use_biometrics` is a silent no-op against the login keychain, so
+  # only a dedicated keychain lets Touch ID actually gate access. See
+  # "Switching to a dedicated keychain (macOS)" below for the one-time
+  # migration recipe.
+  #
+  # Trade-offs: the dedicated keychain shows up as a separate item in
+  # Keychain Access (not under "login"), does not sync via iCloud
+  # Keychain, and does not auto-unlock at macOS login — Touch ID
+  # unlocks it on first nokey use per process.
+  dedicated: false
+
+  # Dedicated keychain file name. Defaults to "nokey". Only meaningful
+  # when dedicated: true.
+  name: nokey
+
   # OAuth provider selection
   # Note: OAuth tokens and credentials are stored in OS keyring after running
   # 'nokey auth oauth setup --provider <name> --client-id ... --client-secret ...'
@@ -491,6 +512,55 @@ nokey keychain migrate
 
 `nokey` will also print a one-time hint pointing at this command the first time
 it sees keychain items that look like they need migrating.
+
+### Switching to a dedicated keychain (macOS)
+
+The macOS login keychain trusts a binary by its code-signing identity.
+Every `make build` produces a fresh ad-hoc-signed nokey, so the previous
+ACL entry no longer matches and macOS falls back to prompting for the
+login-keychain password on every access. `auth.use_biometrics: true` is
+a silent no-op here — byteness/keyring only wires Touch ID for named
+keychain files, not the login keychain.
+
+A dedicated keychain file fixes both problems. Touch ID gates the
+keychain once per nokey process; rebuilds no longer break the ACL.
+
+```bash
+# 1. Enable opt-in in ~/.config/nokey/config.yaml
+cat >> ~/.config/nokey/config.yaml <<'YAML'
+keyring:
+  dedicated: true
+YAML
+
+# 2. Migrate every secret from the login keychain into
+#    ~/Library/Keychains/nokey.keychain-db.
+#    Writes an encrypted backup under
+#    ~/.config/nokey/backups/v0.5.0-pre-migration-<timestamp>.enc first.
+nokey keychain to-dedicated
+```
+
+New commands in v0.5.0:
+
+- `nokey keychain backup --out FILE` — encrypted snapshot of every secret (Argon2id + NaCl-secretbox).
+- `nokey keychain restore --in FILE [--dry-run]` — restore from a snapshot; refuses atomically on value conflict.
+- `nokey keychain to-dedicated [--no-backup] [--yes]` — migrate login → dedicated; PIN-gated; mandatory backup; roundtrip-verified.
+- `nokey keychain from-dedicated [--yes]` — roll the migration back to the login keychain.
+- `nokey keychain prune-orphan [--dry-run]` — remove the stranded `nokey/com.nokey.biometrics` Touch ID stash if you deleted the dedicated keychain file manually.
+
+To roll back at any time:
+
+```bash
+nokey keychain from-dedicated
+```
+
+Trade-offs of the dedicated keychain: it lives outside "login" in
+Keychain Access, doesn't sync via iCloud Keychain, and doesn't
+auto-unlock at OS login — Touch ID handles unlock on first nokey use
+per process. Login-keychain entries are left in place after migration;
+a future `keychain prune-login` step will clean them up after a
+deprecation window.
+
+Full release notes: [CHANGELOG v0.5.0](CHANGELOG.md#050---2026-05-25).
 
 ---
 
