@@ -19,11 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every `make build`, invalidating the per-item ACL), users were getting
   a macOS password prompt on every launch. With a dedicated keychain,
   Touch ID unlocks the keychain once per nokey process.
-- `nokey keychain backup --out FILE [--password PASS]` — write an
+- `nokey keychain backup --out FILE [--password-stdin]` — write an
   Argon2id + NaCl-secretbox encrypted snapshot of every user secret.
   PIN-gated when a PIN is configured. Internal `__nokey_` entries are
-  skipped so a backup is never a vector for swapping the PIN hash.
-- `nokey keychain restore --in FILE [--password PASS] [--dry-run]` —
+  skipped so a backup is never a vector for swapping the PIN hash. The
+  passphrase is prompted on the terminal; pass `--password-stdin` to
+  pipe it from another process. The passphrase is never accepted as a
+  CLI argument because argv leaks to the process table on macOS.
+- `nokey keychain restore --in FILE [--password-stdin] [--dry-run]` —
   restore secrets from a snapshot. Skips secrets that already exist with
   the same value; aborts atomically (writes nothing) if any secret
   exists with a different value, so an in-place value is never silently
