@@ -19,17 +19,54 @@ func withTestBackupGlobals(t *testing.T) {
 	oldIn, oldRP, oldDry := restoreIn, restorePassword, restoreDryRun
 	oldPrompt := promptPasswordFn
 	oldLoad := loadAllSecretsFn
+	oldNoBak, oldYes := toDedicatedNoBackup, toDedicatedYes
+	oldOpen := openKeyringForFn
+	oldApply := applyKeychainSettingsFn
 	t.Cleanup(func() {
 		backupOut, backupPassword = oldOut, oldBP
 		restoreIn, restorePassword, restoreDryRun = oldIn, oldRP, oldDry
 		promptPasswordFn = oldPrompt
 		loadAllSecretsFn = oldLoad
+		toDedicatedNoBackup, toDedicatedYes = oldNoBak, oldYes
+		openKeyringForFn = oldOpen
+		applyKeychainSettingsFn = oldApply
 	})
 	backupOut, backupPassword = "", ""
 	restoreIn, restorePassword, restoreDryRun = "", "", false
+	toDedicatedNoBackup, toDedicatedYes = false, false
 	// Default tests to a deterministic password prompt so no test accidentally
 	// blocks on real TTY input.
 	promptPasswordFn = func(prompt string) (string, error) { return "test-pw", nil }
+	// Default to a no-op so tests don't shell out to `security`.
+	applyKeychainSettingsFn = func(string) error { return nil }
+}
+
+// withTwoStoreOpener installs openKeyringForFn so that dedicated=false
+// returns src and dedicated=true returns dst.
+func withTwoStoreOpener(t *testing.T, src, dst *nkeyring.Store) {
+	t.Helper()
+	openKeyringForFn = func(dedicated bool) (*nkeyring.Store, error) {
+		if dedicated {
+			return dst, nil
+		}
+		return src, nil
+	}
+}
+
+func dedicatedTrue() *bool { b := true; return &b }
+
+// withDedicatedConfig sets up an isolated config dir with a saved
+// config.yaml that enables keyring.dedicated. Needed because the cobra
+// OnInitialize re-runs config.Load() between SetArgs and RunE, which
+// would otherwise wipe an in-memory cfg mutation.
+func withDedicatedConfig(t *testing.T) {
+	t.Helper()
+	c := config.DefaultConfig()
+	c.Keyring.Dedicated = dedicatedTrue()
+	withTestConfig(t, c)
+	if err := config.Save(c); err != nil {
+		t.Fatalf("save config: %v", err)
+	}
 }
 
 func withKeychainGOOS(t *testing.T, goos string) {
@@ -383,5 +420,170 @@ func TestKeychainMigrate_GetKeyringError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "keyring unavailable") {
 		t.Errorf("expected keyring error, got: %v", err)
+	}
+}
+
+// --- to-dedicated ---
+
+func TestKeychainToDedicated_RefusesWhenConfigDisabled(t *testing.T) {
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	withTestKeyring(t, src)
+	c := config.DefaultConfig()
+	withTestConfig(t, c)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when dedicated not enabled")
+	}
+	if !strings.Contains(err.Error(), "not enabled") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "dedicated: true") {
+		t.Errorf("error should show config snippet, got: %v", err)
+	}
+}
+
+func TestKeychainToDedicated_RefusesOnConflict(t *testing.T) {
+	src, _ := newTestStore()
+	dst, dstRing := newTestStore()
+	src.Set("OK", "good")
+	src.Set("CONFLICT", "source-value")
+	dst.Set("CONFLICT", "dest-value")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	toDedicatedNoBackup = true
+	rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes", "--no-backup"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on conflict")
+	}
+	if !strings.Contains(err.Error(), "CONFLICT") {
+		t.Errorf("error should name conflicting key: %v", err)
+	}
+	if _, ok := dstRing.items["OK"]; ok {
+		t.Error("OK was written despite conflict")
+	}
+	if string(dstRing.items["CONFLICT"].Data) != "dest-value" {
+		t.Errorf("CONFLICT changed to %q", dstRing.items["CONFLICT"].Data)
+	}
+}
+
+func TestKeychainToDedicated_Success(t *testing.T) {
+	src, _ := newTestStore()
+	dst, dstRing := newTestStore()
+	src.Set("A", "1")
+	src.Set("B", "2")
+	src.Set("C", "3")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("to-dedicated: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Migrated 3") {
+		t.Errorf("expected migration result, got: %s", out)
+	}
+	if !strings.Contains(out, "Backup:") {
+		t.Errorf("expected backup line, got: %s", out)
+	}
+	for _, k := range []string{"A", "B", "C"} {
+		v, err := dst.Get(k)
+		if err != nil {
+			t.Fatalf("dst.Get(%s): %v", k, err)
+		}
+		want, _ := src.Get(k)
+		if v != want {
+			t.Errorf("%s: got %q, want %q", k, v, want)
+		}
+	}
+	if !dst.IsMigratedToDedicated() {
+		t.Error("sentinel not written")
+	}
+	if len(dstRing.items) != 4 {
+		t.Errorf("dst has %d items, want 4 (3 secrets + sentinel)", len(dstRing.items))
+	}
+	cd, _ := config.ConfigDir()
+	entries, err := os.ReadDir(filepath.Join(cd, "backups"))
+	if err != nil {
+		t.Fatalf("read backups dir: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Error("expected at least one backup file")
+	}
+}
+
+func TestKeychainToDedicated_NoBackup(t *testing.T) {
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	src.Set("X", "y")
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	toDedicatedNoBackup = true
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes", "--no-backup"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("to-dedicated --no-backup: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Backup: skipped") {
+		t.Errorf("expected 'Backup: skipped', got: %s", out)
+	}
+	cd, _ := config.ConfigDir()
+	if _, err := os.Stat(filepath.Join(cd, "backups")); !os.IsNotExist(err) {
+		t.Errorf("backups dir should not exist with --no-backup, stat err: %v", err)
+	}
+}
+
+func TestKeychainToDedicated_Idempotent(t *testing.T) {
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	src.Set("A", "1")
+	src.Set("B", "2")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	toDedicatedNoBackup = true
+
+	rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes", "--no-backup"})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("first run: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes", "--no-backup"})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("second run: %v", err)
+		}
+	})
+	if !strings.Contains(out, "Migrated 0") {
+		t.Errorf("idempotent re-run should report 0 migrated, got: %s", out)
+	}
+	if !strings.Contains(out, "2 already present") {
+		t.Errorf("expected 'already present' count, got: %s", out)
 	}
 }

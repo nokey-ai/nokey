@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nokey-ai/nokey/internal/backup"
+	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -48,7 +49,27 @@ var (
 	restoreIn       string
 	restorePassword string
 	restoreDryRun   bool
+
+	toDedicatedNoBackup bool
+	toDedicatedYes      bool
 )
+
+// openKeyringForFn opens either the login (dedicated=false) or dedicated
+// (dedicated=true) keychain using the current config's biometrics setting
+// and service name. Wrapped in a variable so the to-dedicated migration
+// can be tested without two real macOS keychains.
+var openKeyringForFn = func(dedicated bool) (*nkeyring.Store, error) {
+	bio := cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics
+	name := cfg.Keyring.Name
+	if dedicated && name == "" {
+		name = "nokey"
+	}
+	return nkeyring.New(cfg.DefaultBackend, cfg.ServiceName, bio, dedicated, name)
+}
+
+// applyKeychainSettingsFn shells out to `security set-keychain-settings`.
+// Wrapped so tests can no-op it without a real keychain on disk.
+var applyKeychainSettingsFn = nkeyring.ApplyKeychainSettings
 
 // loadAllSecretsFn loads every secret from the store, gating on PIN if one
 // is configured. Wrapped in a variable so tests can bypass the TTY prompt.
@@ -85,6 +106,19 @@ The resulting file can be re-imported with 'nokey keychain restore'.`,
 	RunE: runKeychainBackup,
 }
 
+var keychainToDedicatedCmd = &cobra.Command{
+	Use:   "to-dedicated",
+	Short: "Migrate secrets from the login keychain into the configured dedicated keychain",
+	Long: `Copies every secret from the macOS login keychain into the dedicated
+keychain configured via keyring.dedicated/keyring.name. Requires PIN auth
+(when configured) and writes an encrypted backup of every secret before
+touching the destination. Migration aborts if any secret already exists in
+the destination with a different value — manually resolve the conflict
+(security delete-generic-password ...) and re-run. Login-keychain entries
+are left in place; remove them with a future 'keychain prune-login' step.`,
+	RunE: runKeychainToDedicated,
+}
+
 var keychainRestoreCmd = &cobra.Command{
 	Use:   "restore --in FILE",
 	Short: "Restore secrets from an encrypted backup file",
@@ -110,9 +144,13 @@ func init() {
 	keychainRestoreCmd.Flags().BoolVar(&restoreDryRun, "dry-run", false, "Show what would happen without modifying")
 	_ = keychainRestoreCmd.MarkFlagRequired("in")
 
+	keychainToDedicatedCmd.Flags().BoolVar(&toDedicatedNoBackup, "no-backup", false, "Skip the pre-migration encrypted backup (not recommended)")
+	keychainToDedicatedCmd.Flags().BoolVar(&toDedicatedYes, "yes", false, "Skip confirmation prompt")
+
 	keychainCmd.AddCommand(keychainMigrateCmd)
 	keychainCmd.AddCommand(keychainBackupCmd)
 	keychainCmd.AddCommand(keychainRestoreCmd)
+	keychainCmd.AddCommand(keychainToDedicatedCmd)
 	rootCmd.AddCommand(keychainCmd)
 }
 
@@ -324,4 +362,170 @@ func runKeychainRestore(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Restored %d secret(s) (skipped %d already present)\n", len(toWrite), len(alreadyPresent))
 	return nil
+}
+
+// dedicatedConfigEnabled reports whether the user has opted in to the
+// dedicated keychain in their config. We require an explicit opt-in
+// because the migration changes which file holds the user's secrets —
+// flipping that silently would be a footgun.
+func dedicatedConfigEnabled() bool {
+	return cfg != nil && cfg.Keyring.Dedicated != nil && *cfg.Keyring.Dedicated
+}
+
+const dedicatedConfigSnippet = `keyring:
+  dedicated: true
+  # name: nokey   # optional; defaults to "nokey"`
+
+func runKeychainToDedicated(cmd *cobra.Command, args []string) error {
+	if !dedicatedConfigEnabled() {
+		path, _ := config.ConfigPath()
+		return fmt.Errorf(`dedicated keychain is not enabled in config.
+
+Add this to %s and re-run:
+
+%s
+`, path, dedicatedConfigSnippet)
+	}
+
+	if !toDedicatedYes {
+		fmt.Print("This will copy every secret from your login keychain into the dedicated keychain.\nContinue? [y/N] ")
+		reader := bufio.NewReader(os.Stdin)
+		answer, _ := reader.ReadString('\n')
+		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
+			fmt.Println("Aborted.")
+			return nil
+		}
+	}
+
+	srcStore, err := openKeyringForFn(false)
+	if err != nil {
+		return fmt.Errorf("open login keychain: %w", err)
+	}
+	dstStore, err := openKeyringForFn(true)
+	if err != nil {
+		return fmt.Errorf("open dedicated keychain: %w", err)
+	}
+
+	// Read source secrets first, PIN-gated. If the user can't auth here,
+	// we want to fail before writing a backup file with no secrets in it.
+	secrets, err := loadAllSecretsFn(srcStore)
+	if err != nil {
+		return fmt.Errorf("load login secrets: %w", err)
+	}
+	filtered := make(map[string]string, len(secrets))
+	for k, v := range secrets {
+		if strings.HasPrefix(k, "__nokey_") {
+			continue
+		}
+		filtered[k] = v
+	}
+
+	// Write an encrypted backup of the source before any destination write
+	// happens. The PIN doubles as the backup password — if no PIN is set,
+	// prompt the user. Skipping this is opt-in only.
+	backupPath := "skipped"
+	if !toDedicatedNoBackup {
+		pw, err := resolveBackupPassword("", "Backup password: ")
+		if err != nil {
+			return err
+		}
+		configDir, err := config.ConfigDir()
+		if err != nil {
+			return fmt.Errorf("resolve config dir: %w", err)
+		}
+		path := backup.DefaultPath(configDir, time.Now())
+		payload := &backup.Payload{
+			Version:   backup.CurrentVersion,
+			Timestamp: time.Now().UTC(),
+			Secrets:   filtered,
+		}
+		blob, err := backup.Encrypt(payload, pw)
+		if err != nil {
+			return fmt.Errorf("encrypt backup: %w", err)
+		}
+		if err := backup.Write(path, blob); err != nil {
+			return err
+		}
+		backupPath = path
+	}
+
+	// Classify against destination so we can refuse atomically on any
+	// value conflict. Even one differing value aborts: silently
+	// overwriting whatever the user has in the dedicated keychain
+	// already would defeat the whole point of a careful migration.
+	var toWrite, alreadyPresent, conflicts []string
+	for k, v := range filtered {
+		existing, err := dstStore.Get(k)
+		if err != nil {
+			if nkeyring.IsNotFound(err) {
+				toWrite = append(toWrite, k)
+				continue
+			}
+			return fmt.Errorf("inspect destination %s: %w", k, err)
+		}
+		if existing == v {
+			alreadyPresent = append(alreadyPresent, k)
+		} else {
+			conflicts = append(conflicts, k)
+		}
+	}
+
+	if len(conflicts) > 0 {
+		dstPath := nkeyring.DedicatedKeychainPath(effectiveKeychainName())
+		var lines []string
+		for _, k := range conflicts {
+			lines = append(lines, fmt.Sprintf("  security delete-generic-password -s %s -a %s %s", cfg.ServiceName, k, dstPath))
+		}
+		return fmt.Errorf("destination keychain already contains conflicting values for %d secret(s): %s\n\nDelete the conflicting entries and re-run:\n%s",
+			len(conflicts), strings.Join(conflicts, ", "), strings.Join(lines, "\n"))
+	}
+
+	// Write everything new.
+	for _, k := range toWrite {
+		if err := dstStore.Set(k, filtered[k]); err != nil {
+			return fmt.Errorf("write %s to dedicated keychain: %w", k, err)
+		}
+	}
+
+	// Verify roundtrip — re-read every written secret from the destination
+	// and compare against the source plaintext. If any byte differs we
+	// abort BEFORE writing the sentinel so future runs treat the
+	// migration as incomplete and re-attempt.
+	for _, k := range toWrite {
+		got, err := dstStore.Get(k)
+		if err != nil {
+			return fmt.Errorf("verify %s: %w", k, err)
+		}
+		if got != filtered[k] {
+			return fmt.Errorf("verify %s: destination value differs from source", k)
+		}
+	}
+
+	// Apply the lock-on-sleep / 5 min idle settings — a fresh dedicated
+	// keychain has no such defaults so without this it would stay
+	// unlocked forever once opened.
+	if dstPath := nkeyring.DedicatedKeychainPath(effectiveKeychainName()); dstPath != "" {
+		if err := applyKeychainSettingsFn(dstPath); err != nil {
+			return fmt.Errorf("apply keychain settings: %w", err)
+		}
+	}
+
+	if err := dstStore.SetMigratedToDedicated(); err != nil {
+		return fmt.Errorf("write migration sentinel: %w", err)
+	}
+
+	fmt.Printf("Migrated %d secret(s) to the dedicated keychain (%d already present).\n", len(toWrite), len(alreadyPresent))
+	fmt.Printf("Backup: %s\n", backupPath)
+	fmt.Println("Login-keychain entries left in place — remove them later with 'nokey keychain prune-login' (coming in a future release).")
+	return nil
+}
+
+// effectiveKeychainName returns the dedicated keychain file name the
+// current config resolves to: cfg.Keyring.Name if set, otherwise "nokey".
+// Centralised so the migration command and the keyring opener can't drift.
+func effectiveKeychainName() string {
+	if cfg != nil && cfg.Keyring.Name != "" {
+		return cfg.Keyring.Name
+	}
+	return "nokey"
 }

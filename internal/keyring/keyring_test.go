@@ -1055,3 +1055,43 @@ func TestStore_Cache_ConcurrentAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+// --- v0.5.0 dedicated-keychain helpers ---
+
+func TestMigratedToDedicated_Lifecycle(t *testing.T) {
+	s := newTestStore()
+	if s.IsMigratedToDedicated() {
+		t.Fatal("expected sentinel absent on fresh store")
+	}
+	if err := s.SetMigratedToDedicated(); err != nil {
+		t.Fatalf("SetMigratedToDedicated: %v", err)
+	}
+	if !s.IsMigratedToDedicated() {
+		t.Error("expected sentinel present after Set")
+	}
+	if err := s.DeleteMigratedToDedicated(); err != nil {
+		t.Fatalf("DeleteMigratedToDedicated: %v", err)
+	}
+	if s.IsMigratedToDedicated() {
+		t.Error("expected sentinel absent after Delete")
+	}
+	// Delete on absent sentinel must be idempotent so rollback can be re-run.
+	if err := s.DeleteMigratedToDedicated(); err != nil {
+		t.Errorf("DeleteMigratedToDedicated (absent) returned: %v", err)
+	}
+}
+
+func TestDedicatedKeychainPath(t *testing.T) {
+	if got := DedicatedKeychainPath(""); got != "" {
+		t.Errorf("empty name should yield empty path, got %q", got)
+	}
+
+	got := DedicatedKeychainPath("nokey")
+	if runtime.GOOS == "darwin" {
+		if !strings.HasSuffix(got, "/Library/Keychains/nokey.keychain-db") {
+			t.Errorf("darwin path: got %q", got)
+		}
+	} else if got != "" {
+		t.Errorf("non-darwin path should be empty, got %q", got)
+	}
+}

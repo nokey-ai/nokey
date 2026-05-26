@@ -443,6 +443,56 @@ func (s *Store) SetKeychainMigrated() error {
 	return s.Set(keychainMigratedKey, "1")
 }
 
+// migratedToDedicatedKey marks a Store as the post-migration *destination*
+// in the v0.5.0 login → dedicated keychain move. Living on the destination
+// (not the source) lets `from-dedicated` know there is something to roll
+// back without re-opening the login keychain just to find out.
+const migratedToDedicatedKey = "__nokey_migrated_to_dedicated__"
+
+// IsMigratedToDedicated returns true if the v0.5.0 dedicated-keychain
+// migration sentinel is present on this store.
+func (s *Store) IsMigratedToDedicated() bool {
+	val, err := s.Get(migratedToDedicatedKey)
+	return err == nil && val == "1"
+}
+
+// SetMigratedToDedicated writes the v0.5.0 dedicated-keychain migration
+// sentinel. Callers should only invoke this after every secret has been
+// copied AND verified — the sentinel is what tells future runs that the
+// move is complete.
+func (s *Store) SetMigratedToDedicated() error {
+	return s.Set(migratedToDedicatedKey, "1")
+}
+
+// DeleteMigratedToDedicated clears the v0.5.0 dedicated-keychain
+// migration sentinel. Used by `from-dedicated` rollback. Returns nil
+// if the sentinel is already absent so the rollback is idempotent.
+func (s *Store) DeleteMigratedToDedicated() error {
+	if err := s.Delete(migratedToDedicatedKey); err != nil {
+		if IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
+// DedicatedKeychainPath returns the absolute path nokey uses for a
+// dedicated macOS keychain file: ~/Library/Keychains/<name>.keychain-db.
+// Returns "" on non-darwin platforms or when the home directory cannot
+// be resolved. name is taken as-is — callers are responsible for passing
+// a non-empty value (the cmd layer defaults this to "nokey").
+func DedicatedKeychainPath(name string) string {
+	if runtime.GOOS != "darwin" || name == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home + "/Library/Keychains/" + name + ".keychain-db"
+}
+
 // IsNotFound returns true if the error indicates a key was not found in the keyring
 func IsNotFound(err error) bool {
 	return err != nil && strings.HasPrefix(err.Error(), "secret not found:")
