@@ -53,8 +53,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keychain file has been deleted out from under nokey.
 - `keyring.dedicated` (bool, default false) and `keyring.name` (string,
   default `"nokey"`) config keys controlling the new mode.
+- First-time `to-dedicated` prints a nokey-flavored heads-up before the
+  upstream byteness/keyring "aws-vault" passphrase prompt fires. The
+  upstream string is hardcoded in the library; the banner clarifies
+  that the misnamed prompt is in fact the nokey dedicated-keychain
+  passphrase. Banner fires only when the dedicated keychain file does
+  not yet exist (one-time setup).
 
 ### Fixed
+- `checkKeychainMigrationHint` no longer suggests the legacy
+  `nokey keychain migrate` command when `keyring.dedicated: true` is
+  enabled or when the `__nokey_migrated_to_dedicated__` sentinel is
+  present. Users on the new dedicated-keychain mode shouldn't see a
+  hint for a command that doesn't apply to them.
 - Test runs no longer hang for the macOS Security framework timeout
   when the per-binary ACL cache has expired. `rootCmd.PersistentPreRun`
   calls `checkKeychainMigrationHint`, which reaches the real login

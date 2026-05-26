@@ -132,7 +132,15 @@ nokey import .env
 
 # Export to shell (use with caution)
 eval "$(nokey export --shell bash)"
+
+# Encrypted backup of every secret (Argon2id + NaCl secretbox)
+nokey keychain backup --out snapshot.enc
+nokey keychain restore --in snapshot.enc --dry-run
 ```
+
+Passphrases for `backup`/`restore` are prompted on the terminal; pipe one in
+with `--password-stdin` for scripting. The passphrase is never accepted as a
+CLI flag because argv leaks to the process table on macOS.
 
 ### Execute Commands with Secrets
 
@@ -497,23 +505,7 @@ export NOKEY_BACKEND=file
 nokey set API_KEY
 ```
 
-### macOS: enabling Touch ID for existing secrets (`nokey keychain migrate`)
-
-Secrets created by older builds may prompt for a Keychain password on every
-access. Re-creating those items lets Touch ID gate them instead:
-
-```bash
-# Preview which items would be re-created (no changes made)
-nokey keychain migrate --dry-run
-
-# Re-create all nokey keychain items so Touch ID can unlock them
-nokey keychain migrate
-```
-
-`nokey` will also print a one-time hint pointing at this command the first time
-it sees keychain items that look like they need migrating.
-
-### Switching to a dedicated keychain (macOS)
+### macOS: dedicated keychain + Touch ID (recommended, v0.5.0+)
 
 The macOS login keychain trusts a binary by its code-signing identity.
 Every `make build` produces a fresh ad-hoc-signed nokey, so the previous
@@ -539,28 +531,49 @@ YAML
 nokey keychain to-dedicated
 ```
 
-New commands in v0.5.0:
+The full v0.5.0 keychain command surface:
 
-- `nokey keychain backup --out FILE` — encrypted snapshot of every secret (Argon2id + NaCl-secretbox).
-- `nokey keychain restore --in FILE [--dry-run]` — restore from a snapshot; refuses atomically on value conflict.
-- `nokey keychain to-dedicated [--no-backup] [--yes]` — migrate login → dedicated; PIN-gated; mandatory backup; roundtrip-verified.
-- `nokey keychain from-dedicated [--yes]` — roll the migration back to the login keychain.
-- `nokey keychain prune-orphan [--dry-run]` — remove the stranded `nokey/com.nokey.biometrics` Touch ID stash if you deleted the dedicated keychain file manually.
-
-To roll back at any time:
-
-```bash
-nokey keychain from-dedicated
-```
+| Command | What it does |
+|---|---|
+| `nokey keychain to-dedicated [--no-backup] [--yes]` | Migrate login → dedicated. PIN-gated. Mandatory pre-migration encrypted backup. Roundtrip-verified before sentinel. Refuses atomically on any value conflict. |
+| `nokey keychain from-dedicated [--yes]` | Roll back to the login keychain. Same atomic-refusal semantics. Cleans up the orphan Touch ID stash. |
+| `nokey keychain backup --out FILE [--password-stdin]` | Encrypted snapshot of every user secret. |
+| `nokey keychain restore --in FILE [--password-stdin] [--dry-run]` | Restore from a snapshot. Refuses on value conflict; never overwrites silently. |
+| `nokey keychain prune-orphan [--dry-run]` | Remove the stranded `nokey/com.nokey.biometrics` Touch ID stash if you deleted the dedicated keychain file manually. |
 
 Trade-offs of the dedicated keychain: it lives outside "login" in
 Keychain Access, doesn't sync via iCloud Keychain, and doesn't
 auto-unlock at OS login — Touch ID handles unlock on first nokey use
-per process. Login-keychain entries are left in place after migration;
-a future `keychain prune-login` step will clean them up after a
-deprecation window.
+per process. The keychain locks after 5 minutes idle and on sleep
+(applied automatically at creation). Login-keychain entries are left
+in place after migration; a future `keychain prune-login` step will
+clean them up after a deprecation window.
+
+Heads-up on the first-time Touch ID setup prompt: the underlying
+byteness/keyring library hardcodes the string "aws-vault" into its
+setup prompt (the library originated in that tool). nokey prints a
+short banner just before the prompt to clarify. You only see it once.
 
 Full release notes: [CHANGELOG v0.5.0](CHANGELOG.md#050---2026-05-25).
+
+### macOS: enabling Touch ID for existing secrets (legacy `keychain migrate`)
+
+> Pre-v0.5.0 workflow. Prefer the dedicated keychain above for new
+> installs and rebuilds — the legacy path re-ACLs login-keychain items
+> to the current binary, which is undone by the next `make build`.
+
+```bash
+# Preview which items would be re-created (no changes made)
+nokey keychain migrate --dry-run
+
+# Re-create all nokey keychain items so Touch ID can unlock them
+nokey keychain migrate
+```
+
+`nokey` prints a one-time hint pointing at this command when it sees
+login-keychain items that look unmigrated. The hint is suppressed when
+`keyring.dedicated: true` is enabled or when the dedicated migration
+sentinel is already present.
 
 ---
 
