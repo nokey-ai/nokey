@@ -28,7 +28,7 @@ const (
 	MaxOutputBytes     = 1 << 20 // 1 MiB
 	DefaultTimeoutSecs = 30
 	MaxTimeoutSecs     = 300
-	AutoMintTTLSecs    = 3600 // 1 hour — session token lifetime
+	AutoMintTTLSecs    = 300 // 5 minutes — session token lifetime
 )
 
 // SecretStore is the subset of keyring functionality that MCP handlers need.
@@ -728,9 +728,12 @@ func (h *Handler) tryAutoMint(ctx context.Context, secretNames []string) error {
 		return err
 	}
 
+	// Clear any revocation cooldown since this is user-approved re-minting.
+	h.tokenStore.ClearCooldown(allNames)
+
 	tok, err := h.tokenStore.Mint(token.MintRequest{
 		Secrets:   allNames,
-		TTLSecs:   AutoMintTTLSecs,
+		TTLSecs:   h.autoMintTTL(),
 		MaxUses:   0, // unlimited
 		MintedFor: "*",
 	})
@@ -773,4 +776,15 @@ func validateFilterNames(only, except string) error {
 // recordAudit delegates to the injected audit function.
 func (h *Handler) recordAudit(operation, command, target string, success bool, errMsg string) {
 	h.auditFn(operation, command, target, success, errMsg)
+}
+
+func (h *Handler) autoMintTTL() int {
+	if h.cfg != nil && h.cfg.Auth.AutoMintTTLSecs > 0 {
+		ttl := h.cfg.Auth.AutoMintTTLSecs
+		if ttl > 3600 {
+			ttl = 3600
+		}
+		return ttl
+	}
+	return AutoMintTTLSecs
 }

@@ -30,6 +30,7 @@ type Server struct {
 	listener       net.Listener
 	server         *http.Server
 	certCache      sync.Map // host → *tls.Certificate
+	certTracker    *CertTracker
 	mu             sync.Mutex
 	running        bool
 	blockUnmatched bool // if true, reject requests to hosts with no matching proxy rule
@@ -51,6 +52,11 @@ func NewServer(ca *CA, rules []policy.ProxyRule, secrets map[string]string, pol 
 // matching proxy rule are rejected with 403 instead of being forwarded.
 func (s *Server) SetBlockUnmatched(block bool) {
 	s.blockUnmatched = block
+}
+
+// SetCertTracker enables upstream certificate fingerprint tracking.
+func (s *Server) SetCertTracker(ct *CertTracker) {
+	s.certTracker = ct
 }
 
 // Start begins listening on addr (e.g. "127.0.0.1:0") and returns the actual
@@ -207,6 +213,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 	// Send 200 Connection Established.
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+
+	// Track upstream certificate fingerprint (async, non-blocking).
+	if s.certTracker != nil {
+		go s.certTracker.CheckUpstream(host, hostPort)
+	}
 
 	// Get or create cert for host.
 	cert, err := s.getOrCreateCert(host)

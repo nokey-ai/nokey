@@ -24,6 +24,7 @@ type Rule struct {
 	Secrets       []string     `yaml:"secrets"`
 	Approval      ApprovalMode `yaml:"approval,omitempty"`
 	TokenRequired bool         `yaml:"token_required,omitempty"`
+	AuthMethod    string       `yaml:"auth_method,omitempty"` // "pin", "oauth", "both", "none" — overrides global default
 }
 
 // Policy is a set of rules loaded from the policy file.
@@ -79,6 +80,9 @@ func Load(configDir string) (*Policy, error) {
 		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
 			return nil, err
 		}
+		if err := validateAuthMethod(rule.AuthMethod, fmt.Sprintf("rule %d", i)); err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate proxy rules if present
@@ -127,6 +131,9 @@ func LoadStrict(configDir string) (*Policy, error) {
 		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
 			return nil, err
 		}
+		if err := validateAuthMethod(rule.AuthMethod, fmt.Sprintf("rule %d", i)); err != nil {
+			return nil, err
+		}
 	}
 
 	// Validate proxy rules if present
@@ -146,6 +153,21 @@ func validateApproval(mode ApprovalMode, context string) error {
 	default:
 		return fmt.Errorf("policy %s: invalid approval mode %q (must be %q, %q, or omitted)", context, mode, ApprovalAlways, ApprovalNever)
 	}
+}
+
+var validAuthMethods = map[string]bool{
+	"":      true,
+	"pin":   true,
+	"oauth": true,
+	"both":  true,
+	"none":  true,
+}
+
+func validateAuthMethod(method string, context string) error {
+	if !validAuthMethods[method] {
+		return fmt.Errorf("policy %s: invalid auth_method %q (must be pin, oauth, both, none, or omitted)", context, method)
+	}
+	return nil
 }
 
 // RequiresApproval returns true if any of the requested secrets require user
@@ -246,6 +268,43 @@ func (p *Policy) allowed(command, secret string) bool {
 		}
 	}
 	return false
+}
+
+// authMethodStrength returns a numeric strength for comparison.
+var authMethodStrength = map[string]int{
+	"none":  0,
+	"pin":   1,
+	"oauth": 1,
+	"both":  2,
+}
+
+// RequiredAuthMethod returns the most restrictive auth_method override from
+// matching rules for the given command and secrets. Returns "" if no rule
+// specifies an override (meaning the global/config default applies).
+func (p *Policy) RequiredAuthMethod(command string, secretNames []string) string {
+	if p == nil || len(secretNames) == 0 {
+		return ""
+	}
+
+	base := filepath.Base(command)
+	strongest := ""
+	strongestLevel := -1
+
+	for _, secret := range secretNames {
+		for _, rule := range p.Rules {
+			if rule.AuthMethod == "" {
+				continue
+			}
+			if matchesAny(base, rule.Commands) && matchesAny(secret, rule.Secrets) {
+				level := authMethodStrength[rule.AuthMethod]
+				if level > strongestLevel {
+					strongestLevel = level
+					strongest = rule.AuthMethod
+				}
+			}
+		}
+	}
+	return strongest
 }
 
 // matchesAny returns true if value matches any of the given glob patterns.

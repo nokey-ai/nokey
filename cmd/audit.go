@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -74,11 +76,24 @@ var auditClearCmd = &cobra.Command{
 	RunE:  runAuditClear,
 }
 
+var auditStatusJSON bool
+
+var auditStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show audit system health",
+	Long:  `Display audit system health: enabled state, entry count, file size, integrity, and retention config.`,
+	RunE:  runAuditStatus,
+}
+
 func init() {
 	rootCmd.AddCommand(auditCmd)
 	auditCmd.AddCommand(auditListCmd)
 	auditCmd.AddCommand(auditExportCmd)
 	auditCmd.AddCommand(auditClearCmd)
+	auditCmd.AddCommand(auditStatusCmd)
+
+	// Status flags
+	auditStatusCmd.Flags().BoolVar(&auditStatusJSON, "json", false, "Output as JSON")
 
 	// List flags
 	auditListCmd.Flags().StringVar(&auditSince, "since", "", "Show entries since time (1h, 1d, 1w, 1m)")
@@ -303,4 +318,104 @@ func parseSince(since string) (time.Time, error) {
 	default:
 		return time.Time{}, fmt.Errorf("invalid time unit: %s (use: h, d, w, m)", unit)
 	}
+}
+
+func runAuditStatus(cmd *cobra.Command, args []string) error {
+	type auditStatusOutput struct {
+		Enabled        bool   `json:"enabled"`
+		LogFile        string `json:"log_file"`
+		LogFileSize    int64  `json:"log_file_size_bytes"`
+		TotalEntries   int    `json:"total_entries"`
+		OldestEntry    string `json:"oldest_entry,omitempty"`
+		NewestEntry    string `json:"newest_entry,omitempty"`
+		ChainIntegrity string `json:"chain_integrity"`
+		Warnings       int    `json:"warnings"`
+		RetentionDays  int    `json:"retention_days"`
+		MaxEntries     int    `json:"max_entries"`
+	}
+
+	out := auditStatusOutput{
+		Enabled:       cfg.Audit.Enabled,
+		RetentionDays: cfg.Audit.RetentionDays,
+		MaxEntries:    cfg.Audit.MaxEntries,
+	}
+
+	if !cfg.Audit.Enabled {
+		out.ChainIntegrity = "n/a"
+		if auditStatusJSON {
+			data, _ := json.MarshalIndent(out, "", "  ")
+			fmt.Println(string(data))
+			return nil
+		}
+		fmt.Println("Audit Status:")
+		fmt.Println("  Enabled:   false")
+		fmt.Println("\nTo enable, add to ~/.config/nokey/config.yaml:")
+		fmt.Println("  audit:")
+		fmt.Println("    enabled: true")
+		return nil
+	}
+
+	// Determine log file path
+	logDir, dirErr := audit.AuditLogDir()
+	if dirErr == nil {
+		out.LogFile = filepath.Join(logDir, "audit.log")
+		if fi, err := os.Stat(out.LogFile); err == nil {
+			out.LogFileSize = fi.Size()
+		}
+	}
+
+	// Load audit log
+	store, err := getKeyring()
+	if err != nil {
+		return fmt.Errorf("failed to open keyring: %w", err)
+	}
+
+	auditLog, loadErr := audit.Load(store)
+	if loadErr != nil {
+		out.ChainIntegrity = fmt.Sprintf("error: %s", loadErr)
+	} else {
+		out.TotalEntries = len(auditLog.Entries)
+		out.Warnings = len(auditLog.Warnings)
+		if len(auditLog.Warnings) == 0 {
+			out.ChainIntegrity = "valid"
+		} else {
+			out.ChainIntegrity = fmt.Sprintf("%d warnings", len(auditLog.Warnings))
+		}
+		if len(auditLog.Entries) > 0 {
+			out.OldestEntry = auditLog.Entries[0].Timestamp.Format(time.RFC3339)
+			out.NewestEntry = auditLog.Entries[len(auditLog.Entries)-1].Timestamp.Format(time.RFC3339)
+		}
+	}
+
+	if auditStatusJSON {
+		data, _ := json.MarshalIndent(out, "", "  ")
+		fmt.Println(string(data))
+		return nil
+	}
+
+	fmt.Println("Audit Status:")
+	fmt.Printf("  Enabled:           true\n")
+	if out.LogFile != "" {
+		fmt.Printf("  Log file:          %s\n", out.LogFile)
+		fmt.Printf("  Log file size:     %s\n", formatBytes(out.LogFileSize))
+	}
+	fmt.Printf("  Total entries:     %d\n", out.TotalEntries)
+	if out.OldestEntry != "" {
+		fmt.Printf("  Oldest entry:      %s\n", out.OldestEntry)
+		fmt.Printf("  Newest entry:      %s\n", out.NewestEntry)
+	}
+	fmt.Printf("  Chain integrity:   %s\n", out.ChainIntegrity)
+	fmt.Printf("  Retention:         %d days, max %d entries\n", out.RetentionDays, out.MaxEntries)
+
+	return nil
+}
+
+func formatBytes(b int64) string {
+	if b < 1024 {
+		return fmt.Sprintf("%d B", b)
+	}
+	if b < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(b)/1024)
+	}
+	return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
 }

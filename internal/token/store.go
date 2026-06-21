@@ -2,15 +2,19 @@ package token
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 )
 
 const (
-	maxTTLSecs = 3600
-	tokenBytes = 32 // 64 hex chars
+	maxTTLSecs       = 3600
+	tokenBytes       = 32 // 64 hex chars
+	MintCooldownSecs = 60 // cooldown after revocation before same secrets can be re-minted
 )
 
 // Token represents an access lease for one or more secrets.
@@ -40,16 +44,18 @@ type ValidationResult struct {
 
 // Store is an in-memory, session-scoped token store. Tokens die with the process.
 type Store struct {
-	mu     sync.RWMutex
-	tokens map[string]*Token
-	now    func() time.Time // injectable clock for testing
+	mu            sync.RWMutex
+	tokens        map[string]*Token
+	mintCooldowns map[string]time.Time // secretsHash -> earliest next mint
+	now           func() time.Time     // injectable clock for testing
 }
 
 // NewStore creates an empty token store.
 func NewStore() *Store {
 	return &Store{
-		tokens: make(map[string]*Token),
-		now:    time.Now,
+		tokens:        make(map[string]*Token),
+		mintCooldowns: make(map[string]time.Time),
+		now:           time.Now,
 	}
 }
 
@@ -74,6 +80,19 @@ func (s *Store) Mint(req MintRequest) (*Token, error) {
 	}
 
 	now := s.now()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check mint cooldown
+	hash := secretsHash(req.Secrets)
+	if earliest, ok := s.mintCooldowns[hash]; ok && now.Before(earliest) {
+		remaining := earliest.Sub(now).Round(time.Second)
+		return nil, fmt.Errorf("mint cooldown active for these secrets — try again in %s", remaining)
+	}
+
+	s.cleanup()
+
 	tok := &Token{
 		ID:        id,
 		Secrets:   req.Secrets,
@@ -87,11 +106,7 @@ func (s *Store) Mint(req MintRequest) (*Token, error) {
 		tok.MintedFor = "*"
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.cleanup()
 	s.tokens[id] = tok
-
 	return tok, nil
 }
 
@@ -124,11 +139,15 @@ func (s *Store) Use(id string, secrets []string) ValidationResult {
 }
 
 // Revoke removes a token by ID. Returns true if the token existed.
+// Imposes a cooldown before the same secret-set can be re-minted.
 func (s *Store) Revoke(id string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.tokens[id]; ok {
+	tok, ok := s.tokens[id]
+	if ok {
+		hash := secretsHash(tok.Secrets)
+		s.mintCooldowns[hash] = s.now().Add(time.Duration(MintCooldownSecs) * time.Second)
 		delete(s.tokens, id)
 		return true
 	}
@@ -146,6 +165,14 @@ func (s *Store) List() []Token {
 		result = append(result, *tok)
 	}
 	return result
+}
+
+// ClearCooldown removes the mint cooldown for the given secret set.
+// Use this when a system-initiated re-mint is necessary (e.g., auto-mint after expiry).
+func (s *Store) ClearCooldown(secrets []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.mintCooldowns, secretsHash(secrets))
 }
 
 // validate checks a token without locking (caller must hold at least RLock).
@@ -193,4 +220,12 @@ func generateID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func secretsHash(secrets []string) string {
+	sorted := make([]string, len(secrets))
+	copy(sorted, secrets)
+	sort.Strings(sorted)
+	h := sha256.Sum256([]byte(strings.Join(sorted, "\x00")))
+	return hex.EncodeToString(h[:8])
 }

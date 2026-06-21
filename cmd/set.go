@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nokey-ai/nokey/internal/metadata"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
@@ -98,6 +99,10 @@ func runSet(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to store secret %q: %w", key, err)
+	}
+
+	if ms, msErr := metadata.DefaultStore(); msErr == nil {
+		_ = ms.RecordSet(key)
 	}
 
 	fmt.Printf("Secret '%s' stored successfully\n", key)

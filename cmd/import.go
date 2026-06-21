@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nokey-ai/nokey/internal/metadata"
 	"github.com/spf13/cobra"
 )
 
@@ -115,6 +116,12 @@ func runImport(cmd *cobra.Command, args []string) error {
 		}
 		imported++
 		importedKeys = append(importedKeys, key)
+	}
+
+	if ms, msErr := metadata.DefaultStore(); msErr == nil {
+		for _, key := range importedKeys {
+			_ = ms.RecordSet(key)
+		}
 	}
 
 	// Record audit entry

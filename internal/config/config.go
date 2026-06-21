@@ -42,12 +42,19 @@ type OAuthConfig struct {
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	DefaultMethod string      `yaml:"default_method,omitempty"`  // "pin", "oauth", "both", "none"
-	SessionTTL    string      `yaml:"session_ttl,omitempty"`     // duration string, e.g. "15m" (default), max "8h"
-	SkipConfirm   bool        `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
-	AutoMintToken bool        `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
-	UseBiometrics *bool       `yaml:"use_biometrics,omitempty"`  // use Touch ID on macOS (default: true on macOS)
-	OAuth         OAuthConfig `yaml:"oauth,omitempty"`
+	DefaultMethod   string      `yaml:"default_method,omitempty"`    // "pin", "oauth", "both", "none"
+	SessionTTL      string      `yaml:"session_ttl,omitempty"`       // duration string, e.g. "15m" (default), max "8h"
+	SkipConfirm     bool        `yaml:"skip_confirm,omitempty"`      // skip y/N confirmation prompt in exec
+	AutoMintToken   bool        `yaml:"auto_mint_token,omitempty"`   // auto-mint session token on first MCP approval
+	AutoMintTTLSecs int         `yaml:"auto_mint_ttl_seconds,omitempty"` // override default TTL for auto-minted tokens (max 3600)
+	UseBiometrics   *bool       `yaml:"use_biometrics,omitempty"`    // use Touch ID on macOS (default: true on macOS)
+	OAuth           OAuthConfig `yaml:"oauth,omitempty"`
+}
+
+// SecretPolicyConfig controls warnings for stale or old secrets
+type SecretPolicyConfig struct {
+	MaxAgeDays  int `yaml:"max_age_days,omitempty"`  // warn if secret older than this (0 = disabled)
+	MaxIdleDays int `yaml:"max_idle_days,omitempty"` // warn if not accessed in this many days (0 = disabled)
 }
 
 // Config represents the nokey configuration
@@ -72,6 +79,9 @@ type Config struct {
 
 	// Auth contains authentication configuration
 	Auth AuthConfig `yaml:"auth,omitempty"`
+
+	// SecretPolicy controls warnings for stale/old secrets
+	SecretPolicy SecretPolicyConfig `yaml:"secret_policy,omitempty"`
 }
 
 // DefaultConfig returns a config with sensible defaults
