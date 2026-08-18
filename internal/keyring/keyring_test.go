@@ -520,6 +520,49 @@ func TestStore_GetAll_GetError(t *testing.T) {
 	}
 }
 
+// --- backoff store registration ---
+
+// captureBackoffRegistration intercepts the auth.SetBackoffStore call so tests
+// can assert the wiring without mutating global auth state.
+func captureBackoffRegistration(t *testing.T) *[]*Store {
+	t.Helper()
+	old := setBackoffStoreFn
+	t.Cleanup(func() { setBackoffStoreFn = old })
+
+	var registered []*Store
+	setBackoffStoreFn = func(s *Store) { registered = append(registered, s) }
+	return &registered
+}
+
+func TestNewWithRing_RegistersBackoffStore(t *testing.T) {
+	registered := captureBackoffRegistration(t)
+
+	s := NewWithRing(newMockRing(), "nokey")
+
+	if len(*registered) != 1 || (*registered)[0] != s {
+		t.Fatalf("NewWithRing should register the returned store for PIN backoff, got %v", *registered)
+	}
+}
+
+func TestNew_RegistersBackoffStore(t *testing.T) {
+	registered := captureBackoffRegistration(t)
+
+	oldOpen := keyringOpenFn
+	defer func() { keyringOpenFn = oldOpen }()
+	keyringOpenFn = func(config keyring.Config) (keyring.Keyring, error) {
+		return newMockRing(), nil
+	}
+
+	s, err := New("", "nokey", false, false, "")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	if len(*registered) != 1 || (*registered)[0] != s {
+		t.Fatalf("New should register the returned store for PIN backoff, got %v", *registered)
+	}
+}
+
 // --- New() tests via injectable keyringOpenFn ---
 
 func TestNew_DefaultBackend(t *testing.T) {

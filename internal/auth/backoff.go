@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
@@ -19,21 +20,39 @@ type FailureRecord struct {
 	LastFailure time.Time `json:"last_failure"`
 }
 
-// backoffStoreFn abstracts keyring access for testing.
-var backoffStoreFn = defaultBackoffStore
-
-type backoffStore interface {
+// BackoffStore persists the failure counter across processes. It is satisfied
+// by *keyring.Store, which this package cannot reference directly because
+// internal/keyring imports internal/auth.
+type BackoffStore interface {
 	Get(key string) (string, error)
 	Set(key, value string) error
 	Delete(key string) error
 }
 
-func defaultBackoffStore() backoffStore {
-	return nil // callers pass the store directly
+var (
+	backoffMu       sync.RWMutex
+	registeredStore BackoffStore
+)
+
+// SetBackoffStore registers the store used to rate-limit failed PIN attempts.
+// internal/keyring calls this when a Store is opened, so any process that can
+// reach a PIN hash also has somewhere to persist failures. Passing nil disables
+// rate limiting.
+func SetBackoffStore(store BackoffStore) {
+	backoffMu.Lock()
+	defer backoffMu.Unlock()
+	registeredStore = store
+}
+
+// backoffStore returns the registered store, or nil if none was registered.
+func backoffStore() BackoffStore {
+	backoffMu.RLock()
+	defer backoffMu.RUnlock()
+	return registeredStore
 }
 
 // checkBackoff returns an error if the caller must wait before another attempt.
-func checkBackoff(store backoffStore) error {
+func checkBackoff(store BackoffStore) error {
 	rec, err := loadFailureRecord(store)
 	if err != nil || rec == nil {
 		return nil // no record or error reading — allow attempt
@@ -55,7 +74,7 @@ func checkBackoff(store backoffStore) error {
 }
 
 // recordFailure increments the failure counter.
-func recordFailure(store backoffStore) {
+func recordFailure(store BackoffStore) {
 	rec, err := loadFailureRecord(store)
 	if err != nil || rec == nil {
 		rec = &FailureRecord{}
@@ -66,11 +85,11 @@ func recordFailure(store backoffStore) {
 }
 
 // clearFailures resets the counter on successful auth.
-func clearFailures(store backoffStore) {
+func clearFailures(store BackoffStore) {
 	_ = store.Delete(failureKey)
 }
 
-func loadFailureRecord(store backoffStore) (*FailureRecord, error) {
+func loadFailureRecord(store BackoffStore) (*FailureRecord, error) {
 	data, err := store.Get(failureKey)
 	if err != nil {
 		return nil, err
@@ -82,7 +101,7 @@ func loadFailureRecord(store backoffStore) (*FailureRecord, error) {
 	return &rec, nil
 }
 
-func saveFailureRecord(store backoffStore, rec *FailureRecord) {
+func saveFailureRecord(store BackoffStore, rec *FailureRecord) {
 	data, err := json.Marshal(rec)
 	if err != nil {
 		return

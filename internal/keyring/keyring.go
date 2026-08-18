@@ -53,7 +53,9 @@ func NewWithRing(ring keyring.Keyring, serviceName string) *Store {
 	if serviceName == "" {
 		serviceName = "nokey"
 	}
-	return &Store{ring: ring, serviceName: serviceName, cache: make(map[string]keyring.Item)}
+	s := &Store{ring: ring, serviceName: serviceName, cache: make(map[string]keyring.Item)}
+	setBackoffStoreFn(s)
+	return s
 }
 
 // New creates a new keyring store with the specified backend and service name.
@@ -116,11 +118,13 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 		return nil, fmt.Errorf("failed to open keyring: %w", err)
 	}
 
-	return &Store{
+	s := &Store{
 		ring:        ring,
 		serviceName: serviceName,
 		cache:       make(map[string]keyring.Item),
-	}, nil
+	}
+	setBackoffStoreFn(s)
+	return s, nil
 }
 
 // Set stores a secret value for the given key.
@@ -320,6 +324,11 @@ var keyringOpenFn = keyring.Open
 
 // authenticateFn is the function used to verify PIN auth. Overridable for testing.
 var authenticateFn = auth.Authenticate
+
+// setBackoffStoreFn registers a Store as the backing store for PIN failure
+// backoff. Every constructor calls it, so the rate limiter is armed for any
+// process that can reach a PIN hash. Overridable for testing.
+var setBackoffStoreFn = func(s *Store) { auth.SetBackoffStore(s) }
 
 // AuthenticatedGetAll retrieves all secrets after authenticating with PIN
 // This provides zero-trust security: even if Claude runs this command,
