@@ -85,13 +85,12 @@ func (p *GitHubProvider) ValidateToken(ctx context.Context, token *Token) error 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("token validation failed (status %d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("token validation failed (status %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	// Parse user info to verify token works
 	var user map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&user); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxUserInfoBytes)).Decode(&user); err != nil {
 		return fmt.Errorf("failed to parse user info: %w", err)
 	}
 

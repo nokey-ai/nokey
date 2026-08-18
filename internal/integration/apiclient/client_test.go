@@ -585,3 +585,81 @@ func TestDo_NeverLeavesBaseHost(t *testing.T) {
 		})
 	}
 }
+
+// --- response size limit ---
+
+func TestReadLimited(t *testing.T) {
+	tests := []struct {
+		name    string
+		data    string
+		limit   int64
+		wantErr bool
+	}{
+		{"under limit", "abc", 10, false},
+		{"exactly at limit", "abcde", 5, false},
+		{"over limit", "abcdef", 5, true},
+		{"empty", "", 5, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := readLimited(strings.NewReader(tt.data), tt.limit)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("readLimited(%q, %d) = %q, want error", tt.data, tt.limit, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("readLimited(%q, %d): %v", tt.data, tt.limit, err)
+			}
+			if string(got) != tt.data {
+				t.Errorf("readLimited = %q, want %q", got, tt.data)
+			}
+		})
+	}
+}
+
+// TestDo_RejectsOversizedResponse checks that an endpoint streaming more than
+// the cap fails loudly instead of returning a silently truncated body that a
+// caller would treat as the whole response.
+func TestDo_RejectsOversizedResponse(t *testing.T) {
+	oversized := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(200)
+		chunk := strings.Repeat("A", 1<<20)
+		for i := 0; i < (maxResponseBytes>>20)+1; i++ {
+			_, _ = io.WriteString(w, chunk)
+		}
+	}))
+	defer oversized.Close()
+
+	deps, _ := testDeps(map[string]string{"TOKEN": "sk-secret"})
+	c := New("test", oversized.URL, nil, deps)
+
+	body, _, err := c.Do(context.Background(), "GET", "/big", nil, nil)
+	if err == nil {
+		t.Fatalf("expected an error for an oversized response, got %d bytes", len(body))
+	}
+	if !strings.Contains(err.Error(), "limit") {
+		t.Errorf("error = %v, want it to mention the limit", err)
+	}
+}
+
+func TestDo_AcceptsResponseAtLimit(t *testing.T) {
+	payload := strings.Repeat("B", 4096)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, payload)
+	}))
+	defer ts.Close()
+
+	deps, _ := testDeps(map[string]string{"TOKEN": "sk-secret"})
+	c := New("test", ts.URL, nil, deps)
+
+	body, _, err := c.Do(context.Background(), "GET", "/ok", nil, nil)
+	if err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if body != payload {
+		t.Errorf("body length = %d, want %d", len(body), len(payload))
+	}
+}

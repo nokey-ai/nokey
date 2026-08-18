@@ -54,6 +54,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   segment instead of reaching a different endpoint. `github_get_file`
   additionally refuses `.` and `..` segments, which address an API
   endpoint rather than a file in the repository.
+- The OAuth callback endpoint now answers exactly one request. It kept
+  listening after the authorization code arrived, and the caller only
+  shut it down once the token exchange, validation, and two keyring
+  writes had finished — a window that includes a Touch ID prompt. The
+  endpoint is on loopback, reachable by any local process including the
+  AI assistant, and the CSRF state is printed to the terminal as part of
+  the authorization URL, so a second callback carrying an attacker's
+  authorization code was accepted and queued. nokey would have exchanged
+  and stored it, leaving the user authenticated as someone else. Later
+  callbacks now get 410 Gone, and the port closes as soon as the first
+  response is written.
+- Callback channel sends no longer block. `codeChan` and `errChan` hold
+  one value each, so repeated callbacks stranded a request goroutine per
+  send until the 10s write timeout.
+- Response bodies read from remote peers are bounded. `io.ReadAll` on an
+  integration response or an OAuth provider's reply read whatever the
+  peer chose to send. Integration responses cap at 10 MiB and report an
+  error rather than returning a truncated body a caller would mistake
+  for the whole response; OAuth error bodies truncate at 1 MiB, and the
+  user-info decode — unbounded because a streaming `json.Decoder` reads
+  as far as the value goes — now runs over a limited reader.
 
 ## [0.5.0] - 2026-05-25
 

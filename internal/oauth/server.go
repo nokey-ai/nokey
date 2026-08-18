@@ -9,6 +9,7 @@ import (
 	"html/template"
 	"net"
 	"net/http"
+	"sync/atomic"
 	"time"
 )
 
@@ -19,6 +20,9 @@ type CallbackServer struct {
 	codeChan chan string
 	errChan  chan error
 	state    string
+	// handled marks the single request this server exists to answer. See
+	// handleCallback for why a second one must not be accepted.
+	handled atomic.Bool
 }
 
 // NewCallbackServer creates a new OAuth callback server
@@ -97,12 +101,30 @@ func (cs *CallbackServer) Shutdown(ctx context.Context) error {
 	return cs.server.Shutdown(ctx)
 }
 
-// handleCallback handles the OAuth callback request
+// handleCallback handles the OAuth callback request.
+//
+// It answers exactly one request. The endpoint listens on loopback, so any
+// local process — including the AI assistant nokey is protecting the user
+// from — can reach it, and the CSRF state is printed to the terminal as part
+// of the authorization URL. Left open, the endpoint would accept a second
+// callback carrying an attacker's authorization code, which nokey would
+// exchange and store, leaving the user authenticated as someone else. One
+// request is all the flow needs, so every later one is refused.
 func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request) {
+	if !cs.handled.CompareAndSwap(false, true) {
+		cs.renderGone(w)
+		return
+	}
+
+	// The flow is decided either way now; close the port once this response
+	// has been written rather than waiting for the caller to shut down, which
+	// happens only after the token exchange and keyring writes are done.
+	defer cs.closeSoon()
+
 	// Check for error from OAuth provider
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {
 		errDesc := r.URL.Query().Get("error_description")
-		cs.errChan <- fmt.Errorf("OAuth error: %s (%s)", errMsg, errDesc)
+		cs.sendErr(fmt.Errorf("OAuth error: %s (%s)", errMsg, errDesc))
 		cs.renderError(w, fmt.Sprintf("OAuth Error: %s", errMsg))
 		return
 	}
@@ -113,23 +135,47 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 
 	// Validate state (CSRF protection)
 	if subtle.ConstantTimeCompare([]byte(receivedState), []byte(cs.state)) != 1 {
-		cs.errChan <- fmt.Errorf("invalid state token (possible CSRF attack)")
+		cs.sendErr(fmt.Errorf("invalid state token (possible CSRF attack)"))
 		cs.renderError(w, "Invalid state token")
 		return
 	}
 
 	// Check code exists
 	if code == "" {
-		cs.errChan <- fmt.Errorf("no authorization code received")
+		cs.sendErr(fmt.Errorf("no authorization code received"))
 		cs.renderError(w, "No authorization code received")
 		return
 	}
 
 	// Send code to channel
-	cs.codeChan <- code
+	select {
+	case cs.codeChan <- code:
+	default:
+	}
 
 	// Render success page
 	cs.renderSuccess(w)
+}
+
+// sendErr reports an error to WaitForCode without blocking. The channel holds
+// one value and only the first matters; a blocking send on a full channel
+// would strand this request's goroutine until the write timeout.
+func (cs *CallbackServer) sendErr(err error) {
+	select {
+	case cs.errChan <- err:
+	default:
+	}
+}
+
+// closeSoon shuts the server down in the background. Shutdown waits for the
+// in-flight response to finish, so it cannot be called inline from the handler
+// it is waiting on.
+func (cs *CallbackServer) closeSoon() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = cs.server.Shutdown(ctx)
+	}()
 }
 
 // renderSuccess renders a success page
@@ -191,6 +237,14 @@ func (cs *CallbackServer) renderSuccess(w http.ResponseWriter) {
 `))
 
 	_ = tmpl.Execute(w, nil)
+}
+
+// renderGone answers a callback that arrives after the flow is already
+// decided. It deliberately says nothing about the original request.
+func (cs *CallbackServer) renderGone(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusGone)
+	_, _ = w.Write([]byte("This nokey authorization callback has already been used.\n"))
 }
 
 // renderError renders an error page
