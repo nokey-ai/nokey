@@ -41,7 +41,7 @@ var (
 // If a backoff store is registered via SetBackoffStore, failed attempts are rate-limited.
 func Authenticate(storedHash string) error {
 	// Check brute-force backoff
-	if bs := backoffStoreFn(); bs != nil {
+	if bs := backoffStore(); bs != nil {
 		if err := checkBackoff(bs); err != nil {
 			return err
 		}
@@ -76,20 +76,20 @@ func Authenticate(storedHash string) error {
 	// Verify against stored hash
 	ok, err := VerifyPIN(pinStr, storedHash)
 	if err != nil {
-		if bs := backoffStoreFn(); bs != nil {
+		if bs := backoffStore(); bs != nil {
 			recordFailure(bs)
 		}
 		return fmt.Errorf("authentication failed: %w", err)
 	}
 	if !ok {
-		if bs := backoffStoreFn(); bs != nil {
+		if bs := backoffStore(); bs != nil {
 			recordFailure(bs)
 		}
 		return fmt.Errorf("authentication failed: incorrect PIN")
 	}
 
 	// Success — clear failure counter
-	if bs := backoffStoreFn(); bs != nil {
+	if bs := backoffStore(); bs != nil {
 		clearFailures(bs)
 	}
 

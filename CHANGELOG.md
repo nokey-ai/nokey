@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- PIN brute-force backoff is now actually enforced. The exponential
+  backoff (3 failures, then 1s doubling to a 60s cap) has existed and
+  been unit-tested since it was written, but nothing ever supplied it
+  with a store: `defaultBackoffStore()` returned nil and every call site
+  in `Authenticate` was guarded by `if bs := backoffStoreFn(); bs != nil`,
+  so in shipped binaries the check, the failure counter, and the reset
+  were all no-ops. Wrong PINs could be tried back-to-back at full speed.
+  `internal/keyring` now registers each opened `Store` via the new
+  `auth.SetBackoffStore`, so any process that can reach a PIN hash also
+  persists failures — under `__nokey_auth_failures__`, which is hidden
+  from `nokey list` and from backups like the other internal keys.
+  Counters survive across CLI invocations, so re-running nokey no longer
+  resets the limiter.
+
 ## [0.5.0] - 2026-05-25
 
 ### Added
