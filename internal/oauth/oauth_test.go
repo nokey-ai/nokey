@@ -995,3 +995,100 @@ func TestGitHubProvider_ValidateToken_MissingLogin(t *testing.T) {
 		t.Errorf("expected 'invalid response from GitHub API', got: %v", err)
 	}
 }
+
+// TestCallbackServer_RejectsSecondCallback covers the code-injection window.
+// The endpoint is on loopback, reachable by any local process, and the CSRF
+// state is printed to the terminal in the authorization URL. Until the caller
+// finished exchanging the code and writing the keyring, a second callback
+// could deliver an attacker's authorization code.
+func TestCallbackServer_RejectsSecondCallback(t *testing.T) {
+	cs, err := NewCallbackServer()
+	if err != nil {
+		t.Fatalf("NewCallbackServer: %v", err)
+	}
+	defer func() { _ = cs.Shutdown(context.Background()) }()
+
+	if err := cs.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	callbackURL := cs.GetRedirectURL()
+	state := cs.GetState()
+
+	resp, err := http.Get(fmt.Sprintf("%s?code=real-code&state=%s", callbackURL, state))
+	if err != nil {
+		t.Fatalf("first callback: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first callback status = %d, want 200", resp.StatusCode)
+	}
+
+	code, err := cs.WaitForCode(5 * time.Second)
+	if err != nil {
+		t.Fatalf("WaitForCode: %v", err)
+	}
+	if code != "real-code" {
+		t.Fatalf("code = %q, want %q", code, "real-code")
+	}
+
+	// Second callback with a valid state, as a local attacker who read the
+	// authorization URL off the terminal would send.
+	resp2, err := http.Get(fmt.Sprintf("%s?code=attacker-code&state=%s", callbackURL, state))
+	if err != nil {
+		// The port closing after the first callback is an equally good outcome.
+		return
+	}
+	resp2.Body.Close()
+
+	if resp2.StatusCode == http.StatusOK {
+		t.Errorf("second callback status = %d, want it refused", resp2.StatusCode)
+	}
+
+	// The attacker's code must not be queued for anyone to pick up.
+	select {
+	case leaked := <-cs.codeChan:
+		t.Errorf("second callback queued code %q", leaked)
+	default:
+	}
+}
+
+// TestCallbackServer_RepeatedBadRequestsDoNotBlock guards the channel sends.
+// errChan holds one value, so a blocking send would strand each request's
+// goroutine until the write timeout.
+func TestCallbackServer_RepeatedBadRequestsDoNotBlock(t *testing.T) {
+	cs, err := NewCallbackServer()
+	if err != nil {
+		t.Fatalf("NewCallbackServer: %v", err)
+	}
+	defer func() { _ = cs.Shutdown(context.Background()) }()
+
+	if err := cs.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	url := fmt.Sprintf("%s?code=x&state=wrong-state", cs.GetRedirectURL())
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 5; i++ {
+			resp, err := client.Get(url)
+			if err != nil {
+				return // server closed the port; nothing left to block on
+			}
+			resp.Body.Close()
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("callback requests blocked — a send on a full channel stranded the handler")
+	}
+
+	if _, err := cs.WaitForCode(time.Second); err == nil {
+		t.Error("WaitForCode should report the invalid state")
+	}
+}
