@@ -3,6 +3,7 @@ package redact
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -310,5 +311,185 @@ func TestRedactBytesEncodedVariants(t *testing.T) {
 				t.Errorf("variant %s: got %q, want %q", v.name, got, want)
 			}
 		})
+	}
+}
+
+// --- split-boundary redaction ---
+
+// chunkReader hands out data in fixed-size pieces, the way a PTY delivers it.
+type chunkReader struct {
+	chunks [][]byte
+	i      int
+}
+
+func (c *chunkReader) Read(p []byte) (int, error) {
+	if c.i >= len(c.chunks) {
+		return 0, io.EOF
+	}
+	n := copy(p, c.chunks[c.i])
+	if n < len(c.chunks[c.i]) {
+		c.chunks[c.i] = c.chunks[c.i][n:]
+		return n, nil
+	}
+	c.i++
+	return n, nil
+}
+
+// TestRedactingReader_SecretSplitAcrossReads is the regression test for the
+// split-boundary gap: redaction ran per chunk, so a secret delivered in two
+// pieces matched neither and reached the terminal in the clear.
+func TestRedactingReader_SecretSplitAcrossReads(t *testing.T) {
+	const secret = "sk-live-0123456789abcdef"
+	secrets := map[string]string{"API_KEY": secret}
+
+	full := "prefix " + secret + " suffix"
+
+	// Split at every offset, including inside the secret.
+	for split := 1; split < len(full); split++ {
+		t.Run(fmt.Sprintf("split_at_%d", split), func(t *testing.T) {
+			reader := &redactingReader{
+				reader: &chunkReader{chunks: [][]byte{
+					[]byte(full[:split]),
+					[]byte(full[split:]),
+				}},
+				redactor: newRedactor(secrets),
+			}
+
+			got, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatalf("ReadAll: %v", err)
+			}
+
+			if strings.Contains(string(got), secret) {
+				t.Errorf("secret leaked when split at %d: %q", split, got)
+			}
+			if !strings.Contains(string(got), "[REDACTED:API_KEY]") {
+				t.Errorf("no redaction marker when split at %d: %q", split, got)
+			}
+			if want := "prefix [REDACTED:API_KEY] suffix"; string(got) != want {
+				t.Errorf("output = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestRedactingReader_SecretSplitByteByByte is the pathological case: the
+// secret arrives one byte per read.
+func TestRedactingReader_SecretSplitByteByByte(t *testing.T) {
+	const secret = "hunter2-hunter2-hunter2"
+	full := "log: " + secret + "\n"
+
+	chunks := make([][]byte, 0, len(full))
+	for i := 0; i < len(full); i++ {
+		chunks = append(chunks, []byte{full[i]})
+	}
+
+	reader := &redactingReader{
+		reader:   &chunkReader{chunks: chunks},
+		redactor: newRedactor(map[string]string{"PW": secret}),
+	}
+
+	got, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if strings.Contains(string(got), secret) {
+		t.Errorf("secret leaked: %q", got)
+	}
+	if want := "log: [REDACTED:PW]\n"; string(got) != want {
+		t.Errorf("output = %q, want %q", got, want)
+	}
+}
+
+// TestRedactingReader_EncodedVariantSplitAcrossReads checks the holdback is
+// sized from the longest encoded variant, not just the plaintext.
+func TestRedactingReader_EncodedVariantSplitAcrossReads(t *testing.T) {
+	const secret = "correct-horse-battery-staple"
+	secrets := map[string]string{"TOKEN": secret}
+
+	for _, tc := range []struct {
+		name    string
+		encoded string
+	}{
+		{"base64", base64.StdEncoding.EncodeToString([]byte(secret))},
+		{"base64url", base64.URLEncoding.EncodeToString([]byte(secret))},
+		{"hex", hex.EncodeToString([]byte(secret))},
+		{"hex upper", strings.ToUpper(hex.EncodeToString([]byte(secret)))},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			full := "body=" + tc.encoded + "&x=1"
+			for split := 1; split < len(full); split++ {
+				reader := &redactingReader{
+					reader: &chunkReader{chunks: [][]byte{
+						[]byte(full[:split]),
+						[]byte(full[split:]),
+					}},
+					redactor: newRedactor(secrets),
+				}
+
+				got, err := io.ReadAll(reader)
+				if err != nil {
+					t.Fatalf("ReadAll: %v", err)
+				}
+				if strings.Contains(string(got), tc.encoded) {
+					t.Fatalf("encoded secret leaked when split at %d: %q", split, got)
+				}
+			}
+		})
+	}
+}
+
+// TestRedactingReader_DoesNotWithholdOrdinaryOutput guards the interactive
+// case: a prompt with no trailing newline must reach the terminal immediately,
+// not sit in the holdback waiting for output that only arrives after the user
+// answers.
+func TestRedactingReader_DoesNotWithholdOrdinaryOutput(t *testing.T) {
+	secrets := map[string]string{"API_KEY": "sk-live-0123456789abcdef"}
+
+	const prompt = "Continue? [y/N]: "
+	reader := &redactingReader{
+		reader:   &chunkReader{chunks: [][]byte{[]byte(prompt)}},
+		redactor: newRedactor(secrets),
+	}
+
+	buf := make([]byte, 256)
+	n, err := reader.Read(buf)
+	if err != nil && err != io.EOF {
+		t.Fatalf("Read: %v", err)
+	}
+	if string(buf[:n]) != prompt {
+		t.Errorf("first Read returned %q, want the whole prompt %q", buf[:n], prompt)
+	}
+}
+
+// TestRedactingReader_WithholdsOnlyPossiblePrefix checks the complement: a
+// tail that really could open a secret is held until the next read settles it.
+func TestRedactingReader_WithholdsOnlyPossiblePrefix(t *testing.T) {
+	const secret = "sk-live-0123456789abcdef"
+	r := newRedactor(map[string]string{"API_KEY": secret})
+
+	if got := r.pendingLen([]byte("nothing to see here")); got != 0 {
+		t.Errorf("pendingLen for ordinary text = %d, want 0", got)
+	}
+	if got := r.pendingLen([]byte("token: sk-live-01")); got != len("sk-live-01") {
+		t.Errorf("pendingLen for a partial secret = %d, want %d", got, len("sk-live-01"))
+	}
+	if got := r.pendingLen([]byte("done " + secret)); got != 0 {
+		t.Errorf("pendingLen after a complete secret = %d, want 0", got)
+	}
+}
+
+func TestRedactingReader_Clear(t *testing.T) {
+	reader := &redactingReader{
+		reader:   &chunkReader{chunks: [][]byte{[]byte("partial sk-live-01")}},
+		redactor: newRedactor(map[string]string{"API_KEY": "sk-live-0123456789abcdef"}),
+	}
+
+	buf := make([]byte, 8)
+	_, _ = reader.Read(buf)
+
+	reader.Clear()
+	if reader.out != nil || reader.hold != nil {
+		t.Error("Clear should release the in-flight buffers")
 	}
 }

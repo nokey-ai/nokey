@@ -21,6 +21,7 @@ const minSecretLenForVariants = 8
 type redactor struct {
 	replacements map[string]string // value -> replacement
 	sortedKeys   []string          // longest first for greedy matching
+	maxLen       int               // length of the longest match target
 }
 
 func newRedactor(secrets map[string]string) *redactor {
@@ -56,6 +57,10 @@ func newRedactor(secrets map[string]string) *redactor {
 	sort.Slice(r.sortedKeys, func(i, j int) bool {
 		return len(r.sortedKeys[i]) > len(r.sortedKeys[j])
 	})
+
+	if len(r.sortedKeys) > 0 {
+		r.maxLen = len(r.sortedKeys[0])
+	}
 
 	return r
 }
@@ -124,32 +129,105 @@ func RedactBytes(data []byte, secrets map[string]string) []byte {
 	return r.redact(data)
 }
 
-// redactingReader wraps an io.Reader and redacts secrets from the data
+// pendingLen reports how many trailing bytes of data must be withheld because
+// they could be the opening of a secret that the next read completes.
+//
+// It answers 0 whenever the tail cannot begin any match, which is the ordinary
+// case for terminal output. That matters: this runs against a PTY, and
+// withholding a fixed-size tail from every write would swallow the end of any
+// prompt that does not finish with a newline until more output arrived.
+func (r *redactor) pendingLen(data []byte) int {
+	n := r.maxLen - 1
+	if n > len(data) {
+		n = len(data)
+	}
+
+	for ; n > 0; n-- {
+		suffix := string(data[len(data)-n:])
+		for _, key := range r.sortedKeys {
+			// Only a proper prefix is interesting: an exact-length match would
+			// already have been replaced by redact.
+			if len(key) > n && strings.HasPrefix(key, suffix) {
+				return n
+			}
+		}
+	}
+
+	return 0
+}
+
+// redactingReader wraps an io.Reader and redacts secrets from the data.
+//
+// Matching spans reads. A secret arriving in two pieces — the tail of one read
+// and the head of the next — is still caught, because any tail that could
+// begin a secret is held back until the following read confirms or refutes it.
 type redactingReader struct {
 	reader   io.Reader
 	redactor *redactor
-	buf      []byte
+	out      []byte // redacted bytes ready for the caller
+	hold     []byte // withheld tail; may be the start of a secret
+	done     bool   // underlying reader is finished
+	err      error  // its terminal error, returned once out and hold drain
 }
 
-func (r *redactingReader) Read(p []byte) (n int, err error) {
-	// If we have leftover data in our buffer, serve it first
-	if len(r.buf) > 0 {
-		n = copy(p, r.buf)
-		r.buf = r.buf[n:]
-		return n, nil
-	}
+func (r *redactingReader) Read(p []byte) (int, error) {
+	for {
+		// Serve whatever is already redacted.
+		if len(r.out) > 0 {
+			n := copy(p, r.out)
+			r.out = r.out[n:]
+			return n, nil
+		}
 
-	// Otherwise, read new data from the underlying reader
-	readBuf := make([]byte, len(p))
-	nRead, err := r.reader.Read(readBuf)
-	if nRead > 0 {
-		redacted := r.redactor.redact(readBuf[:nRead])
-		n = copy(p, redacted)
+		// Source finished: the held tail can no longer grow into a secret, so
+		// redact what is there and release it before reporting the error.
+		if r.done {
+			if len(r.hold) > 0 {
+				r.out = r.redactor.redact(r.hold)
+				r.hold = nil
+				continue
+			}
+			return 0, r.err
+		}
 
-		// If redacted output is larger than p, store the rest in our buffer
-		if n < len(redacted) {
-			r.buf = append(r.buf, redacted[n:]...)
+		if len(p) == 0 {
+			return 0, nil
+		}
+
+		readBuf := make([]byte, len(p))
+		nRead, readErr := r.reader.Read(readBuf)
+		if nRead > 0 {
+			combined := append(r.hold, readBuf[:nRead]...)
+			redacted := r.redactor.redact(combined)
+
+			keep := r.redactor.pendingLen(redacted)
+			split := len(redacted) - keep
+
+			r.out = redacted[:split]
+			// Copy the tail: redacted may alias combined, whose backing array
+			// the next append would overwrite.
+			r.hold = append([]byte(nil), redacted[split:]...)
+		}
+
+		if readErr != nil {
+			r.done = true
+			r.err = readErr
+		}
+
+		// Nothing to hand over yet — every byte read is still pending. Go back
+		// for more rather than reporting a zero-length read.
+		if len(r.out) == 0 && !r.done {
+			continue
 		}
 	}
-	return n, err
+}
+
+// Clear zeros the buffers holding in-flight output. The held tail is by
+// construction a fragment of a secret, and out may carry secret bytes that
+// were too short to match.
+func (r *redactingReader) Clear() {
+	sensitive.ClearBytes(r.out)
+	sensitive.ClearBytes(r.hold)
+	r.out = nil
+	r.hold = nil
 }

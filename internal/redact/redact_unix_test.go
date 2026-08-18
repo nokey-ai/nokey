@@ -167,3 +167,37 @@ func TestRun_NoSecrets(t *testing.T) {
 		t.Errorf("output should contain 'plaintext', got: %q", output)
 	}
 }
+
+// TestRun_RedactionAcrossWriteBoundaries exercises the real PTY path with a
+// child that emits the secret in separate writes, spaced so they land in
+// different reads. Per-chunk redaction let the pieces through unredacted.
+func TestRun_RedactionAcrossWriteBoundaries(t *testing.T) {
+	const secret = "supersecretvalue123"
+	secrets := map[string]string{"API_KEY": secret}
+
+	// printf per fragment, with a sleep between, so the reader sees each piece
+	// as its own read rather than one buffered write.
+	script := `printf 'start '
+printf 'superse'
+sleep 0.2
+printf 'cretvalue123'
+sleep 0.2
+printf ' end\n'`
+
+	output, exitCode, err := captureRun(t, "sh", []string{"-c", script}, secrets)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if exitCode != 0 {
+		t.Errorf("exit code = %d, want 0", exitCode)
+	}
+	if strings.Contains(output, secret) {
+		t.Errorf("secret leaked across write boundaries: %q", output)
+	}
+	if !strings.Contains(output, "[REDACTED:API_KEY]") {
+		t.Errorf("output should contain [REDACTED:API_KEY], got: %q", output)
+	}
+	if !strings.Contains(output, "start ") || !strings.Contains(output, " end") {
+		t.Errorf("surrounding output should survive, got: %q", output)
+	}
+}

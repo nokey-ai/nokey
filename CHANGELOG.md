@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `--redact` now catches secrets that straddle a read boundary.
+  Redaction ran independently on each chunk read from the PTY, so a
+  secret delivered in two pieces — the tail of one read and the head of
+  the next — matched neither half and reached the terminal in the clear.
+  Any child that writes a secret in separate `write` calls, or writes
+  one large enough to be split, hit this. A regression test splitting a
+  24-character secret at every offset leaked it at 27 of 37 positions
+  before the fix.
+  The reader now carries a holdback between reads. Rather than always
+  withholding a fixed-size tail, it withholds only a tail that could
+  actually open a secret or one of its encoded variants, so ordinary
+  output — notably an interactive prompt with no trailing newline — is
+  still passed through immediately instead of waiting for the next
+  write. The holdback is flushed when the stream ends.
+- The redacting reader's buffers are zeroed when the stream is done. The
+  holdback is by construction a fragment of a secret.
+
 ## [0.5.0] - 2026-05-25
 
 ### Added
