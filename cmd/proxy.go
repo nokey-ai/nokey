@@ -85,7 +85,7 @@ func init() {
 	proxyCmd.AddCommand(proxyInitCACmd)
 	proxyCmd.AddCommand(proxyTrustCACmd)
 
-	proxyStartCmd.Flags().StringVar(&proxyAddr, "addr", "127.0.0.1:0", "Address to listen on (default: random port on localhost)")
+	proxyStartCmd.Flags().StringVar(&proxyAddr, "addr", "127.0.0.1:0", "Loopback address to listen on (default: random port on localhost)")
 }
 
 func getConfigDir() (string, error) {
@@ -93,6 +93,13 @@ func getConfigDir() (string, error) {
 }
 
 func runProxyStart(cmd *cobra.Command, args []string) error {
+	// Validate before anything touches the keyring: an address we are going to
+	// refuse should not cost the user a Touch ID prompt or pull secrets into
+	// memory first.
+	if err := proxy.ValidateListenAddr(proxyAddr); err != nil {
+		return err
+	}
+
 	configDir, err := getConfigDir()
 	if err != nil {
 		return err

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -78,7 +79,8 @@ func (s *Server) SetBlockUnmatched(block bool) {
 }
 
 // Start begins listening on addr (e.g. "127.0.0.1:0") and returns the actual
-// address. The caller must eventually call Stop.
+// address. addr must be on the loopback interface. The caller must eventually
+// call Stop.
 func (s *Server) Start(addr string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -91,9 +93,23 @@ func (s *Server) Start(addr string) (string, error) {
 		addr = "127.0.0.1:0"
 	}
 
+	// Check before binding: a non-loopback bind must never happen, not even
+	// for the microseconds between Listen and a post-hoc check.
+	if err := ValidateListenAddr(addr); err != nil {
+		return "", err
+	}
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to listen: %w", err)
+	}
+
+	// Authoritative check on what we actually got. ValidateListenAddr
+	// accepts the hostname "localhost", which the resolver — not us — maps to
+	// an address, so confirm the bound address really is loopback.
+	if err := verifyLoopbackListener(ln); err != nil {
+		_ = ln.Close()
+		return "", err
 	}
 
 	s.listener = ln
@@ -110,6 +126,62 @@ func (s *Server) Start(addr string) (string, error) {
 	}()
 
 	return ln.Addr().String(), nil
+}
+
+// loopbackOnlyReason explains why the proxy refuses non-loopback binds. The
+// proxy holds plaintext secrets and injects them into any request matching a
+// rule, so anyone who can reach it can spend the user's credentials.
+const loopbackOnlyReason = "the proxy injects your secrets into matching requests, so it only listens on loopback (127.0.0.1, ::1, or localhost)"
+
+// ValidateListenAddr rejects listen addresses that are not on the loopback
+// interface: the unspecified address (":8080", "0.0.0.0:8080", "[::]:8080"),
+// routable literals, and hostnames other than "localhost".
+func ValidateListenAddr(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("invalid listen address %q: %w", addr, err)
+	}
+
+	// An empty host means every interface, e.g. ":8080".
+	if host == "" {
+		return fmt.Errorf("refusing to listen on %q: an empty host binds every interface — %s", addr, loopbackOnlyReason)
+	}
+
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		// Not a literal, so it is a hostname. "localhost" is the one name
+		// conventionally guaranteed to be loopback; anything else can resolve
+		// off-host, and could resolve differently later.
+		if strings.EqualFold(host, "localhost") {
+			return nil
+		}
+		return fmt.Errorf("refusing to listen on %q: %q is not a loopback address — %s", addr, host, loopbackOnlyReason)
+	}
+
+	// Unmap ::ffff:127.0.0.1 and friends so an IPv4-mapped IPv6 literal is
+	// judged on the IPv4 address it actually carries.
+	if ip.Is4In6() {
+		ip = ip.Unmap()
+	}
+
+	if !ip.IsLoopback() {
+		return fmt.Errorf("refusing to listen on %q: %s is not a loopback address — %s", addr, ip, loopbackOnlyReason)
+	}
+
+	return nil
+}
+
+// verifyLoopbackListener confirms a bound listener is on loopback, catching
+// any resolution that produced a routable address despite ValidateListenAddr.
+func verifyLoopbackListener(ln net.Listener) error {
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("refusing to serve on %s: not a TCP listener — %s", ln.Addr(), loopbackOnlyReason)
+	}
+	if !tcpAddr.IP.IsLoopback() {
+		return fmt.Errorf("refusing to serve on %s: bound to a non-loopback address — %s", tcpAddr, loopbackOnlyReason)
+	}
+	return nil
 }
 
 // Stop gracefully shuts down the proxy server.

@@ -633,6 +633,117 @@ func TestStartAlreadyRunning(t *testing.T) {
 	}
 }
 
+// --- loopback-only binding ---
+
+func TestValidateLoopbackAddr(t *testing.T) {
+	tests := []struct {
+		name    string
+		addr    string
+		wantErr bool
+	}{
+		{"ipv4 loopback", "127.0.0.1:0", false},
+		{"ipv4 loopback non-zero port", "127.0.0.1:8080", false},
+		{"ipv4 loopback alternate", "127.0.0.53:8080", false},
+		{"ipv6 loopback", "[::1]:0", false},
+		{"localhost", "localhost:0", false},
+		{"localhost mixed case", "LocalHost:8080", false},
+		{"ipv4-mapped ipv6 loopback", "[::ffff:127.0.0.1]:8080", false},
+
+		{"ipv4 unspecified", "0.0.0.0:8080", true},
+		{"ipv6 unspecified", "[::]:8080", true},
+		{"empty host", ":8080", true},
+		{"private lan address", "192.168.1.10:8080", true},
+		{"public address", "203.0.113.5:8080", true},
+		{"ipv4-mapped ipv6 unspecified", "[::ffff:0.0.0.0]:80", true},
+		{"ipv4-mapped ipv6 routable", "[::ffff:192.168.1.10]:80", true},
+		{"routable ipv6", "[2001:db8::1]:8080", true},
+		{"hostname", "evil.example:80", true},
+		{"missing port", "127.0.0.1", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateListenAddr(tt.addr)
+			if tt.wantErr && err == nil {
+				t.Fatalf("ValidateListenAddr(%q) = nil, want error", tt.addr)
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("ValidateListenAddr(%q) = %v, want nil", tt.addr, err)
+			}
+		})
+	}
+}
+
+// TestStartRejectsNonLoopback is the regression test for the proxy being
+// bindable to the network: the MCP start_proxy tool takes addr straight from
+// the model, so a compromised agent could have exposed every injected secret
+// to anyone who could reach the port.
+func TestStartRejectsNonLoopback(t *testing.T) {
+	for _, addr := range []string{"0.0.0.0:0", "[::]:0", ":0", "[::ffff:0.0.0.0]:0"} {
+		t.Run(addr, func(t *testing.T) {
+			ca := newTestCA(t)
+			srv := NewServer(ca, nil, nil, nil, nil)
+
+			got, err := srv.Start(addr)
+			if err == nil {
+				_ = srv.Stop(context.Background())
+				t.Fatalf("Start(%q) = %q, want error", addr, got)
+			}
+			if !strings.Contains(err.Error(), "loopback") {
+				t.Errorf("Start(%q) error = %v, want it to mention loopback", addr, err)
+			}
+			if srv.Addr() != "" {
+				t.Errorf("Addr() = %q after refused Start, want empty", srv.Addr())
+			}
+		})
+	}
+}
+
+func TestStartAcceptsLoopback(t *testing.T) {
+	for _, addr := range []string{"127.0.0.1:0", "localhost:0"} {
+		t.Run(addr, func(t *testing.T) {
+			ca := newTestCA(t)
+			srv := NewServer(ca, nil, nil, nil, nil)
+
+			got, err := srv.Start(addr)
+			if err != nil {
+				t.Fatalf("Start(%q): %v", addr, err)
+			}
+			defer func() { _ = srv.Stop(context.Background()) }()
+
+			host, _, err := net.SplitHostPort(got)
+			if err != nil {
+				t.Fatalf("SplitHostPort(%q): %v", got, err)
+			}
+			if ip := net.ParseIP(host); ip == nil || !ip.IsLoopback() {
+				t.Errorf("Start(%q) bound to %q, want a loopback address", addr, got)
+			}
+		})
+	}
+}
+
+func TestVerifyLoopbackListener(t *testing.T) {
+	ln, err := net.Listen("tcp", "0.0.0.0:0")
+	if err != nil {
+		t.Skipf("cannot bind wildcard address: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	if err := verifyLoopbackListener(ln); err == nil {
+		t.Error("verifyLoopbackListener should reject a wildcard-bound listener")
+	}
+
+	loopback, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen loopback: %v", err)
+	}
+	defer func() { _ = loopback.Close() }()
+
+	if err := verifyLoopbackListener(loopback); err != nil {
+		t.Errorf("verifyLoopbackListener rejected a loopback listener: %v", err)
+	}
+}
+
 func TestAddrNotRunning(t *testing.T) {
 	ca := newTestCA(t)
 	srv := NewServer(ca, nil, nil, nil, nil)

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- The proxy now refuses to listen anywhere but loopback. `Server.Start`
+  took its address verbatim, so `nokey proxy start --addr 0.0.0.0:9999`
+  — or, worse, an MCP `start_proxy {"addr": "0.0.0.0:9999"}` call, where
+  the address comes straight from the model — published a listener that
+  injects your secrets into any request matching a proxy rule. Anyone
+  who could reach the port could spend your credentials without ever
+  seeing them. Rejected now: the unspecified address in all its spellings
+  (`:9999`, `0.0.0.0`, `[::]`), routable literals, IPv4-mapped IPv6 forms
+  such as `[::ffff:0.0.0.0]`, and hostnames other than `localhost`. The
+  bound address is re-checked after `net.Listen` so a `localhost` that
+  resolves somewhere unexpected is caught too. Both entry points validate
+  before opening the keyring, so a refused address no longer costs a
+  keychain unlock or pulls proxy secrets into memory first.
+
 ## [0.5.0] - 2026-05-25
 
 ### Added
