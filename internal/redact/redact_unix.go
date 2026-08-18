@@ -98,10 +98,12 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 
 	// Copy PTY output to stdout with redaction. Returns when the child
 	// closes the slave side (typically when it exits).
-	_, _ = io.Copy(os.Stdout, &redactingReader{
+	out := &redactingReader{
 		reader:   ptmx,
 		redactor: redactor,
-	})
+	}
+	defer out.Clear()
+	_, _ = io.Copy(os.Stdout, out)
 
 	// Wait for command to complete
 	err = cmd.Wait()

@@ -55,13 +55,17 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	defer redactor.Clear()
 
 	// Copy stdout with redaction
+	outReader := &redactingReader{reader: stdoutPipe, redactor: redactor}
+	defer outReader.Clear()
 	done := make(chan struct{})
 	go func() {
-		_, _ = io.Copy(os.Stdout, &redactingReader{reader: stdoutPipe, redactor: redactor})
+		_, _ = io.Copy(os.Stdout, outReader)
 		close(done)
 	}()
 	// Copy stderr with redaction
-	_, _ = io.Copy(os.Stderr, &redactingReader{reader: stderrPipe, redactor: redactor})
+	errReader := &redactingReader{reader: stderrPipe, redactor: redactor}
+	defer errReader.Clear()
+	_, _ = io.Copy(os.Stderr, errReader)
 	<-done
 
 	err = cmd.Wait()
