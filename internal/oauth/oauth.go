@@ -4,11 +4,30 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"time"
 
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"golang.org/x/oauth2"
 )
+
+// Response body limits for provider calls. The bodies come from a remote
+// identity provider, so they are read with a ceiling rather than into whatever
+// the peer decides to send.
+const (
+	// maxErrorBodyBytes caps a non-200 body quoted back in an error message.
+	maxErrorBodyBytes = 1 << 20 // 1 MiB
+	// maxUserInfoBytes caps the user-info document parsed during validation.
+	maxUserInfoBytes = 1 << 20 // 1 MiB
+)
+
+// readErrorBody reads a bounded prefix of a failed response for use in an
+// error message. Truncation is acceptable here — the value is only ever shown
+// to a human, never parsed.
+func readErrorBody(r io.Reader) string {
+	body, _ := io.ReadAll(io.LimitReader(r, maxErrorBodyBytes))
+	return string(body)
+}
 
 // Token represents an OAuth 2.0 token
 type Token struct {

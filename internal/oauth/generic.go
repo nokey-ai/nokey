@@ -3,7 +3,6 @@ package oauth
 import (
 	"context"
 	"fmt"
-	"io"
 	"net/http"
 
 	"golang.org/x/oauth2"
@@ -98,8 +97,7 @@ func (p *GenericProvider) ValidateToken(ctx context.Context, token *Token) error
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("token validation failed (status %d): %s", resp.StatusCode, string(body))
+		return fmt.Errorf("token validation failed (status %d): %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
 	return nil

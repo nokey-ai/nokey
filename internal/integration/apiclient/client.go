@@ -15,6 +15,25 @@ import (
 	"github.com/nokey-ai/nokey/internal/token"
 )
 
+// maxResponseBytes caps how much of an upstream response is held in memory.
+// The endpoint is remote and the body is returned to the model, so neither a
+// hostile server nor a runaway API should be able to exhaust the process.
+const maxResponseBytes = 10 << 20 // 10 MiB
+
+// readLimited reads at most limit bytes. Exceeding the limit is an error
+// rather than a silent truncation: a caller handed a half-read JSON body would
+// treat it as the whole response.
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("response exceeds the %d byte limit", limit)
+	}
+	return data, nil
+}
+
 // Client performs HTTP requests with automatic secret injection, policy
 // enforcement, approval gating, response redaction, and audit logging.
 type Client struct {
@@ -121,7 +140,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	defer resp.Body.Close()
 
 	// 6. Read and redact response body.
-	respBytes, err := io.ReadAll(resp.Body)
+	respBytes, err := readLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		c.audit(target, secretNames, false, err.Error())
 		return "", resp.StatusCode, fmt.Errorf("failed to read response: %w", err)
