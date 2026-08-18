@@ -222,7 +222,8 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"Set http_proxy and https_proxy to route requests through it.",
 			),
 			mcp.WithString("addr",
-				mcp.Description("Address to listen on (default: 127.0.0.1:0 for random port)"),
+				mcp.Description("Loopback address to listen on (default: 127.0.0.1:0 for random port). "+
+					"Non-loopback addresses are rejected."),
 			),
 		),
 		h.HandleStartProxy,
@@ -270,6 +271,14 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 		}
 	}
 
+	// Validate the caller-supplied address first. This comes from the model,
+	// so refusing it before the keyring is opened means a bad address costs no
+	// keychain unlock and loads no secrets into memory.
+	addr := request.GetString("addr", "127.0.0.1:0")
+	if err := proxy.ValidateListenAddr(addr); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	configDir, err := h.getConfigDir()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to get config directory: %s", err)), nil
@@ -304,8 +313,6 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 		}
 		secrets[name] = val
 	}
-
-	addr := request.GetString("addr", "127.0.0.1:0")
 
 	srv := proxy.NewServer(ca, rules, secrets, pol, h.recordAudit)
 

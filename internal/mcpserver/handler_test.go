@@ -805,6 +805,58 @@ func TestHandleStartProxy_NoProxyRules(t *testing.T) {
 	}
 }
 
+// TestHandleStartProxy_RejectsNonLoopbackAddr covers the AI-controllable path:
+// addr comes straight from the model, and binding it to a routable interface
+// would expose every injected secret to anyone who could reach the port. The
+// refusal must also come before the keyring is opened, so a bad address costs
+// no keychain unlock and pulls no secrets into memory.
+func TestHandleStartProxy_RejectsNonLoopbackAddr(t *testing.T) {
+	for _, addr := range []string{"0.0.0.0:9999", "[::]:9999", ":9999", "192.168.1.10:9999", "evil.example:80"} {
+		t.Run(addr, func(t *testing.T) {
+			storeOpened := false
+			pol := &policy.Policy{
+				Proxy: &policy.ProxyPolicy{
+					Rules: []policy.ProxyRule{{
+						Hosts:   []string{"api.example.com"},
+						Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
+						Secrets: []string{"TOKEN"},
+					}},
+				},
+			}
+
+			c := config.DefaultConfig()
+			c.Audit.Enabled = false
+			h := New(Deps{
+				GetStore: func() (SecretStore, error) {
+					storeOpened = true
+					return &mapStore{secrets: map[string]string{"TOKEN": "sk-secret"}}, nil
+				},
+				GetPolicy:    staticPolicy(pol),
+				Config:       c,
+				ApprovalFn:   func(context.Context, approval.Requester, string, []string) error { return nil },
+				AuditFn:      func(string, string, string, bool, string) {},
+				GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+			})
+
+			result, err := h.HandleStartProxy(context.Background(), makeCallToolRequest(map[string]any{"addr": addr}))
+			if err != nil {
+				t.Fatalf("HandleStartProxy: %v", err)
+			}
+
+			text := getResultText(t, result)
+			if !strings.Contains(text, "loopback") {
+				t.Errorf("result = %q, want a loopback refusal", text)
+			}
+			if storeOpened {
+				t.Error("keyring was opened for an address that was going to be refused")
+			}
+			if h.proxyServer != nil {
+				t.Error("proxyServer should not be set after a refused address")
+			}
+		})
+	}
+}
+
 func TestHandleStartProxy_AlreadyRunning(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	h := newTestHandler(t, store, nil, nil)
