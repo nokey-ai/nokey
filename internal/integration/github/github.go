@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -163,7 +165,7 @@ func toolCreateIssue(client *apiclient.Client) server.ServerTool {
 			}
 
 			jsonBody, _ := json.Marshal(payload)
-			path := fmt.Sprintf("/repos/%s/%s/issues", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/issues", escapeSegment(owner), escapeSegment(repo))
 
 			body, code, err := client.Do(ctx, "POST", path, strings.NewReader(string(jsonBody)), defaultHeaders(""))
 			return toolResult(body, code, err)
@@ -205,7 +207,7 @@ func toolCreatePR(client *apiclient.Client) server.ServerTool {
 			}
 
 			jsonBody, _ := json.Marshal(payload)
-			path := fmt.Sprintf("/repos/%s/%s/pulls", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/pulls", escapeSegment(owner), escapeSegment(repo))
 
 			body, code, err := client.Do(ctx, "POST", path, strings.NewReader(string(jsonBody)), defaultHeaders(""))
 			return toolResult(body, code, err)
@@ -233,7 +235,7 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 				return mcp.NewToolResultError("parameters 'owner' and 'repo' are required"), nil
 			}
 
-			path := fmt.Sprintf("/repos/%s/%s/issues", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/issues", escapeSegment(owner), escapeSegment(repo))
 			params := buildQuery(req, "state", "labels", "per_page")
 			if params != "" {
 				path += "?" + params
@@ -264,7 +266,7 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 				return mcp.NewToolResultError("parameters 'owner' and 'repo' are required"), nil
 			}
 
-			path := fmt.Sprintf("/repos/%s/%s/pulls", owner, repo)
+			path := fmt.Sprintf("/repos/%s/%s/pulls", escapeSegment(owner), escapeSegment(repo))
 			params := buildQuery(req, "state", "per_page")
 			if params != "" {
 				path += "?" + params
@@ -296,7 +298,12 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 				return mcp.NewToolResultError("parameters 'owner', 'repo', and 'path' are required"), nil
 			}
 
-			apiPath := fmt.Sprintf("/repos/%s/%s/contents/%s", owner, repo, filePath)
+			escapedPath, err := escapeFilePath(filePath)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+
+			apiPath := fmt.Sprintf("/repos/%s/%s/contents/%s", escapeSegment(owner), escapeSegment(repo), escapedPath)
 			params := buildQuery(req, "ref")
 			if params != "" {
 				apiPath += "?" + params
@@ -308,21 +315,47 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 	}
 }
 
-// buildQuery constructs a URL query string from request params that have non-default values.
+// buildQuery constructs a URL query string from request params that have
+// non-default values. Values come from the model, so they are escaped rather
+// than concatenated: a state of "open&per_page=100" must stay one parameter.
 func buildQuery(req mcp.CallToolRequest, keys ...string) string {
-	var parts []string
+	params := url.Values{}
 	for _, key := range keys {
 		if key == "per_page" {
-			v := req.GetInt(key, 0)
-			if v > 0 {
-				parts = append(parts, fmt.Sprintf("%s=%d", key, v))
+			if v := req.GetInt(key, 0); v > 0 {
+				params.Set(key, strconv.Itoa(v))
 			}
-		} else {
-			v := req.GetString(key, "")
-			if v != "" {
-				parts = append(parts, fmt.Sprintf("%s=%s", key, v))
-			}
+			continue
+		}
+		if v := req.GetString(key, ""); v != "" {
+			params.Set(key, v)
 		}
 	}
-	return strings.Join(parts, "&")
+	return params.Encode()
+}
+
+// escapeSegment escapes a single path segment. Callers pass values that name
+// exactly one path element (an owner or a repo), so a "/" in one of them is an
+// attempt to reach a different endpoint and gets encoded rather than honoured.
+func escapeSegment(s string) string {
+	return url.PathEscape(s)
+}
+
+// escapeFilePath escapes a repository file path, preserving the separators
+// between segments but escaping everything within them, so "?" or "#" cannot
+// start a query or fragment. Traversal segments are refused outright: they
+// address a different API endpoint, not a file in the repository.
+func escapeFilePath(p string) (string, error) {
+	p = strings.TrimPrefix(p, "/")
+
+	segments := strings.Split(p, "/")
+	escaped := make([]string, 0, len(segments))
+	for _, seg := range segments {
+		if seg == "." || seg == ".." {
+			return "", fmt.Errorf("path segment %q is not allowed", seg)
+		}
+		escaped = append(escaped, url.PathEscape(seg))
+	}
+
+	return strings.Join(escaped, "/"), nil
 }

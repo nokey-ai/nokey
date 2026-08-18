@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -94,8 +95,13 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	}
 
 	// 4. Build request.
-	url := c.baseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
+	reqURL, err := c.resolveURL(path)
+	if err != nil {
+		c.audit(target, secretNames, false, err.Error())
+		return "", 0, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL, body)
 	if err != nil {
 		c.audit(target, secretNames, false, err.Error())
 		return "", 0, fmt.Errorf("failed to build request: %w", err)
@@ -138,6 +144,45 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	c.audit(target, secretNames, ok, errMsg)
 
 	return string(redacted), resp.StatusCode, nil
+}
+
+// resolveURL turns a caller-supplied API path into an absolute URL, pinned to
+// the integration's own scheme and host.
+//
+// Paths reach here from MCP tool arguments, i.e. from the model. Concatenating
+// one onto the base URL and parsing the result afterwards is what makes that
+// dangerous: "@evil.example/steal" appended to "https://api.github.com" parses
+// as host evil.example with the real host demoted to userinfo, and the request
+// would carry the injected Authorization header there. Parsing the path on its
+// own as a relative reference removes that reading, and the final scheme/host
+// comparison backstops anything else.
+func (c *Client) resolveURL(path string) (string, error) {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid base URL %q: %w", c.baseURL, err)
+	}
+
+	ref, err := url.Parse(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid request path %q: %w", path, err)
+	}
+	if ref.IsAbs() || ref.Host != "" || ref.User != nil {
+		return "", fmt.Errorf("request path %q must be relative to %s", path, c.baseURL)
+	}
+
+	// Anchor the reference so it resolves against the base root rather than
+	// relative to whatever path the base URL happens to carry.
+	if !strings.HasPrefix(ref.Path, "/") {
+		ref.Path = "/" + ref.Path
+	}
+
+	resolved := base.ResolveReference(ref)
+	if resolved.Scheme != base.Scheme || resolved.Host != base.Host {
+		return "", fmt.Errorf("refusing to send %s request to %q: the %s integration only calls %s",
+			c.integrationName, resolved.Host, c.integrationName, base.Host)
+	}
+
+	return resolved.String(), nil
 }
 
 func (c *Client) audit(target string, secretNames []string, ok bool, errMsg string) {

