@@ -65,7 +65,13 @@ jobs:
       # publishes nothing. Pinned rather than tracking latest so a release is
       # reproducible.
       - name: Install GoReleaser
-        run: go install github.com/goreleaser/goreleaser/v2@v2.18.0
+        run: |
+          for attempt in 1 2 3; do
+            go install github.com/goreleaser/goreleaser/v2@v2.18.0 && exit 0
+            echo "attempt $attempt failed, retrying in 15s"
+            sleep 15
+          done
+          exit 1
 
       - name: Run GoReleaser
         run: goreleaser release --clean
