@@ -11,10 +11,13 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, macos-latest]
         go-version: ["1.26"]
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@v6
@@ -27,8 +30,11 @@ jobs:
       - name: Build
         run: go build ./...
 
+      # -race matters here: the proxy, the MCP server and the PTY reader all
+      # run concurrent goroutines. Tests stub the keyring, so the macOS leg
+      # never touches the real keychain and cannot block on a UI prompt.
       - name: Test
-        run: go test ./...
+        run: go test ./... -race
 
       - name: Vet
         run: go vet ./...
@@ -43,7 +49,12 @@ jobs:
         with:
           go-version: "1.26"
 
+      # Installed directly rather than through golangci/golangci-lint-action.
+      # This org only permits GitHub-owned and Marketplace-verified actions,
+      # and that action is neither, so referencing it failed the entire
+      # workflow at startup — taking the build and test jobs down with it.
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
+        run: golangci-lint run --timeout=5m
