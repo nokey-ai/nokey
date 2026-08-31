@@ -2,7 +2,7 @@ module github.com/nokey-ai/nokey
 
 go 1.26
 
-toolchain go1.26.3
+toolchain go1.26.7
 
 require (
 	github.com/byteness/keyring v1.9.0
@@ -10,9 +10,9 @@ require (
 	github.com/mark3labs/mcp-go v0.44.0
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/spf13/cobra v1.10.1
-	golang.org/x/crypto v0.49.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/oauth2 v0.33.0
-	golang.org/x/term v0.41.0
+	golang.org/x/term v0.43.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -48,6 +48,6 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.opentelemetry.io/proto/otlp v1.9.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
