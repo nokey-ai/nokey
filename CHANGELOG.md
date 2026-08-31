@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-31
+
+Security release. Every item below closes a hole that was reachable in
+v0.5.0; there are no new features and no configuration changes are
+required to pick them up.
+
 ### Security
 - PIN brute-force backoff is now actually enforced. The exponential
   backoff (3 failures, then 1s doubling to a 60s cap) has existed and
@@ -91,6 +97,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   write. The holdback is flushed when the stream ends.
 - The redacting reader's buffers are zeroed when the stream is done. The
   holdback is by construction a fragment of a secret.
+- Pin the Go toolchain to go1.26.7. `govulncheck` reported nine standard
+  library vulnerabilities on paths this code calls — post-handshake
+  message handling in `crypto/tls` reached from the proxy, the
+  `html/template` Javascript-context fix reached from the OAuth callback
+  page, quadratic `resolvePath` in `net/url` reached from every
+  integration request, and six more — all fixed in go1.26.4 or go1.26.6.
+  The toolchain was pinned to go1.26.3, so v0.5.0 binaries carried them.
+  Reachable vulnerabilities: nine before, zero after.
+- Bump `golang.org/x/crypto` to v0.52.0, clearing thirteen advisories.
+  None were reachable: they live in `ssh` and `acme`, while nokey uses
+  `argon2` and `nacl/secretbox`.
+
+### Changed
+- `nokey proxy start --addr` and the MCP `start_proxy` tool now reject
+  non-loopback addresses. If you were binding the proxy to `0.0.0.0` or
+  a LAN address, that no longer works — deliberately, since it exposed
+  your credentials to anyone who could reach the port. Bind to loopback
+  and reach it from another host through an SSH tunnel instead.
+
+### Fixed
+- CI runs again. Every run since June failed at startup because the org
+  permits only GitHub-owned and Marketplace-verified actions and
+  `golangci/golangci-lint-action` is neither; a startup failure takes
+  down the whole run, so build, test and vet stopped executing too and
+  v0.5.0 was released without CI ever having run against it. The linter
+  and GoReleaser are now installed directly and pinned. `release.yml`
+  had the same exposure through `goreleaser-action`, where a tag would
+  have failed at startup and published nothing.
+- CI additionally runs the suite on macOS, where the keychain code lives
+  and had never been compiled in CI, under `-race`, and with
+  `govulncheck`.
 
 ## [0.5.0] - 2026-05-25
 
