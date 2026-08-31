@@ -44,9 +44,14 @@ jobs:
       # (no osxcross needed) and install real Linux cross-toolchains from
       # messense/macos-cross-toolchains so the Linux targets can also link
       # with CGO. Windows stays CGO-free.
+      # Homebrew now refuses to load formulae from a third-party tap until it
+      # is explicitly trusted, which stopped the v0.5.1 release before
+      # GoReleaser ran. Trusting the tap restores the behaviour this workflow
+      # already relied on rather than granting anything new.
       - name: Install Linux cross-toolchains
         run: |
           brew tap messense/macos-cross-toolchains
+          brew trust messense/macos-cross-toolchains
           brew install x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 
       - name: Generate tap token
