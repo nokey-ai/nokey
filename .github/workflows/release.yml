@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - "v*"
+  # Dry run: builds every target and exercises the whole pipeline without
+  # publishing, so the release path can be verified before a tag is spent.
+  # Tags are immutable here, so a release that fails after the tag is pushed
+  # costs a version number.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.7"
 
       - name: Test
         run: go test ./...
@@ -36,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26"
+          go-version: "1.26.7"
 
       # The indirect dependency on github.com/1password/onepassword-sdk-go
       # (pulled in via byteness/keyring's opdesktop.go) fails to cross-compile
@@ -69,7 +74,13 @@ jobs:
       # fails the run at startup — which on a tag means a release that
       # publishes nothing. Pinned rather than tracking latest so a release is
       # reproducible.
+      # GOTOOLCHAIN=auto only for this step: GoReleaser itself needs a newer Go
+      # than nokey builds with, and setup-go pins GOTOOLCHAIN=local, which
+      # makes the install fail rather than fetch it. Building nokey stays on
+      # the toolchain go.mod names.
       - name: Install GoReleaser
+        env:
+          GOTOOLCHAIN: auto
         run: |
           for attempt in 1 2 3; do
             go install github.com/goreleaser/goreleaser/v2@v2.18.0 && exit 0
@@ -78,8 +89,17 @@ jobs:
           done
           exit 1
 
+      - name: Confirm the build toolchain
+        run: go version
+
       - name: Run GoReleaser
-        run: goreleaser release --clean
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Dry run: building every target, publishing nothing."
+            goreleaser release --clean --snapshot
+          else
+            goreleaser release --clean
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
