@@ -58,11 +58,17 @@ jobs:
           owner: nokey-ai
           repositories: homebrew-tap
 
+      # Installed directly rather than through goreleaser/goreleaser-action,
+      # for the same reason as golangci-lint in ci.yml: only GitHub-owned and
+      # Marketplace-verified actions are permitted here, and a rejected action
+      # fails the run at startup — which on a tag means a release that
+      # publishes nothing. Pinned rather than tracking latest so a release is
+      # reproducible.
+      - name: Install GoReleaser
+        run: go install github.com/goreleaser/goreleaser/v2@v2.18.0
+
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
-        with:
-          version: latest
-          args: release --clean
+        run: goreleaser release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}

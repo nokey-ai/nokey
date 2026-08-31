@@ -501,8 +501,7 @@ func runKeychainToDedicated(cmd *cobra.Command, args []string) error {
 
 Add this to %s and re-run:
 
-%s
-`, path, dedicatedConfigSnippet)
+%s`, path, dedicatedConfigSnippet)
 	}
 
 	if !toDedicatedYes {
@@ -663,8 +662,7 @@ func runKeychainFromDedicated(cmd *cobra.Command, args []string) error {
 If you previously migrated and want to roll back, add this to %s
 and re-run:
 
-%s
-`, path, dedicatedConfigSnippet)
+%s`, path, dedicatedConfigSnippet)
 	}
 
 	srcStore, err := openKeyringForFn(true) // dedicated is the SOURCE for rollback
