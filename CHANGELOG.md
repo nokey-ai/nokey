@@ -7,18 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.5.2] - 2026-08-31
+## [0.5.3] - 2026-08-31
 
 Security release. Every item below closes a hole that was reachable in
 v0.5.0; there are no new features and no configuration changes are
 required to pick them up.
 
-v0.5.1 carries the same content but was never published: the release run
-failed before GoReleaser started, because Homebrew had begun refusing
-formulae from an untrusted third-party tap. The tag exists and no
-artifacts were ever attached to it. Tags here are immutable, so the
-fixed pipeline ships under v0.5.2 instead. Nothing to do if you never
-saw v0.5.1 — there was nothing to install.
+The v0.5.1 and v0.5.2 tags carry the same content but published nothing.
+Both release runs died before any artifact was built — v0.5.1 on
+Homebrew's new refusal to load formulae from an untrusted tap, v0.5.2 on
+a GoReleaser version that required a newer Go than the runner had. No
+artifacts were ever attached to either tag, and tags here are immutable,
+so the fixed pipeline ships under v0.5.3. Nothing to do if you saw
+either tag — there was never anything to install. The release path is
+now exercisable as a dry run, so the next failure of this kind costs a
+workflow run rather than a version number.
 
 ### Security
 - PIN brute-force backoff is now actually enforced. The exponential
