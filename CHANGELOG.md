@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- PIN session tickets can no longer be revived by changing their mod
+  time. Expiry came only from the ticket file's mtime and the HMAC
+  covered only the random token, so `touch ~/.config/nokey/session_ticket`
+  brought an expired ticket back to life — and `touch -t` with a future
+  date made it never expire — after which `nokey exec` read every secret
+  with no PIN prompt. The HMAC now also covers the issue time, which is
+  stamped onto the file as its mtime, so any change to the mtime breaks
+  the signature. Tickets dated more than 60s in the future, symlinks,
+  non-regular files, and files readable or writable by group or other
+  are rejected, and an expired ticket is deleted. Tickets are written to
+  a fresh 0600 temp file and renamed into place, so an existing file or
+  symlink at the ticket path is replaced rather than written through.
+  The path and the two-line format are unchanged, but tickets issued by
+  an older version no longer validate: expect one PIN prompt after
+  upgrading.
+
 ## [0.5.3] - 2026-08-31
 
 Security release. Every item below closes a hole that was reachable in
