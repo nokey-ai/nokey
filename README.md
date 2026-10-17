@@ -127,11 +127,13 @@ nokey list
 # Delete a secret
 nokey delete OPENAI_API_KEY
 
-# Import from .env file
+# Import from .env file (a leading "export " on each line is accepted)
 nokey import .env
+nokey import --dry-run .env   # list what would be imported, write nothing
 
 # Export to shell (use with caution)
 eval "$(nokey export --shell bash)"
+eval "$(nokey export --shell bash --only OPENAI_API_KEY)"
 
 # Encrypted backup of every secret (Argon2id + NaCl secretbox)
 nokey keychain backup --out snapshot.enc
@@ -345,6 +347,9 @@ nokey audit list --operation exec
 
 # Limit results
 nokey audit list --limit 50
+
+# Machine-readable output: {"entries": [...], "count": N}
+nokey audit list --json
 
 # Export to JSON
 nokey audit export --format json --output audit.json
@@ -800,20 +805,58 @@ Commands are matched by base name (full paths are stripped). Secrets and command
 
 ### `nokey status`
 
-Unified health check showing PIN, keyring, config, policy, and secrets status:
+Unified health check showing PIN, keyring, config, policy, and secrets status.
+`status` always exits 0:
 
 ```bash
 $ nokey status
 nokey status:
-  PIN authentication:  configured
+  Version:             v0.5.3
   Keyring backend:     accessible
+  PIN authentication:  configured
+  Auth method:         pin
   Config:              valid
+  Config dir:          /Users/you/.config/nokey
   Policy:              valid (3 rules, 2 proxy rules)
+  Audit logging:       enabled
+  Proxy CA:            present
   Secrets stored:      12
 
 # Machine-readable output
 $ nokey status --json
-{"pin_configured":true,"keyring_accessible":true,"config_valid":true,...}
+{
+  "keyring": "accessible",
+  "pin": "configured",
+  "config": "valid",
+  "policy": "valid",
+  "policy_rules": 3,
+  "proxy_rules": 2,
+  "secrets": 12,
+  "audit_enabled": true,
+  "auth_method": "pin",
+  "config_dir": "/Users/you/.config/nokey",
+  "ca_present": true,
+  "version": "v0.5.3"
+}
+```
+
+### `nokey doctor`
+
+Runs the same checks as `status`, prints a fix-it hint for each problem, and
+exits non-zero if any check fails. Warnings (no PIN, audit logging disabled)
+are shown but do not fail:
+
+```bash
+$ nokey doctor
+[OK  ] config dir     /Users/you/.config/nokey
+[FAIL] config         failed to parse config file: yaml: unmarshal errors: ...
+                      -> Fix /Users/you/.config/nokey/config.yaml, then run 'nokey config validate'
+[OK  ] policies.yaml  valid
+[OK  ] keyring        accessible (12 secrets)
+[WARN] PIN            not configured; anything that can run nokey can read secrets
+                      -> Run 'nokey auth setup' to require a PIN
+[OK  ] audit log      enabled
+Error: 1 check(s) failed
 ```
 
 ### `nokey list`
@@ -824,7 +867,14 @@ nokey list
 
 # Machine-readable output
 $ nokey list --json
-["OPENAI_API_KEY","DATABASE_PASSWORD","GITHUB_TOKEN"]
+{
+  "secrets": [
+    "DATABASE_PASSWORD",
+    "GITHUB_TOKEN",
+    "OPENAI_API_KEY"
+  ],
+  "count": 3
+}
 ```
 
 ### `nokey version`
@@ -853,7 +903,9 @@ config.yaml: OK
 policies.yaml: OK
 ```
 
-Exits with code 1 if either file is invalid.
+Exits with code 1 if either file is invalid. With `--json`, both files are
+always checked and reported as `{"config": {...}, "policy": {...}}`, each with
+`path`, `found`, `valid` and `error`.
 
 ---
 
@@ -1161,7 +1213,7 @@ nokey/
 │   ├── export.go             # Export to shell
 │   ├── mcp.go                # MCP server and tool handlers
 │   ├── proxy.go              # HTTP/HTTPS proxy commands
-│   ├── status.go             # Health check command
+│   ├── status.go             # Health check (status) and doctor commands
 │   └── config_cmd.go         # Config validation command
 ├── internal/
 │   ├── auth/
@@ -1181,6 +1233,8 @@ nokey/
 │   │   └── policy.go         # Policy rules, approval, proxy rules
 │   ├── proxy/                # HTTP/HTTPS proxy server and CA
 │   ├── token/                # Session token store
+│   ├── mcpserver/            # MCP tool handlers (served by cmd/mcp.go)
+│   ├── integration/          # MCP integration tools (GitHub, generic API client)
 │   ├── placeholder/          # ${{NOKEY:...}} resolution
 │   └── oauth/
 │       ├── oauth.go          # OAuth interface, token management
