@@ -49,7 +49,7 @@ func FilterSecrets(allSecrets map[string]string, only, except string) (map[strin
 // scoping rules before any secret values are loaded from the keyring.
 func FilterNames(allNames []string, only, except string) ([]string, error) {
 	if only != "" && except != "" {
-		return nil, fmt.Errorf("cannot use both --only and --except flags")
+		return nil, fmt.Errorf("cannot use both 'only' and 'except'")
 	}
 
 	all := make(map[string]bool, len(allNames))

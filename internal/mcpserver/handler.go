@@ -510,7 +510,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	// Enforce scoped policy before reading any secret values.
 	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
-		return mcp.NewToolResultError(err.Error()), nil
+		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
 
 	// Token or approval gateway
@@ -574,7 +574,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	// Enforce scoped policy before touching the keyring
 	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
-		return mcp.NewToolResultError(err.Error()), nil
+		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
 
 	store, err := h.getStore()
@@ -767,7 +767,9 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	// consistent view even if the file is rewritten mid-request.
 	pol := h.getPolicy()
 	if pol.RequiresToken(command, secretNames) {
-		return fmt.Errorf("token required by policy — use mint_token to create an access lease")
+		names, _ := json.Marshal(secretNames)
+		base := filepath.Base(command)
+		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", base, names, base)
 	}
 
 	// Auto-mint: one approval covers the rest of the session.
@@ -1294,6 +1296,22 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutS
 		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
 	}
 	return mcp.NewToolResultStructured(structured, note+resultText)
+}
+
+// policyDenialText is err's message, followed for a policy denial by how
+// the user can allow the call.
+func (h *Handler) policyDenialText(err error) string {
+	var denial *policy.Denial
+	if !errors.As(err, &denial) {
+		return err.Error()
+	}
+	path := ""
+	if h.getConfigDir != nil {
+		if dir, dirErr := h.getConfigDir(); dirErr == nil {
+			path = filepath.Join(dir, "policies.yaml")
+		}
+	}
+	return err.Error() + "\n\n" + denial.Hint(path)
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.

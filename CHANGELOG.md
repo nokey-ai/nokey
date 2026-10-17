@@ -188,6 +188,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when it is present, and the redacting reader reuses its read
   buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
   65 allocations to none, and runs about 1.8x faster.
+- MCP errors now say how to get past them. A policy denial from `exec`,
+  `exec_with_secrets` or a GitHub tool is followed by the rule the user
+  could add and the path of `policies.yaml`; the token-required error
+  names the `mint_token` secrets and `for` value to use; and the
+  only/except conflict no longer refers to `--only`/`--except` flags
+  that MCP callers don't have. Each message still starts with the same
+  words (`policy denied:`, `token required by policy`, `cannot use
+  both`), and policy denials are audited as before.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client

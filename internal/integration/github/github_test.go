@@ -14,6 +14,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/integration/apiclient"
+	"github.com/nokey-ai/nokey/internal/policy"
 )
 
 // testClient creates an apiclient.Client that points at the given httptest.Server.
@@ -717,5 +718,26 @@ func TestGetFile_Raw(t *testing.T) {
 	callTool(t, tool, map[string]any{"owner": "o", "repo": "r", "path": "README.md"})
 	if gotAccept != "application/vnd.github+json" {
 		t.Errorf("default Accept = %q, want application/vnd.github+json", gotAccept)
+	}
+}
+
+func TestTools_PolicyDenialSaysHowToAllow(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	defer ts.Close()
+	deps := integration.Deps{
+		GetSecret: func(string) (string, error) { return "tok", nil },
+		GetPolicy: func() *policy.Policy {
+			return &policy.Policy{Rules: []policy.Rule{{Commands: []string{"gh"}, Secrets: []string{"*"}}}}
+		},
+		AuditFn: func(op, target, secrets string, ok bool, errMsg string) {},
+	}
+	tool := toolListIssues(apiclient.New("github", ts.URL, secretMappings, deps))
+
+	result := callTool(t, tool, map[string]any{"owner": "o", "repo": "r"})
+	if !result.IsError {
+		t.Fatal("expected a policy denial")
+	}
+	if text := resultText(t, result); !strings.Contains(text, `commands: ["nokey:integration:github"]`) {
+		t.Errorf("result = %q, want a rule naming the integration's policy command", text)
 	}
 }

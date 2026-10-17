@@ -566,3 +566,18 @@ func TestMatchesAny(t *testing.T) {
 		})
 	}
 }
+
+func TestDenialHint(t *testing.T) {
+	d := &Denial{Command: "nokey:integration:github", Secret: "GITHUB_TOKEN"}
+	for path, where := range map[string]string{
+		"/home/u/.config/nokey/policies.yaml": "/home/u/.config/nokey/policies.yaml",
+		"":                                    "policies.yaml",
+	} {
+		hint := d.Hint(path)
+		for _, want := range []string{where, `commands: ["nokey:integration:github"]`, `secrets: ["GITHUB_TOKEN"]`} {
+			if !strings.Contains(hint, want) {
+				t.Errorf("Hint(%q) = %q, want it to contain %q", path, hint, want)
+			}
+		}
+	}
+}
