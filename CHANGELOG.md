@@ -176,6 +176,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- Parallel MCP tool calls no longer race on the handler's session state.
+  mcp-go runs tool calls on a pool of five workers, but the proxy handle
+  and the auto-minted session token were unguarded fields. A burst of
+  `exec` calls with `auth.auto_mint_token` on raised one approval prompt
+  per call and minted a session token for each, and two concurrent
+  `start_proxy` calls could both start a proxy, orphaning one that kept
+  listening with secrets loaded and that `stop_proxy` could no longer
+  reach. `start_proxy`/`stop_proxy` are now serialised, and concurrent
+  calls wait for a pending auto-mint and share its outcome. Waiting is
+  bounded by each call's own context, and an auto-mint prompt left
+  unanswered is abandoned after three minutes.
 - `nokey status` reports config errors. It used to print `valid` whenever
   the process started, because a broken `config.yaml` was replaced with
   defaults before `status` ever looked at it. It now re-reads the file

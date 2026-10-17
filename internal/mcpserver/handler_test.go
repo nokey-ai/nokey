@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1912,5 +1914,208 @@ func TestHandleExec_ReloadsPolicyWhenFileChanges(t *testing.T) {
 	}
 	if !strings.Contains(text, "hello") {
 		t.Fatalf("third call: result = %q, want stdout 'hello'", text)
+	}
+}
+
+// --- concurrency ---
+
+// TestCheckTokenOrApproval_AutoMint_Concurrent mirrors mcp-go's worker pool,
+// which runs tool calls in parallel: a burst of calls arriving before the
+// first auto-mint completes must share one approval prompt and one token.
+func TestCheckTokenOrApproval_AutoMint_Concurrent(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "val"}}
+
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	c.Audit.Enabled = false
+
+	var approvals atomic.Int32
+	h := New(Deps{
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+			approvals.Add(1)
+			time.Sleep(20 * time.Millisecond) // the user takes a moment to click
+			return nil
+		},
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+				t.Errorf("checkTokenOrApproval: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+
+	if n := approvals.Load(); n != 1 {
+		t.Errorf("approvals = %d, want 1 (concurrent calls must share one auto-mint)", n)
+	}
+	if n := len(h.tokenStore.List()); n != 1 {
+		t.Errorf("minted %d session tokens, want 1", n)
+	}
+}
+
+// TestHandleStartProxy_Concurrent checks that parallel start_proxy calls
+// start exactly one proxy. Before start/stop were serialised, each call could
+// pass the "already running" check and the losers' proxies were orphaned —
+// still listening, with secrets loaded, and unreachable by stop_proxy.
+func TestHandleStartProxy_Concurrent(t *testing.T) {
+	configDir := t.TempDir()
+	polYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_KEY"
+`
+	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
+	loadedPol, err := policy.Load(configDir)
+	if err != nil {
+		t.Fatalf("policy.Load: %v", err)
+	}
+	// Create the CA up front so the parallel calls don't race on writing it.
+	if _, err := proxy.LoadOrCreateCA(configDir); err != nil {
+		t.Fatalf("LoadOrCreateCA: %v", err)
+	}
+
+	store := &mapStore{secrets: map[string]string{"MY_KEY": "secret-value"}}
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(loadedPol),
+		Config:       c,
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return configDir, nil },
+	})
+
+	var started atomic.Int32
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			result, err := h.HandleStartProxy(context.Background(), makeCallToolRequest(map[string]any{}))
+			if err != nil {
+				t.Errorf("HandleStartProxy: %v", err)
+				return
+			}
+			text := getResultText(t, result)
+			switch {
+			case strings.Contains(text, "Proxy started on"):
+				started.Add(1)
+			case strings.Contains(text, "already running"):
+			default:
+				t.Errorf("unexpected result: %q", text)
+			}
+		})
+	}
+	wg.Wait()
+
+	if n := started.Load(); n != 1 {
+		t.Errorf("started %d proxies, want 1", n)
+	}
+
+	// Concurrent stops must not double-stop or race on the field.
+	for range 4 {
+		wg.Go(func() {
+			if _, err := h.HandleStopProxy(context.Background(), mcp.CallToolRequest{}); err != nil {
+				t.Errorf("HandleStopProxy: %v", err)
+			}
+		})
+	}
+	wg.Wait()
+	if h.proxyServer != nil {
+		t.Error("proxyServer should be nil after stop")
+	}
+}
+
+// autoMintHandler returns a handler with auto-mint on and the given approval.
+func autoMintHandler(t *testing.T, approvalFn ApprovalFunc) *Handler {
+	t.Helper()
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	c.Audit.Enabled = false
+	return New(Deps{
+		GetStore:     func() (SecretStore, error) { return &mapStore{secrets: map[string]string{"SEC": "v"}}, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       c,
+		ApprovalFn:   approvalFn,
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+}
+
+// A prompt the user never answers must not hold up other calls past their
+// own deadline: before, the auto-mint held sessionMu across the prompt and
+// every other call queued on it.
+func TestCheckTokenOrApproval_AutoMint_PendingPromptDoesNotWedge(t *testing.T) {
+	prompted := make(chan struct{}, 1)
+	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string) error {
+		prompted <- struct{}{}
+		<-ctx.Done() // the user walked away
+		return ctx.Err()
+	})
+
+	stuckCtx, release := context.WithCancel(context.Background())
+	defer release()
+	go h.checkTokenOrApproval(stuckCtx, "", "cmd", []string{"SEC"})
+	<-prompted
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}) }()
+
+	select {
+	case <-done:
+		// Returned once its own context ended. With a nil policy no
+		// per-call approval is needed, so the result itself is nil.
+	case <-time.After(5 * time.Second):
+		t.Fatal("second call is stuck behind the first call's pending prompt")
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
+	old := autoMintPromptTimeout
+	autoMintPromptTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { autoMintPromptTimeout = old })
+
+	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+
+	done := make(chan error, 1)
+	go func() { done <- h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("an unanswered auto-mint prompt was never given up on")
+	}
+	if h.sessionTokenID != "" {
+		t.Error("a timed-out prompt must not mint a token")
+	}
+}
+
+// Calls waiting on a pending auto-mint share its outcome, a decline
+// included, rather than each raising a prompt of its own.
+func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
+	var approvals atomic.Int32
+	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		approvals.Add(1)
+		time.Sleep(50 * time.Millisecond)
+		return fmt.Errorf("user declined")
+	})
+
+	var wg sync.WaitGroup
+	for range 6 {
+		wg.Go(func() { h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}) })
+	}
+	wg.Wait()
+	if n := approvals.Load(); n != 1 {
+		t.Errorf("approvals = %d, want 1 shared prompt", n)
 	}
 }
