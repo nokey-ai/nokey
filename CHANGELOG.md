@@ -138,6 +138,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hint, which opened the keyring on every Tab press.
 
 ### Changed
+- Every MCP tool now has a title and annotation hints that match what it
+  does. mcp-go defaults a tool with no annotations to destructive and
+  open-world, so clients showed all six GitHub tools, `mint_token` and
+  the proxy tools as destructive, and `list_secrets`/`list_tokens` as
+  reaching the outside world. The read-only GitHub tools are now marked
+  read-only, the create tools and `mint_token` non-destructive, the proxy
+  tools and `revoke_token` idempotent, and only `exec`,
+  `exec_with_secrets` and `github_api` keep the destructive default.
 - `nokey status` validates `config.yaml` strictly, so a file with an
   unknown (for example misspelled) key is now reported as
   `config: error: ...` rather than `valid`, even though the rest of
