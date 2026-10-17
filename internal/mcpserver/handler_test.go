@@ -2716,9 +2716,9 @@ func TestCapOutput_ShrinkingRedaction(t *testing.T) {
 	// The cap lands 40 bytes into a final copy of the secret.
 	body := strings.Repeat(secret, (MaxOutputBytes+slack)/len(secret)+1)
 	raw := []byte(body[:MaxOutputBytes+slack-40] + secret[:40])
-	b := &cappedBuffer{limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
+	b := &cappedBuffer{max: MaxOutputBytes, limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
 
-	out := capOutput(b, secrets)
+	out, _ := capOutput(b, secrets)
 	if !bytes.HasSuffix(out, []byte("\n\n[output truncated]")) {
 		t.Errorf("output does not report truncation: tail %q", out[max(0, len(out)-40):])
 	}
@@ -3007,6 +3007,95 @@ func TestExecTools_SeparateStderr(t *testing.T) {
 		}
 		if got := getResultText(t, result); got != want {
 			t.Errorf("%s: output = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// --- structured output ---
+
+func structured(t *testing.T, result *mcp.CallToolResult) execOutput {
+	t.Helper()
+	out, ok := result.StructuredContent.(execOutput)
+	if !ok {
+		t.Fatalf("StructuredContent = %#v, want an execOutput", result.StructuredContent)
+	}
+	return out
+}
+
+func TestExecTools_StructuredOutput(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo $K; exit 3"},
+	}))
+	if text := getResultText(t, result); text != "[exit code: 3]\n[REDACTED:K]\n" {
+		t.Errorf("text = %q; the text content must not change", text)
+	}
+	got := structured(t, result)
+	want := execOutput{Output: "[REDACTED:K]\n", ExitCode: 3, OriginalBytes: 13, SecretsInjected: []string{"K"}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("structured = %+v, want %+v", got, want)
+	}
+
+	result, _ = h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo out; echo err >&2"}, "separate_stderr": true,
+	}))
+	got = structured(t, result)
+	if got.Output != "out\n" || got.Stderr != "err\n" || got.SecretsInjected == nil || len(got.SecretsInjected) != 0 {
+		t.Errorf("structured = %+v, want split streams and an empty secrets list", got)
+	}
+}
+
+func TestExecTools_StructuredTimeoutAndTruncation(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo partial; sleep 30"}, "timeout_seconds": 1,
+	}))
+	if got := structured(t, result); !got.TimedOut || got.Output != "partial\n" {
+		t.Errorf("structured = %+v, want timed_out with the partial output", got)
+	}
+
+	result, _ = h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "head -c 2000000 /dev/zero"},
+	}))
+	if got := structured(t, result); !got.Truncated || got.OriginalBytes != 2000000 {
+		t.Errorf("truncated = %v, original_bytes = %d; want true, 2000000", got.Truncated, got.OriginalBytes)
+	}
+}
+
+// Split streams share the one output budget: each half of it, so the text
+// stays within MaxOutputBytes as it does when they are interleaved.
+func TestExecTools_SeparateStderrSharesOutputCap(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "head -c 2000000 /dev/zero; head -c 2000000 /dev/zero >&2"},
+		"separate_stderr": true,
+	}))
+	text := getResultText(t, result)
+	if len(text) > MaxOutputBytes+len("\n[stderr]\n") {
+		t.Errorf("text is %d bytes, want at most about %d", len(text), MaxOutputBytes)
+	}
+	got := structured(t, result)
+	if !got.Truncated || len(got.Output) == 0 || len(got.Stderr) == 0 {
+		t.Errorf("want both streams kept, truncated: %v, %d, %d bytes", got.Truncated, len(got.Output), len(got.Stderr))
+	}
+}
+
+func TestExecTools_DeclareOutputSchema(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	s := server.NewMCPServer("nokey-test", "0")
+	h.RegisterTools(s)
+	for _, name := range []string{"exec", "exec_with_secrets"} {
+		props := s.GetTool(name).Tool.OutputSchema.Properties
+		for _, field := range []string{"output", "exit_code", "timed_out", "truncated", "original_bytes", "secrets_injected"} {
+			if _, ok := props[field]; !ok {
+				t.Errorf("%s output schema lacks %q", name, field)
+			}
 		}
 	}
 }
