@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -491,5 +492,58 @@ func TestRedactingReader_Clear(t *testing.T) {
 	reader.Clear()
 	if reader.out != nil || reader.hold != nil {
 		t.Error("Clear should release the in-flight buffers")
+	}
+}
+
+// --- benchmarks ---
+
+// benchSecrets is a handful of realistic secrets, all long enough to get
+// encoding variants.
+var benchSecrets = map[string]string{
+	"API_KEY":      "sk-live-0123456789abcdef0123456789abcdef",
+	"DB_PASSWORD":  "correct-horse-battery-staple",
+	"GITHUB_TOKEN": "ghp_aBcDeFgHiJkLmNoPqRsTuVwXyZ0123456789",
+	"AWS_SECRET":   "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+}
+
+// benchOutput is 64 KiB of ordinary log text with no secrets in it, which is
+// what the redactor sees almost all of the time.
+var benchOutput = []byte(strings.Repeat("2026-10-17T12:00:00Z INFO request served path=/api/v1/items status=200 dur=12ms\n", 820))
+
+func BenchmarkRedactBytes_NoMatch(b *testing.B) {
+	r := newRedactor(benchSecrets)
+	b.SetBytes(int64(len(benchOutput)))
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = r.redact(benchOutput)
+	}
+}
+
+func BenchmarkRedactBytes_WithMatches(b *testing.B) {
+	data := append([]byte(nil), benchOutput...)
+	data = append(data, "token="+benchSecrets["API_KEY"]+"\n"...)
+	data = append(data, "auth="+base64.StdEncoding.EncodeToString([]byte(benchSecrets["DB_PASSWORD"]))+"\n"...)
+	r := newRedactor(benchSecrets)
+	b.SetBytes(int64(len(data)))
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = r.redact(data)
+	}
+}
+
+// BenchmarkRedactingReader streams the output through the reader in 4 KiB
+// reads, the way io.Copy drives it from a PTY.
+func BenchmarkRedactingReader(b *testing.B) {
+	r := newRedactor(benchSecrets)
+	buf := make([]byte, 4096)
+	b.SetBytes(int64(len(benchOutput)))
+	b.ReportAllocs()
+	for b.Loop() {
+		reader := &redactingReader{reader: bytes.NewReader(benchOutput), redactor: r}
+		for {
+			if _, err := reader.Read(buf); err != nil {
+				break
+			}
+		}
 	}
 }
