@@ -226,6 +226,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves a background process holding its output returns its output and
   exit code once the two-second wait for that process runs out. A
   `timeout_seconds` above 300 now says it was clamped.
+- MCP exec no longer buffers unbounded output. The whole of a command's
+  output was held in memory and only cut to 1 MiB afterwards, so a
+  chatty or hostile command could grow the long-lived `nokey mcp serve`
+  process without limit. Output is now capped as it arrives, just past
+  1 MiB so a secret straddling the limit is still redacted whole, and
+  the raw buffer is zeroed once redacted. Output under the limit is
+  returned byte-for-byte as before; longer output is still a redacted
+  prefix ending in `[output truncated]`, though when redaction shortens
+  it the prefix can now be shorter than 1 MiB.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of

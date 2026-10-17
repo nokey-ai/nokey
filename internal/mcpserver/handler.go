@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -892,7 +893,13 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 	killProcessTreeOnCancel(cmd)
 	cmd.WaitDelay = killWaitDelay
 
-	output, err := cmd.CombinedOutput()
+	// Keep only what can reach the result instead of buffering everything
+	// the command prints. The same writer for both streams preserves
+	// CombinedOutput's interleaving.
+	buf := &cappedBuffer{limit: MaxOutputBytes + redactSlack(spec.secrets)}
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	err := cmd.Run()
 	// ErrWaitDelay means the command exited 0 but something it started
 	// still held the output open (a daemonised child, say). The run itself
 	// finished, so keep its output rather than calling it a failure.
@@ -900,15 +907,67 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 		err = nil
 	}
 
-	// Always redact output
-	output = redact.RedactBytes(output, spec.secrets)
-	output = truncateOutput(output, MaxOutputBytes)
+	// Always redact output. Clone before zeroing the raw buffer: with
+	// nothing to replace, redaction and truncation return it as is.
+	output := bytes.Clone(capOutput(buf, spec.secrets))
+	sensitive.ClearBytes(buf.buf)
 
 	return runResult{
 		output:   output,
 		err:      err,
 		timedOut: errors.Is(execCtx.Err(), context.DeadlineExceeded),
 	}
+}
+
+// cappedBuffer is an io.Writer that keeps the first limit bytes written and
+// counts the rest. It never fails a write, so the child isn't killed by
+// SIGPIPE or a short write when its output runs long.
+type cappedBuffer struct {
+	buf   []byte
+	limit int
+	total int64
+}
+
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	b.total += int64(len(p))
+	if room := b.limit - len(b.buf); room > 0 {
+		b.buf = append(b.buf, p[:min(room, len(p))]...)
+	}
+	return len(p), nil
+}
+
+// overflowed reports whether output was dropped.
+func (b *cappedBuffer) overflowed() bool {
+	return b.total > int64(len(b.buf))
+}
+
+// redactSlack is how far past MaxOutputBytes a cappedBuffer keeps, so that
+// a secret straddling the MaxOutputBytes mark is still whole and gets
+// redacted exactly as it would have been in the full output. It is a
+// generous bound on the longest form redact matches: the value, its
+// base64/hex/URL encodings, or a JSON \uXXXX escape at 6 bytes per byte.
+func redactSlack(secrets map[string]string) int {
+	longest := 0
+	for _, v := range secrets {
+		longest = max(longest, len(v))
+	}
+	return 6*longest + 4
+}
+
+// capOutput redacts and truncates what a cappedBuffer kept. Output that fit
+// is treated exactly as before the cap existed.
+func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
+	out := redact.RedactBytes(b.buf, secrets)
+	if !b.overflowed() {
+		return truncateOutput(out, MaxOutputBytes)
+	}
+	// The cap may have cut a secret, or an encoding of one, leaving a
+	// prefix that redaction can't recognise. That fragment is unchanged by
+	// redaction and sits in the last redactSlack-1 bytes, so drop them.
+	// Redaction can also shrink the output below MaxOutputBytes, so the
+	// truncation notice is added explicitly rather than by length.
+	drop := min(redactSlack(secrets)-1, len(out))
+	return withTruncationNotice(out[:len(out)-drop], MaxOutputBytes)
 }
 
 // exitCode returns the exit status carried by err, if it has one.
@@ -984,15 +1043,24 @@ func tokenFingerprint(id string) string {
 	return "sha256:" + hex.EncodeToString(sum[:6])
 }
 
+// truncationNotice ends output that was cut short.
+const truncationNotice = "\n\n[output truncated]"
+
 // truncateOutput truncates output to maxBytes, appending a truncation notice.
 func truncateOutput(data []byte, maxBytes int) []byte {
 	if len(data) <= maxBytes {
 		return data
 	}
-	notice := "\n\n[output truncated]"
-	truncated := make([]byte, maxBytes)
-	copy(truncated, data[:maxBytes-len(notice)])
-	copy(truncated[maxBytes-len(notice):], notice)
+	return withTruncationNotice(data, maxBytes)
+}
+
+// withTruncationNotice returns data, cut if necessary, followed by the
+// truncation notice, in at most maxBytes.
+func withTruncationNotice(data []byte, maxBytes int) []byte {
+	keep := min(len(data), maxBytes-len(truncationNotice))
+	truncated := make([]byte, keep+len(truncationNotice))
+	copy(truncated, data[:keep])
+	copy(truncated[keep:], truncationNotice)
 	return truncated
 }
 
