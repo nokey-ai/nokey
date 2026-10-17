@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -2484,5 +2485,128 @@ func TestHandleExec_ArgsInvalidJSONString(t *testing.T) {
 		if !result.IsError || !strings.Contains(getResultText(t, result), "'args'") {
 			t.Errorf("args %q: result = %q, want an 'args' error", args, getResultText(t, result))
 		}
+	}
+}
+
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+}
+
+// A context-killed child surfaces as an *exec.ExitError ("signal: killed"),
+// so the timeout must be detected from the context, not the error type.
+func TestHandleExec_TimeoutReported(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo started $K; sleep 30"},
+		"timeout_seconds": 1,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	if !result.IsError {
+		t.Errorf("timed-out run should be an error result, got %q", text)
+	}
+	// The old message stays as the prefix for clients that match on it.
+	if !strings.HasPrefix(text, "command timed out after 1 seconds\n") {
+		t.Errorf("result = %q, want the timeout message first", text)
+	}
+	if !strings.Contains(text, "started [REDACTED:K]") {
+		t.Errorf("result = %q, want the partial output, redacted", text)
+	}
+}
+
+func TestHandleExecWithSecrets_TimeoutReported(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo started ${{NOKEY:K}}; sleep 30"},
+		"timeout_seconds": 1,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	text := getResultText(t, result)
+	if !strings.HasPrefix(text, "command timed out after 1 seconds\n") || !strings.Contains(text, "started [REDACTED:K]") {
+		t.Errorf("result = %q, want a timeout header and redacted partial output", text)
+	}
+}
+
+// A background grandchild that inherits the output pipe used to keep the
+// read open long after the timeout killed the direct child.
+func TestHandleExec_TimeoutKillsProcessTree(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "sleep 30 & echo started; wait"},
+		"timeout_seconds": 1,
+	})
+	start := time.Now()
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("returned after %s; the timeout should end the whole process tree", elapsed)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "timed out") {
+		t.Errorf("result = %q, want a timeout", text)
+	}
+}
+
+// A daemonised grandchild that keeps the output pipe open makes Wait
+// return ErrWaitDelay once WaitDelay expires, even though the command
+// itself exited. That is still a finished run, not a failure to execute.
+func TestHandleExec_GrandchildHoldingPipeKeepsResult(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+
+	for script, want := range map[string]string{
+		"(sleep 4 &); echo done":         "done\n",
+		"(sleep 4 &); echo done; exit 3": "[exit code: 3]\ndone\n",
+	} {
+		result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+			"command": "sh", "args": []any{"-c", script},
+		}))
+		if err != nil {
+			t.Fatalf("HandleExec: %v", err)
+		}
+		if got := getResultText(t, result); result.IsError || got != want {
+			t.Errorf("%s: result = %q (error %v), want %q", script, got, result.IsError, want)
+		}
+	}
+}
+
+func TestHandleExec_TimeoutClampNoted(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "echo",
+		"args":            []any{"hi"},
+		"timeout_seconds": 9999,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	want := fmt.Sprintf("[timeout_seconds clamped to %d]\nhi\n", MaxTimeoutSecs)
+	if text := getResultText(t, result); text != want {
+		t.Errorf("result = %q, want %q", text, want)
 	}
 }
