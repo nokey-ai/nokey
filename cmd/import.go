@@ -7,8 +7,11 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/spf13/cobra"
 )
+
+var importDryRun bool
 
 var importCmd = &cobra.Command{
 	Use:   "import FILE",
@@ -20,14 +23,19 @@ Lines starting with # are treated as comments, and a leading "export "
 (as written by shell scripts) is ignored.
 After importing, consider deleting the .env file for security.
 
+Use --dry-run to see which secrets would be imported without touching
+the keyring.
+
 Example:
-  nokey import .env`,
+  nokey import .env
+  nokey import --dry-run .env`,
 	Args: cobra.ExactArgs(1),
 	RunE: runImport,
 }
 
 func init() {
 	rootCmd.AddCommand(importCmd)
+	importCmd.Flags().BoolVar(&importDryRun, "dry-run", false, "Show which secrets would be imported without storing them")
 }
 
 func runImport(cmd *cobra.Command, args []string) error {
@@ -104,6 +112,25 @@ func runImport(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no valid secrets found in %s\n\nExpected format (one per line):\n  KEY=VALUE\n  # comments are ignored", filePath)
 	}
 
+	// Write in sorted order so partial failures are reproducible
+	keys := make([]string, 0, len(secrets))
+	for key := range secrets {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	if importDryRun {
+		fmt.Printf("Would import %d secret(s) from %s:\n", len(keys), filePath)
+		for _, key := range keys {
+			if err := keyring.ValidateSecretName(key); err != nil {
+				fmt.Printf("  %s (would fail: %v)\n", key, err)
+				continue
+			}
+			fmt.Printf("  %s\n", key)
+		}
+		return nil
+	}
+
 	// Store secrets
 	store, err := getKeyring()
 	if err != nil {
@@ -113,13 +140,6 @@ func runImport(cmd *cobra.Command, args []string) error {
 	imported := 0
 	importedKeys := make([]string, 0, len(secrets))
 	failedKeys := make([]string, 0)
-
-	// Write in sorted order so partial failures are reproducible
-	keys := make([]string, 0, len(secrets))
-	for key := range secrets {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
 
 	for _, key := range keys {
 		if err := store.Set(key, secrets[key]); err != nil {

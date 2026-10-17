@@ -77,6 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (GO-2026-6599 through GO-2026-6617), and govulncheck finds them
   reachable from the proxy, OAuth and 1Password Connect code paths.
 
+### Added
+- `nokey import --dry-run FILE` parses the file and lists the secret
+  names it would import, flagging any the keyring would reject, without
+  opening the keyring or writing anything.
+
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
   that sent `CONNECT` and then never started the TLS handshake left
