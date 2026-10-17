@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -18,6 +19,7 @@ var (
 	auditLimit     int
 	auditFormat    string
 	auditOutput    string
+	auditListJSON  bool
 )
 
 var auditCmd = &cobra.Command{
@@ -51,7 +53,8 @@ Examples:
   nokey audit list --since 1d --limit 50
   nokey audit list --secret OPENAI_API_KEY
   nokey audit list --command claude
-  nokey audit list --operation exec`,
+  nokey audit list --operation exec
+  nokey audit list --json`,
 	RunE: runAuditList,
 }
 
@@ -86,6 +89,7 @@ func init() {
 	auditListCmd.Flags().StringVar(&auditCommand, "command", "", "Filter by command")
 	auditListCmd.Flags().StringVar(&auditOperation, "operation", "", "Filter by operation (exec, set, delete, import, auth)")
 	auditListCmd.Flags().IntVar(&auditLimit, "limit", 20, "Maximum number of entries to show")
+	auditListCmd.Flags().BoolVar(&auditListJSON, "json", false, "Output as JSON")
 
 	// Export flags
 	auditExportCmd.Flags().StringVar(&auditFormat, "format", "json", "Export format (json or csv)")
@@ -102,6 +106,9 @@ func runAuditList(cmd *cobra.Command, args []string) error {
 		fmt.Fprintln(os.Stderr, "\nTo enable audit logging, add to ~/.config/nokey/config.yaml:")
 		fmt.Fprintln(os.Stderr, "  audit:")
 		fmt.Fprintln(os.Stderr, "    enabled: true")
+		if auditListJSON {
+			return printAuditListJSON([]audit.AuditEntry{})
+		}
 		return nil
 	}
 
@@ -138,6 +145,10 @@ func runAuditList(cmd *cobra.Command, args []string) error {
 
 	// Filter entries
 	entries := log.Filter(opts)
+
+	if auditListJSON {
+		return printAuditListJSON(entries)
+	}
 
 	if len(entries) == 0 {
 		fmt.Println("No audit entries found")
@@ -253,6 +264,23 @@ func runAuditClear(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("Audit log cleared successfully")
+	return nil
+}
+
+// printAuditListJSON prints entries as {"entries": [...], "count": N}.
+func printAuditListJSON(entries []audit.AuditEntry) error {
+	out := struct {
+		Entries []audit.AuditEntry `json:"entries"`
+		Count   int                `json:"count"`
+	}{
+		Entries: entries,
+		Count:   len(entries),
+	}
+	data, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON: %w", err)
+	}
+	fmt.Println(string(data))
 	return nil
 }
 

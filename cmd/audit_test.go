@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -911,5 +912,84 @@ func TestRunAuditExport_WriteFileError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to write output file") {
 		t.Errorf("error = %v, want 'failed to write output file'", err)
+	}
+}
+
+func TestRunAuditList_JSON(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestAuditDir(t)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = true
+	withTestConfig(t, c)
+
+	seedAuditLog(t, store, 2)
+
+	oldSince, oldLimit, oldJSON := auditSince, auditLimit, auditListJSON
+	t.Cleanup(func() { auditSince, auditLimit, auditListJSON = oldSince, oldLimit, oldJSON })
+	auditSince, auditLimit, auditListJSON = "", 0, true
+
+	output := captureStdout(t, func() {
+		if err := runAuditList(nil, nil); err != nil {
+			t.Fatalf("runAuditList: %v", err)
+		}
+	})
+
+	var got struct {
+		Entries []audit.AuditEntry `json:"entries"`
+		Count   int                `json:"count"`
+	}
+	if err := json.Unmarshal([]byte(output), &got); err != nil {
+		t.Fatalf("invalid JSON %q: %v", output, err)
+	}
+	if got.Count != 2 || len(got.Entries) != 2 {
+		t.Errorf("count = %d, entries = %d, want 2", got.Count, len(got.Entries))
+	}
+	if got.Entries[0].Command != "test-cmd" {
+		t.Errorf("entry command = %q, want test-cmd", got.Entries[0].Command)
+	}
+}
+
+func TestRunAuditList_JSONEmpty(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestAuditDir(t)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = true
+	withTestConfig(t, c)
+
+	oldJSON := auditListJSON
+	t.Cleanup(func() { auditListJSON = oldJSON })
+	auditListJSON = true
+
+	output := captureStdout(t, func() {
+		if err := runAuditList(nil, nil); err != nil {
+			t.Fatalf("runAuditList: %v", err)
+		}
+	})
+	if !strings.Contains(output, `"entries": []`) || !strings.Contains(output, `"count": 0`) {
+		t.Errorf("output = %q, want an empty entries array", output)
+	}
+}
+
+func TestRunAuditList_JSONDisabled(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	oldJSON := auditListJSON
+	t.Cleanup(func() { auditListJSON = oldJSON })
+	auditListJSON = true
+
+	var output string
+	_ = captureStderr(t, func() {
+		output = captureStdout(t, func() {
+			if err := runAuditList(nil, nil); err != nil {
+				t.Fatalf("runAuditList: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(output, `"count": 0`) {
+		t.Errorf("stdout = %q, want empty JSON result when audit is disabled", output)
 	}
 }

@@ -93,6 +93,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey status` (and `--json`) also reports `audit_enabled`,
   `auth_method`, `config_dir`, `ca_present` and `version`. Existing
   fields are unchanged.
+- `nokey audit list --json` prints `{"entries": [...], "count": N}`
+  using the same entry fields as `audit export --format json`.
+- `nokey config validate --json` checks both `config.yaml` and
+  `policies.yaml` and prints `{"config": {...}, "policy": {...}}` with
+  `path`, `found`, `valid` and `error` for each. It still exits 1 if
+  either file is invalid.
 
 ### Changed
 - `nokey status` validates `config.yaml` strictly, so a file with an
