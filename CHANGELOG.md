@@ -134,6 +134,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- `nokey export` prints variables in sorted order instead of Go's random
+  map order, so its output is stable between runs and diffable.
+- `nokey export --shell fish` escapes backslashes. Inside fish single
+  quotes `\\` and `\'` are escape sequences, so a value ending in `\`
+  swallowed the closing quote and broke the whole snippet. Values are
+  now quoted with `\\` and `\'`.
 
 ### Changed
 - Redaction no longer copies the output once per pattern. Each

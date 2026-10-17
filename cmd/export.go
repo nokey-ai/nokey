@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/sensitive"
@@ -12,6 +13,9 @@ import (
 var (
 	shellType string
 )
+
+// fishQuoteEscaper escapes a value for use inside fish single quotes.
+var fishQuoteEscaper = strings.NewReplacer(`\`, `\\`, `'`, `\'`)
 
 var exportCmd = &cobra.Command{
 	Use:   "export",
@@ -72,24 +76,31 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Emit in sorted order so the output is deterministic across runs
+	secretNames := make([]string, 0, len(secrets))
+	for name := range secrets {
+		secretNames = append(secretNames, name)
+	}
+	sort.Strings(secretNames)
+
 	// Generate shell-specific export commands
 	switch strings.ToLower(shellType) {
 	case "bash", "zsh":
-		for key, value := range secrets {
+		for _, key := range secretNames {
 			// Escape single quotes in the value
-			escapedValue := strings.ReplaceAll(value, "'", "'\\''")
+			escapedValue := strings.ReplaceAll(secrets[key], "'", "'\\''")
 			fmt.Printf("export %s='%s'\n", key, escapedValue)
 		}
 	case "fish":
-		for key, value := range secrets {
-			// Escape single quotes: end string, add escaped quote, restart
-			escapedValue := strings.ReplaceAll(value, "'", "'\\''")
+		for _, key := range secretNames {
+			// Inside fish single quotes, backslash and quote must be backslash-escaped
+			escapedValue := fishQuoteEscaper.Replace(secrets[key])
 			fmt.Printf("set -gx %s '%s'\n", key, escapedValue)
 		}
 	case "powershell", "pwsh":
-		for key, value := range secrets {
+		for _, key := range secretNames {
 			// Escape single quotes in the value
-			escapedValue := strings.ReplaceAll(value, "'", "''")
+			escapedValue := strings.ReplaceAll(secrets[key], "'", "''")
 			fmt.Printf("$env:%s='%s'\n", key, escapedValue)
 		}
 	default:
@@ -97,10 +108,6 @@ func runExport(cmd *cobra.Command, args []string) error {
 	}
 
 	// Record audit entry
-	secretNames := make([]string, 0, len(secrets))
-	for name := range secrets {
-		secretNames = append(secretNames, name)
-	}
 	AppFromCmd(cmd).RecordAudit(store, "export", shellType, authMethod, secretNames, true, "")
 
 	return nil
