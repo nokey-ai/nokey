@@ -72,6 +72,8 @@ var registerCompletionsOnce sync.Once
 // Secret names are deliberately not completed: listing them opens the
 // keyring, which can show an unlock dialog (a locked dedicated keychain,
 // a locked Secret Service collection) every time the user presses Tab.
+// For the same reason PersistentPreRun skips the keychain migration hint
+// for completion requests (see root.go).
 func registerFlagCompletions() {
 	registerCompletionsOnce.Do(func() {
 		fixed := func(values ...string) cobra.CompletionFunc {

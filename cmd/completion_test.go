@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nokey-ai/nokey/internal/config"
+	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/spf13/cobra"
 )
 
@@ -114,5 +115,37 @@ func TestFlagCompletions(t *testing.T) {
 				t.Errorf("%v: completions %q missing %q", tt.args, got, w)
 			}
 		}
+	}
+}
+
+func TestCompletionRequest_SkipsKeyring(t *testing.T) {
+	withTestConfig(t, config.DefaultConfig())
+	oldGOOS := keychainGOOS
+	t.Cleanup(func() { keychainGOOS = oldGOOS })
+	keychainGOOS = "darwin" // the migration hint only runs on macOS
+
+	opened := 0
+	old := getKeyring
+	t.Cleanup(func() { getKeyring = old })
+	getKeyring = func() (*nkeyring.Store, error) {
+		opened++
+		store, _ := newTestStore()
+		return store, nil
+	}
+
+	var buf bytes.Buffer
+	rootCmd.SetOut(&buf)
+	t.Cleanup(func() {
+		rootCmd.SetOut(nil)
+		rootCmd.SetArgs(nil)
+	})
+	for _, req := range []string{cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd} {
+		rootCmd.SetArgs([]string{req, "export", "--shell", ""})
+		if err := rootCmd.Execute(); err != nil {
+			t.Fatalf("%s: %v", req, err)
+		}
+	}
+	if opened != 0 {
+		t.Errorf("completion opened the keyring %d time(s), want 0", opened)
 	}
 }

@@ -103,7 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `exec --auth-method`, `audit export --format`, `audit list/export
   --operation` and `auth oauth setup/refresh/logout --provider`. Secret
   names are not completed on purpose: listing them opens the keyring,
-  which can raise an unlock dialog on every Tab press.
+  which can raise an unlock dialog on every Tab press. For the same
+  reason completion requests no longer run the macOS keychain migration
+  hint, which opened the keyring on every Tab press.
 
 ### Changed
 - `nokey status` validates `config.yaml` strictly, so a file with an

@@ -57,7 +57,11 @@ func init() {
 
 	rootCmd.PersistentPreRun = func(cmd *cobra.Command, args []string) {
 		setAppContext(cmd)
-		checkKeychainMigrationHint()
+		// Shell completion runs on every Tab press; it must not open the
+		// keyring, which can raise an unlock dialog.
+		if cmd.Name() != cobra.ShellCompRequestCmd && cmd.Name() != cobra.ShellCompNoDescRequestCmd {
+			checkKeychainMigrationHint()
+		}
 	}
 
 	// Global flags
