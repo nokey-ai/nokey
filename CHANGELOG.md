@@ -111,6 +111,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which ignores the caller's context, so cancelling or giving it a
   deadline had no effect. Today's callers pass `context.Background()`,
   so behaviour is unchanged until one sets a deadline.
+- A keyring backend that wraps `ErrKeyNotFound` is now reported as a
+  missing secret instead of a generic retrieval or delete failure.
 - Concurrent nokey processes no longer fork the audit log's hash chain.
   The append was serialized only within one process, but the CLI, the
   proxy and the MCP server all record: two processes could read the same

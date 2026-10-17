@@ -2,6 +2,7 @@ package keyring
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -172,7 +173,7 @@ func (s *Store) Get(key string) (string, error) {
 
 	item, err := s.ring.Get(key)
 	if err != nil {
-		if err == keyring.ErrKeyNotFound {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", fmt.Errorf("secret not found: %s", key)
 		}
 		return "", fmt.Errorf("failed to retrieve secret: %w", err)
@@ -191,7 +192,7 @@ func (s *Store) Delete(key string) error {
 	}
 
 	if err := s.ring.Remove(key); err != nil {
-		if err == keyring.ErrKeyNotFound {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("secret not found: %s", key)
 		}
 		return fmt.Errorf("failed to delete secret: %w", err)
