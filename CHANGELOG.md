@@ -104,6 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every named secret exists before prompting, and `exec_with_secrets`
   checks its placeholder secrets exist before prompting, so the user is
   never asked to approve a request that is going to fail.
+- `revoke_token` records a short SHA-256 fingerprint of the token ID in
+  the audit log instead of the ID itself.
 
 ### Added
 - `nokey import --dry-run FILE` parses the file and lists the secret

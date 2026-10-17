@@ -2400,3 +2400,35 @@ func TestCheckTokenOrApproval_AutoMint_ApprovalShowsScope(t *testing.T) {
 		t.Errorf("detail = %q, want the session token's scope spelled out", d)
 	}
 }
+
+func TestHandleRevokeToken_AuditsHashedID(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	var targets []string
+	c := config.DefaultConfig()
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       c,
+		AuditFn:      func(_, _, target string, _ bool, _ string) { targets = append(targets, target) },
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{Secrets: []string{"A"}, TTLSecs: 300})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	h.HandleRevokeToken(context.Background(), makeCallToolRequest(map[string]any{"token_id": tok.ID}))
+	h.HandleRevokeToken(context.Background(), makeCallToolRequest(map[string]any{"token_id": "guess"}))
+
+	if len(targets) != 2 {
+		t.Fatalf("audit entries = %d, want 2", len(targets))
+	}
+	for _, target := range targets {
+		if strings.Contains(target, tok.ID) || strings.Contains(target, "guess") {
+			t.Errorf("audit target %q contains a raw token ID", target)
+		}
+		if !strings.HasPrefix(target, "sha256:") {
+			t.Errorf("audit target %q, want a sha256: prefix", target)
+		}
+	}
+}

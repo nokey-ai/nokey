@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -695,12 +697,14 @@ func (h *Handler) HandleRevokeToken(_ context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("parameter 'token_id' is required"), nil
 	}
 
+	// The audit log outlives the token, but a live ID is a bearer
+	// credential, so record only a fingerprint of it.
 	if h.tokenStore.Revoke(tokenID) {
-		h.recordAudit("mcp:revoke_token", "revoke_token", tokenID, true, "")
+		h.recordAudit("mcp:revoke_token", "revoke_token", tokenFingerprint(tokenID), true, "")
 		return mcp.NewToolResultText("Token revoked."), nil
 	}
 
-	h.recordAudit("mcp:revoke_token", "revoke_token", tokenID, false, "not found")
+	h.recordAudit("mcp:revoke_token", "revoke_token", tokenFingerprint(tokenID), false, "not found")
 	return mcp.NewToolResultError("token not found"), nil
 }
 
@@ -905,6 +909,13 @@ func requireSecretsExist(store SecretStore, names []string) error {
 		}
 	}
 	return nil
+}
+
+// tokenFingerprint identifies a token ID in the audit log without recording
+// the ID itself.
+func tokenFingerprint(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "sha256:" + hex.EncodeToString(sum[:6])
 }
 
 // truncateOutput truncates output to maxBytes, appending a truncation notice.
