@@ -2432,3 +2432,57 @@ func TestHandleRevokeToken_AuditsHashedID(t *testing.T) {
 		}
 	}
 }
+
+// --- exec correctness ---
+
+// The exec schema declares args as a string ("JSON array of strings"), so
+// that is what schema-following clients send. It must not be dropped.
+func TestHandleExec_ArgsAsJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    `["hello", "world"]`,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if text := getResultText(t, result); text != "hello world\n" {
+		t.Errorf("result = %q, want %q", text, "hello world\n")
+	}
+}
+
+func TestHandleExecWithSecrets_ArgsAsJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    `["v=${{NOKEY:K}}"]`,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if text := getResultText(t, result); text != "v=[REDACTED:K]\n" {
+		t.Errorf("result = %q, want %q", text, "v=[REDACTED:K]\n")
+	}
+}
+
+func TestHandleExec_ArgsInvalidJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	for _, args := range []string{`hello`, `{"a":1}`, `[1, 2]`} {
+		req := makeCallToolRequest(map[string]any{"command": "echo", "args": args})
+		result, err := h.HandleExec(context.Background(), req)
+		if err != nil {
+			t.Fatalf("HandleExec: %v", err)
+		}
+		if !result.IsError || !strings.Contains(getResultText(t, result), "'args'") {
+			t.Errorf("args %q: result = %q, want an 'args' error", args, getResultText(t, result))
+		}
+	}
+}

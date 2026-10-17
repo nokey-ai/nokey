@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -409,7 +410,10 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError("command must not contain '..' (path traversal)"), nil
 	}
 
-	args := request.GetStringSlice("args", nil)
+	args, err := argsParam(request)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	only := request.GetString("only", "")
 	except := request.GetString("except", "")
 
@@ -530,7 +534,10 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError("placeholders are not allowed in 'command' — use them only in 'args'"), nil
 	}
 
-	args := request.GetStringSlice("args", nil)
+	args, err := argsParam(request)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	timeoutSecs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
 	if timeoutSecs <= 0 {
@@ -891,6 +898,24 @@ func (h *Handler) mintSessionToken(ctx context.Context, secretNames []string) er
 	h.sessionMu.Unlock()
 	h.recordAudit("mcp:auto_mint", "session_token", strings.Join(allNames, ","), true, "")
 	return nil
+}
+
+// argsParam reads the "args" parameter. exec's schema declares it as a
+// string holding a JSON array, so that form is accepted alongside a plain
+// array; GetStringSlice alone silently drops a string.
+func argsParam(request mcp.CallToolRequest) ([]string, error) {
+	raw, ok := request.GetArguments()["args"].(string)
+	if !ok {
+		return request.GetStringSlice("args", nil), nil
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %s", err)
+	}
+	return args, nil
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.

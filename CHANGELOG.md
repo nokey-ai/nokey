@@ -206,6 +206,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- `exec` no longer drops its arguments. The tool schema declares `args`
+  as a string holding a JSON array, which is what schema-following
+  clients send, but the handler only read a native array and treated a
+  string as no arguments at all, so `{"command": "echo", "args":
+  "[\"hi\"]"}` ran a bare `echo`. Both exec tools now accept either
+  form and reject a string that isn't a JSON array of strings.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of
