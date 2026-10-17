@@ -196,6 +196,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that MCP callers don't have. Each message still starts with the same
   words (`policy denied:`, `token required by policy`, `cannot use
   both`), and policy denials are audited as before.
+- The policy command name the MCP GitHub tools are checked under,
+  `nokey:integration:github`, is now documented in the README, the
+  `nokey init` starter policy and `examples/policies.yaml` (as a
+  commented-out rule, so new policies behave as before). Until now it
+  appeared only in the roadmap, so any `policies.yaml` quietly disabled
+  the GitHub tools.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
