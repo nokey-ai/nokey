@@ -64,7 +64,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		GetStore:     func() (mcpserver.SecretStore, error) { return getKeyring() },
 		GetPolicy:    polStore.Current,
 		Config:       cfg,
-		ApprovalFn:   approval.Request,
+		ApprovalFn:   approval.RequestWithDetail,
 		AuditFn:      recordAudit,
 		GetConfigDir: getConfigDir,
 	})

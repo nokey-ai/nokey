@@ -76,7 +76,7 @@ func TestMCPIntegration_InitializeAndListTools(t *testing.T) {
 		GetStore:  func() (mcpserver.SecretStore, error) { return store, nil },
 		GetPolicy: func() *policy.Policy { return nil },
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			return nil
 		},
 		AuditFn:      func(string, string, string, bool, string) {},

