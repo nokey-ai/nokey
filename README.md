@@ -642,7 +642,13 @@ Run nokey as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
 
 ### Setup
 
-Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`):
+Register nokey with Claude Code:
+
+```bash
+claude mcp add nokey -- nokey mcp serve
+```
+
+This adds it for you in the current project. Add `--scope user` to make it available in every project, or `--scope project` to write it to the project's `.mcp.json` so everyone working in the repository gets it:
 
 ```json
 {
@@ -654,6 +660,8 @@ Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`
   }
 }
 ```
+
+Other MCP clients take the same command and arguments in their own MCP configuration. Approval prompts use MCP elicitation; with a client that doesn't support it, any access that needs approval is denied.
 
 ### Available MCP Tools
 

@@ -19,8 +19,10 @@ var mcpCmd = &cobra.Command{
 can execute commands with secrets injected as environment variables.
 
 Secrets never appear in tool output — all output is automatically redacted.
-Each secret access is gated by the OS keyring ACL — on macOS, Keychain
-prompts the user to approve every read.
+Each secret access is checked against policies.yaml, may ask the user to
+approve it through an MCP elicitation prompt or require an access token
+from mint_token, and is still subject to the OS keyring ACL (on macOS,
+Keychain can prompt the user to approve a read).
 
 Subcommands:
   serve  - Start the MCP stdio server`,
@@ -33,7 +35,10 @@ var mcpServeCmd = &cobra.Command{
 
 AI tools connect by launching this process and communicating over stdin/stdout.
 
-Example Claude Code configuration (~/.claude/claude_code_config.json):
+Add it to Claude Code:
+  claude mcp add nokey -- nokey mcp serve
+
+or share it with a project through .mcp.json:
   {
     "mcpServers": {
       "nokey": {
