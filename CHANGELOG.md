@@ -81,6 +81,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.
+- `nokey export --only A,B` and `--except A,B` limit which secrets the
+  snippet sets, with the same semantics as `nokey exec`. Only the
+  selected values are read from the keyring, so unselected items cost no
+  access prompts, and an unknown name fails before the PIN prompt.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
