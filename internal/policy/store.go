@@ -20,17 +20,23 @@ type Store struct {
 	configDir string
 	current   atomic.Pointer[Policy]
 
-	mu       sync.Mutex // guards lastMod, lastSize, and reload sequencing
-	lastMod  time.Time
-	lastSize int64
+	mu           sync.Mutex // guards lastMod, lastSize, missingSince, and reload sequencing
+	lastMod      time.Time
+	lastSize     int64
+	missingSince time.Time        // when policies.yaml was first found gone; zero while present
+	now          func() time.Time // overridable for testing
 }
+
+// missingGrace is how long policies.yaml must stay missing before a loaded
+// policy is dropped.
+const missingGrace = 2 * time.Second
 
 // NewStore constructs a Store for configDir/policies.yaml and performs an
 // initial load. Returns an error only if the file exists but is malformed;
 // a missing file yields a Store holding a nil Policy (allow-all, matching
 // Load semantics).
 func NewStore(configDir string) (*Store, error) {
-	s := &Store{configDir: configDir}
+	s := &Store{configDir: configDir, now: time.Now}
 	if err := s.reload(); err != nil {
 		return nil, err
 	}
@@ -74,16 +80,29 @@ func (s *Store) MaybeReload() error {
 	if err != nil {
 		if os.IsNotExist(err) {
 			// File was removed since the last load: drop to nil policy
-			// (allow-all), matching the "missing file" initial state.
+			// (allow-all), matching the "missing file" initial state. Only
+			// once it has stayed gone for missingGrace, though — an editor
+			// that deletes and rewrites the file would otherwise open a
+			// window in which every command is allowed.
 			if s.current.Load() != nil || !s.lastMod.IsZero() || s.lastSize != 0 {
+				now := s.now()
+				if s.missingSince.IsZero() {
+					s.missingSince = now
+				}
+				if now.Sub(s.missingSince) < missingGrace {
+					return nil
+				}
+				fmt.Fprintf(os.Stderr, "Warning: %s was removed; no policy is enforced until it is restored\n", path)
 				s.current.Store(nil)
 				s.lastMod = time.Time{}
 				s.lastSize = 0
 			}
+			s.missingSince = time.Time{}
 			return nil
 		}
 		return fmt.Errorf("failed to stat policy file: %w", err)
 	}
+	s.missingSince = time.Time{}
 
 	if info.ModTime().Equal(s.lastMod) && info.Size() == s.lastSize {
 		return nil // unchanged

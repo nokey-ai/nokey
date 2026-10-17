@@ -42,6 +42,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   threads 1-16, memory between 8 KiB per thread and 1 GB, the salt at
   least 8 bytes and the hash at least 16; anything else is an error.
   Hashes nokey writes (`m=65536,t=3,p=2`) are well inside these bounds.
+- Deleting `policies.yaml` no longer switches a running MCP server to
+  allow-all on the very next request. The policy store dropped to no
+  policy the first time it found the file missing, so an editor that
+  deletes and rewrites the file opened a window in which every command
+  was allowed. The file now has to stay missing for two seconds before
+  the policy is dropped, and the drop is announced on stderr.
 - Redaction now catches a secret embedded in a larger base64 value. The
   password in `curl -u user:${{NOKEY:PASS}}` sits after `user:` inside
   the `Authorization: Basic` header, usually at an offset that is not a
