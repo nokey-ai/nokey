@@ -1153,3 +1153,79 @@ func TestStore_WrappedNotFound(t *testing.T) {
 		t.Errorf("Delete error = %v, want a not-found error", err)
 	}
 }
+
+// countingRing records which keys were read from the backend.
+type countingRing struct {
+	*mockRing
+	reads []string
+}
+
+func (c *countingRing) Get(key string) (keyring.Item, error) {
+	c.reads = append(c.reads, key)
+	return c.mockRing.Get(key)
+}
+
+func newCountingStore(t *testing.T, keys ...string) (*Store, *countingRing) {
+	t.Helper()
+	ring := &countingRing{mockRing: newMockRing()}
+	for _, k := range keys {
+		ring.items[k] = keyring.Item{Key: k, Data: []byte("v-" + k)}
+	}
+	return NewWithRing(ring, "test"), ring
+}
+
+func TestStore_GetMany_ReadsOnlyRequested(t *testing.T) {
+	s, ring := newCountingStore(t, "A", "B", "C")
+
+	got, err := s.GetMany([]string{"A", "C"})
+	if err != nil {
+		t.Fatalf("GetMany: %v", err)
+	}
+	if len(got) != 2 || got["A"] != "v-A" || got["C"] != "v-C" {
+		t.Errorf("GetMany = %v", got)
+	}
+	if strings.Join(ring.reads, ",") != "A,C" {
+		t.Errorf("backend reads = %v, want [A C]", ring.reads)
+	}
+}
+
+func TestStore_GetMany_Missing(t *testing.T) {
+	s, _ := newCountingStore(t, "A")
+	if _, err := s.GetMany([]string{"A", "NOPE"}); err == nil || !strings.Contains(err.Error(), "NOPE") {
+		t.Errorf("GetMany missing key: err = %v", err)
+	}
+}
+
+func TestAuthenticatedGetMany(t *testing.T) {
+	s, ring := newCountingStore(t, "A", "B")
+	_ = s.SetPINHash("somehash")
+
+	oldAuth := authenticateFn
+	defer func() { authenticateFn = oldAuth }()
+
+	authenticateFn = func(hash string) error { return fmt.Errorf("auth failed") }
+	ring.reads = nil
+	if _, err := s.AuthenticatedGetMany([]string{"A"}); err == nil {
+		t.Fatal("expected auth failure")
+	}
+	for _, k := range ring.reads {
+		if k == "A" || k == "B" {
+			t.Errorf("secret %s read despite failed auth", k)
+		}
+	}
+
+	authenticateFn = func(hash string) error { return nil }
+	ring.reads = nil
+	got, err := s.AuthenticatedGetMany([]string{"B"})
+	if err != nil {
+		t.Fatalf("AuthenticatedGetMany: %v", err)
+	}
+	if len(got) != 1 || got["B"] != "v-B" {
+		t.Errorf("AuthenticatedGetMany = %v", got)
+	}
+	for _, k := range ring.reads {
+		if k == "A" {
+			t.Error("unrequested secret A was read")
+		}
+	}
+}
