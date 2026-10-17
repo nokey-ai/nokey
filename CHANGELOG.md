@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey exec` now wipes the secrets map and stops the `--isolate`
   proxy before exiting with the child's exit code. Both were left to
   deferred calls, which `os.Exit` skips.
+- `nokey exec --redact` no longer hangs after the child exits on an
+  interactive terminal. The stdin forwarder was waited on during
+  teardown, but it sits blocked reading the terminal, so `nokey` only
+  returned after the next keystroke.
 
 ## [0.5.3] - 2026-08-31
 
