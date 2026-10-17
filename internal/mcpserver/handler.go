@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -422,13 +423,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	timeoutSecs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
-	if timeoutSecs <= 0 {
-		timeoutSecs = DefaultTimeoutSecs
-	}
-	if timeoutSecs > MaxTimeoutSecs {
-		timeoutSecs = MaxTimeoutSecs
-	}
+	timeoutSecs := timeoutParam(request)
 
 	// Open keyring (no PIN auth — OS keyring ACL is the gate). Enumerate names
 	// first so we can apply policy/approval *before* reading any secret values.
@@ -475,49 +470,14 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer sensitive.ClearMap(secrets)
 
-	// Execute command with timeout
-	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
-	defer cancel()
-
-	cmd := osexec.CommandContext(execCtx, command, args...)
-	cmd.Env = env.MergeEnvironment(os.Environ(), secrets)
-	cmd.Stdin = nil // non-interactive — stdin is the MCP JSON-RPC transport
-
-	output, execErr := cmd.CombinedOutput()
-
-	// Always redact output
-	output = redact.RedactBytes(output, secrets)
-
-	// Truncate if needed
-	output = truncateOutput(output, MaxOutputBytes)
-
-	// Build result text
-	exitCode := 0
-	if execErr != nil {
-		if exitError, ok := execErr.(*osexec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		} else if execCtx.Err() == context.DeadlineExceeded {
-			h.recordAudit("mcp:exec", command, "all", false, "timeout")
-			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs)), nil
-		} else {
-			h.recordAudit("mcp:exec", command, "all", false, execErr.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", execErr)), nil
-		}
-	}
-
-	// Record audit
-	errMsg := ""
-	if execErr != nil {
-		errMsg = execErr.Error()
-	}
-	h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
-
-	resultText := string(output)
-	if exitCode != 0 {
-		resultText = fmt.Sprintf("[exit code: %d]\n%s", exitCode, resultText)
-	}
-
-	return mcp.NewToolResultText(resultText), nil
+	res := runRedacted(ctx, runSpec{
+		command: command,
+		args:    args,
+		env:     env.MergeEnvironment(os.Environ(), secrets),
+		secrets: secrets,
+		timeout: time.Duration(timeoutSecs) * time.Second,
+	})
+	return h.execOutcome("mcp:exec", command, secretNames, "all", timeoutSecs, res), nil
 }
 
 func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -539,13 +499,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	timeoutSecs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
-	if timeoutSecs <= 0 {
-		timeoutSecs = DefaultTimeoutSecs
-	}
-	if timeoutSecs > MaxTimeoutSecs {
-		timeoutSecs = MaxTimeoutSecs
-	}
+	timeoutSecs := timeoutParam(request)
 
 	// Extract referenced secret names from args
 	secretNames := placeholder.Extract("", args)
@@ -595,44 +549,14 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	}
 
 	// Execute with clean environment (no secrets in env vars)
-	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
-	defer cancel()
-
-	cmd := osexec.CommandContext(execCtx, command, resolvedArgs...)
-	cmd.Env = os.Environ()
-	cmd.Stdin = nil
-
-	output, execErr := cmd.CombinedOutput()
-
-	// Always redact output
-	output = redact.RedactBytes(output, secrets)
-	output = truncateOutput(output, MaxOutputBytes)
-
-	exitCode := 0
-	if execErr != nil {
-		if exitError, ok := execErr.(*osexec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		} else if execCtx.Err() == context.DeadlineExceeded {
-			h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, "timeout")
-			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs)), nil
-		} else {
-			h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, execErr.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", execErr)), nil
-		}
-	}
-
-	errMsg := ""
-	if execErr != nil {
-		errMsg = execErr.Error()
-	}
-	h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
-
-	resultText := string(output)
-	if exitCode != 0 {
-		resultText = fmt.Sprintf("[exit code: %d]\n%s", exitCode, resultText)
-	}
-
-	return mcp.NewToolResultText(resultText), nil
+	res := runRedacted(ctx, runSpec{
+		command: command,
+		args:    resolvedArgs,
+		env:     os.Environ(),
+		secrets: secrets,
+		timeout: time.Duration(timeoutSecs) * time.Second,
+	})
+	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, strings.Join(secretNames, ","), timeoutSecs, res), nil
 }
 
 func (h *Handler) HandleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -916,6 +840,98 @@ func argsParam(request mcp.CallToolRequest) ([]string, error) {
 		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %s", err)
 	}
 	return args, nil
+}
+
+// timeoutParam reads timeout_seconds, defaulting non-positive values and
+// clamping to MaxTimeoutSecs.
+func timeoutParam(request mcp.CallToolRequest) int {
+	secs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
+	if secs <= 0 {
+		secs = DefaultTimeoutSecs
+	}
+	if secs > MaxTimeoutSecs {
+		secs = MaxTimeoutSecs
+	}
+	return secs
+}
+
+// runSpec describes a command for runRedacted.
+type runSpec struct {
+	command string
+	args    []string
+	env     []string
+	secrets map[string]string // values redacted from the output
+	timeout time.Duration
+}
+
+// runResult is what runRedacted observed. output is already redacted and
+// truncated, so it is safe to return to the model.
+type runResult struct {
+	output   []byte
+	err      error
+	timedOut bool
+}
+
+// runRedacted runs spec non-interactively (stdin is the MCP JSON-RPC
+// transport, so the child gets none) and returns its redacted output.
+func runRedacted(ctx context.Context, spec runSpec) runResult {
+	execCtx, cancel := context.WithTimeout(ctx, spec.timeout)
+	defer cancel()
+
+	cmd := osexec.CommandContext(execCtx, spec.command, spec.args...)
+	cmd.Env = spec.env
+	cmd.Stdin = nil
+
+	output, err := cmd.CombinedOutput()
+
+	// Always redact output
+	output = redact.RedactBytes(output, spec.secrets)
+	output = truncateOutput(output, MaxOutputBytes)
+
+	return runResult{
+		output:   output,
+		err:      err,
+		timedOut: errors.Is(execCtx.Err(), context.DeadlineExceeded),
+	}
+}
+
+// exitCode returns the exit status carried by err, if it has one.
+func exitCode(err error) (int, bool) {
+	var exitErr *osexec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
+}
+
+// execOutcome records the audit entry for a finished run and builds the
+// tool result. failTarget is the audit target used when the command could
+// not be run at all.
+func (h *Handler) execOutcome(op, command string, secretNames []string, failTarget string, timeoutSecs int, res runResult) *mcp.CallToolResult {
+	code := 0
+	if res.err != nil {
+		if c, ok := exitCode(res.err); ok {
+			code = c
+		} else if res.timedOut {
+			h.recordAudit(op, command, failTarget, false, "timeout")
+			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs))
+		} else {
+			h.recordAudit(op, command, failTarget, false, res.err.Error())
+			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
+		}
+	}
+
+	errMsg := ""
+	if res.err != nil {
+		errMsg = res.err.Error()
+	}
+	h.recordAudit(op, command, strings.Join(secretNames, ","), res.err == nil, errMsg)
+
+	resultText := string(res.output)
+	if code != 0 {
+		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
+	}
+	return mcp.NewToolResultText(resultText)
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.
