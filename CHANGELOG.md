@@ -85,6 +85,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snippet sets, with the same semantics as `nokey exec`. Only the
   selected values are read from the keyring, so unselected items cost no
   access prompts, and an unknown name fails before the PIN prompt.
+- `nokey doctor` runs the `status` checks, prints a fix-it hint for each
+  problem, and exits non-zero when any check fails (a broken config or
+  policy file, an unreachable keyring). A missing PIN or disabled audit
+  log is a warning and does not fail. It also catches unknown keys in
+  `policies.yaml`, which the runtime silently ignores.
+- `nokey status` (and `--json`) also reports `audit_enabled`,
+  `auth_method`, `config_dir`, `ca_present` and `version`. Existing
+  fields are unchanged.
+
+### Changed
+- `nokey status` validates `config.yaml` strictly, so a file with an
+  unknown (for example misspelled) key is now reported as
+  `config: error: ...` rather than `valid`, even though the rest of
+  nokey still loads it leniently. Run `nokey config validate` to see the
+  offending key.
+- Redaction no longer copies the output once per pattern. Each
+  secret's patterns are converted to bytes once, a pattern is replaced
+  only when it is present, and the redacting reader reuses its read
+  buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
+  65 allocations to none, and runs about 1.8x faster.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
@@ -143,6 +163,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- `nokey status` reports config errors. It used to print `valid` whenever
+  the process started, because a broken `config.yaml` was replaced with
+  defaults before `status` ever looked at it. It now re-reads the file
+  strictly, so parse errors and unknown keys show up. The exit code is
+  still 0; use `nokey doctor` for a failing check.
 - `nokey export` prints variables in sorted order instead of Go's random
   map order, so its output is stable between runs and diffable.
 - `nokey export --shell fish` escapes backslashes. Inside fish single
@@ -152,13 +177,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey import` accepts shell-style `export KEY=VALUE` lines instead of
   rejecting them as invalid secret names, and writes secrets in sorted
   order so a partial failure is reproducible.
-
-### Changed
-- Redaction no longer copies the output once per pattern. Each
-  secret's patterns are converted to bytes once, a pattern is replaced
-  only when it is present, and the redacting reader reuses its read
-  buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
-  65 allocations to none, and runs about 1.8x faster.
 
 ## [0.5.3] - 2026-08-31
 
