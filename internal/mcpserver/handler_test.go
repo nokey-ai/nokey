@@ -2119,3 +2119,59 @@ func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
 		t.Errorf("approvals = %d, want 1 shared prompt", n)
 	}
 }
+
+// --- token scope ---
+
+func TestHandleExec_TokenScopedToOtherCommand(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "val"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{
+		Secrets: []string{"KEY"}, TTLSecs: 300, MintedFor: "gh",
+	})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"ok"},
+		"token":   tok.ID,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	if !strings.Contains(text, "wrong_command") {
+		t.Errorf("result = %q, want a wrong_command rejection", text)
+	}
+	if !strings.Contains(text, `minted for "gh"`) || !strings.Contains(text, `"echo"`) {
+		t.Errorf("result = %q, want it to name the token's scope and the command", text)
+	}
+}
+
+func TestHandleExecWithSecrets_TokenScopedToCommand(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "val"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{
+		Secrets: []string{"KEY"}, TTLSecs: 300, MintedFor: "echo",
+	})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"${{NOKEY:KEY}}"},
+		"token":   tok.ID,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "[REDACTED:KEY]") {
+		t.Errorf("result = %q, want the command to run under its own scoped token", text)
+	}
+}

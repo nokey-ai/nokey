@@ -87,7 +87,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	// 2. Token or approval gateway.
 	tokenUsed := false
 	if tokenID, ok := token.TokenIDFromContext(ctx); ok && c.deps.UseToken != nil {
-		if err := c.deps.UseToken(tokenID, secretNames); err != nil {
+		if err := c.deps.UseToken(tokenID, command, secretNames); err != nil {
 			c.audit(target, secretNames, false, err.Error())
 			return "", 0, fmt.Errorf("token invalid: %w", err)
 		}

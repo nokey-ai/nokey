@@ -352,9 +352,13 @@ func TestDo_TokenBasedAuth(t *testing.T) {
 	defer upstream.Close()
 
 	deps, audits := testDeps(map[string]string{"TK": "val"})
-	deps.UseToken = func(tokenID string, secretNames []string) error {
+	deps.UseToken = func(tokenID, command string, secretNames []string) error {
 		if tokenID != "test-token-id" {
 			return fmt.Errorf("unexpected token: %s", tokenID)
+		}
+		// The token's `for` scope is checked against this command.
+		if command != "nokey:integration:test" {
+			return fmt.Errorf("unexpected command: %s", command)
 		}
 		return nil
 	}
@@ -473,7 +477,7 @@ func TestDo_SecretFetchErrorWithAudit(t *testing.T) {
 
 func TestDo_TokenAuthFailure(t *testing.T) {
 	deps, _ := testDeps(map[string]string{"TK": "val"})
-	deps.UseToken = func(tokenID string, secretNames []string) error {
+	deps.UseToken = func(tokenID, command string, secretNames []string) error {
 		return fmt.Errorf("token expired")
 	}
 

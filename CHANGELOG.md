@@ -76,6 +76,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `net/http`, `net/textproto`, `crypto/tls` and `html/template`
   (GO-2026-6599 through GO-2026-6617), and govulncheck finds them
   reachable from the proxy, OAuth and 1Password Connect code paths.
+- A token's `for` scope is now enforced. `mint_token` has always accepted
+  `for` ("Command pattern this token is for") and `list_tokens` shows it,
+  but nothing ever checked it: a token minted `for: gh` was accepted by
+  `exec` and `exec_with_secrets` for any command, and by the GitHub
+  integration tools. The pattern is now matched against the command's
+  base name the same way policy rules are, and a mismatch is rejected
+  with `token invalid: wrong_command`, naming the token's pattern and
+  the command, without consuming a use. Tokens minted with the default
+  `*`, including auto-minted session tokens, behave exactly as before.
+  **Behaviour change for scoped tokens:** the GitHub integration tools
+  are checked as `nokey:integration:github`, so a token minted
+  `for: gh` that used to work with `github_api` and the other `github_*`
+  tools is now refused. Mint it `for: nokey:integration:github` (or
+  `*`) instead.
 
 ### Added
 - `nokey import --dry-run FILE` parses the file and lists the secret

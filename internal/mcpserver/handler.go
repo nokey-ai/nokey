@@ -275,10 +275,10 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 		GetPolicy: h.getPolicy,
 		Requester: s,
 		AuditFn:   h.recordAudit,
-		UseToken: func(id string, secrets []string) error {
-			result := h.tokenStore.Use(id, secrets)
+		UseToken: func(id, command string, secrets []string) error {
+			result := h.tokenStore.UseFor(id, command, secrets)
 			if !result.Valid {
-				return fmt.Errorf("token invalid: %s", result.Reason)
+				return tokenInvalid(result, command)
 			}
 			return nil
 		},
@@ -711,12 +711,12 @@ func (h *Handler) HandleListTokens(_ context.Context, _ mcp.CallToolRequest) (*m
 // or falls through to the existing approval gateway.
 func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNames []string) error {
 	if tokenID != "" {
-		result := h.tokenStore.Use(tokenID, secretNames)
+		result := h.tokenStore.UseFor(tokenID, command, secretNames)
 		if result.Valid {
 			h.recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
 			return nil
 		}
-		return fmt.Errorf("token invalid: %s", result.Reason)
+		return tokenInvalid(result, command)
 	}
 
 	// Try cached session token (auto-minted).
@@ -749,6 +749,15 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	}
 
 	return nil
+}
+
+// tokenInvalid explains why a token was refused for command.
+func tokenInvalid(result token.ValidationResult, command string) error {
+	if result.Reason == "wrong_command" {
+		return fmt.Errorf("token invalid: wrong_command: it was minted for %q, which does not match %q",
+			result.MintedFor, filepath.Base(command))
+	}
+	return fmt.Errorf("token invalid: %s", result.Reason)
 }
 
 // useSessionToken reports whether the cached session token covers
