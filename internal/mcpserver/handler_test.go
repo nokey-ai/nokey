@@ -3099,3 +3099,43 @@ func TestExecTools_DeclareOutputSchema(t *testing.T) {
 		}
 	}
 }
+
+// --- actionable errors ---
+
+func TestHandleExec_PolicyDenialSaysHowToAllow(t *testing.T) {
+	configDir := t.TempDir()
+	store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"curl"}, Secrets: []string{"*"}}}}
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(pol),
+		Config:       config.DefaultConfig(),
+		GetConfigDir: func() (string, error) { return configDir, nil },
+	})
+
+	result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{"command": "echo"}))
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	for _, want := range []string{"policy denied", filepath.Join(configDir, "policies.yaml"), `commands: ["echo"]`, `secrets: ["KEY"]`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("result = %q, want it to contain %q", text, want)
+		}
+	}
+}
+
+func TestCheckTokenOrApproval_TokenRequiredSaysWhatToMint(t *testing.T) {
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"*"}, Secrets: []string{"*"}, TokenRequired: true}}}
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, pol, nil)
+
+	err := h.checkTokenOrApproval(context.Background(), "", "/usr/bin/gh", []string{"A", "B"}, "")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"token required", "mint_token", `["A","B"]`, `"gh"`, "token"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
+	}
+}

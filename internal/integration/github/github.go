@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/integration/apiclient"
+	"github.com/nokey-ai/nokey/internal/policy"
 )
 
 const (
@@ -63,6 +65,10 @@ func defaultHeaders(accept string) map[string]string {
 // Non-2xx responses are returned as tool errors.
 func toolResult(body string, code int, err error) (*mcp.CallToolResult, error) {
 	if err != nil {
+		var denial *policy.Denial
+		if errors.As(err, &denial) {
+			return mcp.NewToolResultError(err.Error() + "\n\n" + denial.Hint("")), nil
+		}
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if code >= 400 {
