@@ -29,7 +29,14 @@ const minBase64MiddleLen = 8
 type redactor struct {
 	replacements map[string]string // value -> replacement
 	sortedKeys   []string          // longest first for greedy matching
+	pairs        []pair            // sortedKeys as bytes, for the hot path
 	maxLen       int               // length of the longest match target
+}
+
+// pair is one match target and the label that replaces it.
+type pair struct {
+	pattern []byte
+	label   []byte
 }
 
 func newRedactor(secrets map[string]string) *redactor {
@@ -83,6 +90,12 @@ func newRedactor(secrets map[string]string) *redactor {
 		}
 		return r.sortedKeys[i] < r.sortedKeys[j]
 	})
+
+	// Convert once here rather than on every call to redact.
+	r.pairs = make([]pair, len(r.sortedKeys))
+	for i, k := range r.sortedKeys {
+		r.pairs[i] = pair{pattern: []byte(k), label: []byte(r.replacements[k])}
+	}
 
 	if len(r.sortedKeys) > 0 {
 		r.maxLen = len(r.sortedKeys[0])
@@ -189,13 +202,23 @@ func (r *redactor) Clear() {
 	}
 	sensitive.ClearSlice(r.sortedKeys)
 	r.sortedKeys = nil
+	for _, p := range r.pairs {
+		sensitive.ClearBytes(p.pattern)
+	}
+	r.pairs = nil
 }
 
-// redact replaces secret values in the data
+// redact replaces secret values in the data.
+//
+// data is returned as is when nothing matches, so the result may alias it.
 func (r *redactor) redact(data []byte) []byte {
 	result := data
-	for _, secret := range r.sortedKeys {
-		result = bytes.ReplaceAll(result, []byte(secret), []byte(r.replacements[secret]))
+	for _, p := range r.pairs {
+		// ReplaceAll copies even when there is nothing to replace, and almost
+		// every pattern is absent from almost every chunk of output.
+		if bytes.Contains(result, p.pattern) {
+			result = bytes.ReplaceAll(result, p.pattern, p.label)
+		}
 	}
 	return result
 }
@@ -207,7 +230,12 @@ func RedactBytes(data []byte, secrets map[string]string) []byte {
 		return nil
 	}
 	r := newRedactor(secrets)
-	return r.redact(data)
+	out := r.redact(data)
+	// Callers may zero data once it is redacted, so never hand it back.
+	if len(out) > 0 && &out[0] == &data[0] {
+		out = bytes.Clone(out)
+	}
+	return out
 }
 
 // pendingLen reports how many trailing bytes of data must be withheld because
@@ -224,11 +252,11 @@ func (r *redactor) pendingLen(data []byte) int {
 	}
 
 	for ; n > 0; n-- {
-		suffix := string(data[len(data)-n:])
-		for _, key := range r.sortedKeys {
+		suffix := data[len(data)-n:]
+		for _, p := range r.pairs {
 			// Only a proper prefix is interesting: an exact-length match is
 			// complete and needs nothing more from the next read.
-			if len(key) > n && strings.HasPrefix(key, suffix) {
+			if len(p.pattern) > n && bytes.HasPrefix(p.pattern, suffix) {
 				return n
 			}
 		}
@@ -259,9 +287,9 @@ func (r *redactor) safeSplit(data []byte) (int, bool) {
 
 	for moved := true; moved; {
 		moved = false
-		for _, key := range r.sortedKeys {
-			for i := max(0, split-len(key)+1); i < split; i++ {
-				if len(data)-i >= len(key) && string(data[i:i+len(key)]) == key {
+		for _, p := range r.pairs {
+			for i := max(0, split-len(p.pattern)+1); i < split; i++ {
+				if bytes.HasPrefix(data[i:], p.pattern) {
 					split = i
 					moved = true
 					break
@@ -290,8 +318,8 @@ func (r *redactor) safeSplit(data []byte) (int, bool) {
 func (r *redactor) boundedSplit(data []byte, floor int) int {
 	for c := len(data) - r.maxLen; c >= floor && c > 0; c-- {
 		head := r.redact(data[:c])
-		for _, key := range r.sortedKeys {
-			if bytes.HasSuffix(head, []byte(r.replacements[key])) {
+		for _, p := range r.pairs {
+			if bytes.HasSuffix(head, p.label) {
 				return c
 			}
 		}
@@ -310,6 +338,7 @@ type redactingReader struct {
 	redactor *redactor
 	out      []byte // redacted bytes ready for the caller
 	hold     []byte // withheld raw tail; may be the start of a secret
+	readBuf  []byte // scratch for the underlying Read, reused across calls
 	inexact  bool   // a bounded cut was taken; output may differ from RedactBytes
 	done     bool   // underlying reader is finished
 	err      error  // its terminal error, returned once out and hold drain
@@ -339,10 +368,16 @@ func (r *redactingReader) Read(p []byte) (int, error) {
 			return 0, nil
 		}
 
-		readBuf := make([]byte, len(p))
-		nRead, readErr := r.reader.Read(readBuf)
+		// readBuf is only refilled once out has drained, so out may alias it.
+		if cap(r.readBuf) < len(p) {
+			r.readBuf = make([]byte, len(p))
+		}
+		nRead, readErr := r.reader.Read(r.readBuf[:len(p)])
 		if nRead > 0 {
-			combined := append(r.hold, readBuf[:nRead]...)
+			combined := r.readBuf[:nRead]
+			if len(r.hold) > 0 {
+				combined = append(r.hold, combined...)
+			}
 			split, exact := r.redactor.safeSplit(combined)
 			if !exact {
 				r.inexact = true
@@ -350,7 +385,7 @@ func (r *redactingReader) Read(p []byte) (int, error) {
 
 			r.out = r.redactor.redact(combined[:split])
 			// Copy the tail: r.out may alias combined, whose backing array
-			// the next append would overwrite.
+			// the next read or append would overwrite.
 			r.hold = append([]byte(nil), combined[split:]...)
 		}
 
@@ -368,11 +403,13 @@ func (r *redactingReader) Read(p []byte) (int, error) {
 }
 
 // Clear zeros the buffers holding in-flight output. The held tail is by
-// construction a fragment of a secret, and out may carry secret bytes that
-// were too short to match.
+// construction a fragment of a secret, and out and readBuf may carry secret
+// bytes that were too short to match.
 func (r *redactingReader) Clear() {
 	sensitive.ClearBytes(r.out)
 	sensitive.ClearBytes(r.hold)
+	sensitive.ClearBytes(r.readBuf)
 	r.out = nil
 	r.hold = nil
+	r.readBuf = nil
 }

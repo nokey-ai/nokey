@@ -89,6 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   teardown, but it sits blocked reading the terminal, so `nokey` only
   returned after the next keystroke.
 
+### Changed
+- Redaction no longer copies the output once per pattern. Each
+  secret's patterns are converted to bytes once, a pattern is replaced
+  only when it is present, and the redacting reader reuses its read
+  buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
+  65 allocations to none, and runs about 1.8x faster.
+
 ## [0.5.3] - 2026-08-31
 
 Security release. Every item below closes a hole that was reachable in

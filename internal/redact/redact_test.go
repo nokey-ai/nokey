@@ -411,6 +411,19 @@ func TestRedactBytes_LeavesUnrelatedBase64Alone(t *testing.T) {
 	}
 }
 
+// TestRedactBytes_DoesNotAliasInput protects callers that zero their buffer
+// after redacting it: output with nothing to redact must still be a copy.
+func TestRedactBytes_DoesNotAliasInput(t *testing.T) {
+	data := []byte("nothing secret here")
+	got := RedactBytes(data, map[string]string{"KEY": "sk-live-0123456789abcdef"})
+	for i := range data {
+		data[i] = 0
+	}
+	if string(got) != "nothing secret here" {
+		t.Errorf("result changed when the input was zeroed: %q", got)
+	}
+}
+
 // --- split-boundary redaction ---
 
 // chunkReader hands out data in fixed-size pieces, the way a PTY delivers it.
