@@ -2799,3 +2799,214 @@ func TestRegisterTools_Annotations(t *testing.T) {
 		"stop_proxy":        {idempotent: true},
 	})
 }
+
+// --- optional exec parameters ---
+
+// execBoth runs args through both exec tools and returns their results.
+func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.CallToolResult {
+	t.Helper()
+	out := map[string]*mcp.CallToolResult{}
+	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+		"exec":              h.HandleExec,
+		"exec_with_secrets": h.HandleExecWithSecrets,
+	} {
+		result, err := fn(context.Background(), makeCallToolRequest(args))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		out[name] = result
+	}
+	return out
+}
+
+func TestExecTools_Cwd(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, result := range execBoth(t, h, map[string]any{"command": "pwd", "cwd": dir}) {
+		if got := getResultText(t, result); got != dir+"\n" {
+			t.Errorf("%s: pwd = %q, want %q", name, got, dir+"\n")
+		}
+	}
+}
+
+func TestExecTools_CwdRejected(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	file := filepath.Join(t.TempDir(), "f")
+	os.WriteFile(file, nil, 0600)
+
+	for _, cwd := range []string{"relative/dir", filepath.Join(t.TempDir(), "missing"), file, t.TempDir() + "/../x"} {
+		for name, result := range execBoth(t, h, map[string]any{"command": "echo", "cwd": cwd}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "cwd") {
+				t.Errorf("%s: cwd %q accepted: %q", name, cwd, getResultText(t, result))
+			}
+		}
+	}
+}
+
+func TestExecTools_Stdin(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	for name, result := range execBoth(t, h, map[string]any{"command": "cat", "stdin": "piped in"}) {
+		if got := getResultText(t, result); got != "piped in" {
+			t.Errorf("%s: output = %q, want %q", name, got, "piped in")
+		}
+	}
+}
+
+func TestExecTools_Env(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	args := map[string]any{
+		"command": "sh",
+		"args":    []any{"-c", "echo $NOKEY_TEST_VAR"},
+		"env":     map[string]any{"NOKEY_TEST_VAR": "plain value"},
+	}
+	for name, result := range execBoth(t, h, args) {
+		if got := getResultText(t, result); got != "plain value\n" {
+			t.Errorf("%s: output = %q, want %q", name, got, "plain value\n")
+		}
+	}
+}
+
+func TestExecTools_EnvRejected(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"API_KEY": "v"}}, nil, nil)
+	for _, env := range []map[string]any{
+		{"API_KEY": "spoofed"}, // shadows a stored secret
+		{"A=B": "x"},
+		{"": "x"},
+		{"N": 42},
+	} {
+		for name, result := range execBoth(t, h, map[string]any{"command": "echo", "env": env}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "env") {
+				t.Errorf("%s: env %v accepted: %q", name, env, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// Windows environment names are case-insensitive, so there "token"
+// shadows a stored TOKEN.
+func TestCheckEnvNotSecret_CaseInsensitiveOnWindows(t *testing.T) {
+	old := envNamesFoldCase
+	t.Cleanup(func() { envNamesFoldCase = old })
+
+	envNamesFoldCase = true
+	if err := checkEnvNotSecret(map[string]string{"token": "x"}, []string{"TOKEN"}); err == nil {
+		t.Error("case-insensitive: \"token\" accepted alongside the TOKEN secret")
+	}
+	envNamesFoldCase = false
+	if err := checkEnvNotSecret(map[string]string{"token": "x"}, []string{"TOKEN"}); err != nil {
+		t.Errorf("case-sensitive: %v", err)
+	}
+}
+
+// Variables that make an approved program load or run other code.
+func TestExecTools_EnvRejectsLoaderAndHookNames(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	for _, name := range []string{
+		"PATH", "Path", "LD_PRELOAD", "ld_library_path", "DYLD_INSERT_LIBRARIES",
+		"BASH_ENV", "ENV", "IFS", "NODE_OPTIONS", "PYTHONPATH", "PYTHONSTARTUP",
+		"PERL5OPT", "RUBYOPT", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_EXEC_PATH",
+		"GIT_ASKPASS", "GIT_PROXY_COMMAND", "git_pager", "PAGER", "EDITOR", "Visual",
+		"SSH_ASKPASS", "LESSOPEN", "LESSCLOSE", "GOFLAGS", "CLASSPATH",
+		"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "DOTNET_STARTUP_HOOKS", "npm_config_script_shell",
+		"1BAD", "A B",
+	} {
+		args := map[string]any{"command": "echo", "env": map[string]any{name: "x"}}
+		for tool, result := range execBoth(t, h, args) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "env") {
+				t.Errorf("%s: env name %q accepted: %q", tool, name, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// With cwd set, a relative path command would resolve inside the
+// caller-chosen directory: cwd=/tmp/evil, command=./gh passes a "gh" rule.
+func TestExecTools_CwdRejectsRelativePathCommand(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	dir := t.TempDir()
+
+	for _, command := range []string{"./gh", "bin/gh"} {
+		for tool, result := range execBoth(t, h, map[string]any{"command": command, "cwd": dir}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "cwd") {
+				t.Errorf("%s: command %q with cwd accepted: %q", tool, command, getResultText(t, result))
+			}
+		}
+	}
+	for _, command := range []string{"echo", "/bin/echo"} {
+		for tool, result := range execBoth(t, h, map[string]any{"command": command, "cwd": dir}) {
+			if result.IsError {
+				t.Errorf("%s: command %q with cwd rejected: %q", tool, command, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// cwd, env and stdin change what an approved command does, so the prompt
+// has to show them.
+func TestExecTools_ApprovalShowsCwdEnvStdin(t *testing.T) {
+	pol := &policy.Policy{Rules: []policy.Rule{{
+		Commands: []string{"*"}, Secrets: []string{"*"}, Approval: policy.ApprovalAlways,
+	}}}
+	dir := t.TempDir()
+	for _, tool := range []string{"exec", "exec_with_secrets"} {
+		rec := &recordingApproval{}
+		h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "v"}}, pol, rec.fn)
+		args := map[string]any{
+			"command": "cat",
+			"cwd":     dir,
+			"env":     map[string]any{"MODE": "a\nb"},
+			"stdin":   "rm -rf ~\n" + strings.Repeat("x", 500),
+		}
+		if tool == "exec" {
+			h.HandleExec(context.Background(), makeCallToolRequest(args))
+		} else {
+			args["args"] = []any{"${{NOKEY:K}}"}
+			h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(args))
+		}
+		if len(rec.calls) != 1 {
+			t.Fatalf("%s: approval calls = %d, want 1", tool, len(rec.calls))
+		}
+		d := rec.calls[0].detail
+		for _, want := range []string{
+			"cwd: " + fmt.Sprintf("%q", dir),
+			`MODE="a\nb"`,
+			"stdin: 509 bytes",
+			`"rm -rf ~\n`,
+		} {
+			if !strings.Contains(d, want) {
+				t.Errorf("%s: detail %q lacks %q", tool, d, want)
+			}
+		}
+		if strings.Contains(d, strings.Repeat("x", 300)) {
+			t.Errorf("%s: detail shows all of stdin; it should be a short preview", tool)
+		}
+	}
+}
+
+func TestExecTools_SeparateStderr(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+	args := map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo out; echo err secret-value >&2"},
+		"separate_stderr": true,
+	}
+	for name, result := range execBoth(t, h, args) {
+		want := "out\n[stderr]\nerr [REDACTED:K]\n"
+		if name == "exec_with_secrets" {
+			// No placeholder, so K is not fetched and not redacted.
+			want = "out\n[stderr]\nerr secret-value\n"
+		}
+		if got := getResultText(t, result); got != want {
+			t.Errorf("%s: output = %q, want %q", name, got, want)
+		}
+	}
+}

