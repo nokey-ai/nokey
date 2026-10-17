@@ -202,6 +202,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commented-out rule, so new policies behave as before). Until now it
   appeared only in the roadmap, so any `policies.yaml` quietly disabled
   the GitHub tools.
+- The README's MCP setup and `nokey mcp --help` now use
+  `claude mcp add` / `.mcp.json` instead of the
+  `~/.claude/claude_code_config.json` file current Claude Code no longer
+  reads, and the help describes the policy, approval and token gates
+  rather than only the keyring ACL.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
