@@ -673,3 +673,49 @@ func TestTools_Annotations(t *testing.T) {
 		}
 	}
 }
+
+func TestListTools_Page(t *testing.T) {
+	for _, mk := range []func(*apiclient.Client) server.ServerTool{toolListIssues, toolListPRs} {
+		var gotQuery string
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			gotQuery = r.URL.RawQuery
+			_, _ = w.Write([]byte(`[]`))
+		}))
+		tool := mk(testClient(ts))
+		result := callTool(t, tool, map[string]any{"owner": "o", "repo": "r", "page": float64(3)})
+		ts.Close()
+
+		if result.IsError {
+			t.Fatalf("%s: unexpected error: %s", tool.Tool.Name, resultText(t, result))
+		}
+		if gotQuery != "page=3" {
+			t.Errorf("%s: query = %q, want page=3", tool.Tool.Name, gotQuery)
+		}
+	}
+}
+
+func TestGetFile_Raw(t *testing.T) {
+	var gotAccept string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAccept = r.Header.Get("Accept")
+		_, _ = w.Write([]byte("hello\n"))
+	}))
+	defer ts.Close()
+
+	tool := toolGetFile(testClient(ts))
+	result := callTool(t, tool, map[string]any{"owner": "o", "repo": "r", "path": "README.md", "raw": true})
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", resultText(t, result))
+	}
+	if gotAccept != "application/vnd.github.raw+json" {
+		t.Errorf("Accept = %q, want the raw media type", gotAccept)
+	}
+	if got := resultText(t, result); got != "hello\n" {
+		t.Errorf("result = %q, want the file contents", got)
+	}
+
+	callTool(t, tool, map[string]any{"owner": "o", "repo": "r", "path": "README.md"})
+	if gotAccept != "application/vnd.github+json" {
+		t.Errorf("default Accept = %q, want application/vnd.github+json", gotAccept)
+	}
+}

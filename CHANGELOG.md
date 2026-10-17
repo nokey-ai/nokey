@@ -135,6 +135,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and `secrets_injected`. Clients that read structured results no longer
   have to parse the `[exit code: N]` prefix or guess whether output was
   cut.
+- `github_list_issues` and `github_list_prs` take an optional `page`, so
+  results past the first page are reachable without falling back to
+  `github_api`. `github_get_file` takes an optional `raw` that returns
+  the file's contents directly instead of JSON metadata with
+  base64-encoded content.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.
