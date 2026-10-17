@@ -106,6 +106,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactive terminal. The stdin forwarder was waited on during
   teardown, but it sits blocked reading the terminal, so `nokey` only
   returned after the next keystroke.
+- OAuth token validation now honours its context. `ValidateToken` for
+  the GitHub and generic providers fetched user info with `client.Get`,
+  which ignores the caller's context, so cancelling or giving it a
+  deadline had no effect. Today's callers pass `context.Background()`,
+  so behaviour is unchanged until one sets a deadline.
 - Concurrent nokey processes no longer fork the audit log's hash chain.
   The append was serialized only within one process, but the CLI, the
   proxy and the MCP server all record: two processes could read the same

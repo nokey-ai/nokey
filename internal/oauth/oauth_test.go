@@ -1092,3 +1092,51 @@ func TestCallbackServer_RepeatedBadRequestsDoNotBlock(t *testing.T) {
 		t.Error("WaitForCode should report the invalid state")
 	}
 }
+
+// slowUserInfo is a user-info endpoint that answers only once the request is
+// abandoned, or after a few seconds. ValidateToken must give up when its
+// context does rather than wait it out.
+func slowUserInfo(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-r.Context().Done():
+		case <-time.After(5 * time.Second):
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprint(w, `{"login": "late"}`)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+func assertHonoursContext(t *testing.T, validate func(context.Context) error) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := validate(ctx)
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Errorf("ValidateToken took %v after its context expired", elapsed)
+	}
+	if err == nil {
+		t.Error("ValidateToken succeeded after its context expired")
+	}
+}
+
+func TestGitHubProvider_ValidateToken_HonoursContext(t *testing.T) {
+	srv := slowUserInfo(t)
+	p := &GitHubProvider{config: &oauth2.Config{}, apiURL: srv.URL}
+	token := &Token{AccessToken: "tok", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+
+	assertHonoursContext(t, func(ctx context.Context) error { return p.ValidateToken(ctx, token) })
+}
+
+func TestGenericProvider_ValidateToken_HonoursContext(t *testing.T) {
+	srv := slowUserInfo(t)
+	p := &GenericProvider{UserInfoURL: srv.URL, config: &oauth2.Config{}}
+	token := &Token{AccessToken: "tok", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+
+	assertHonoursContext(t, func(ctx context.Context) error { return p.ValidateToken(ctx, token) })
+}

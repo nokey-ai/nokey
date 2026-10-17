@@ -78,7 +78,11 @@ func (p *GitHubProvider) ValidateToken(ctx context.Context, token *Token) error 
 	if apiURL == "" {
 		apiURL = "https://api.github.com/user"
 	}
-	resp, err := client.Get(apiURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to validate token: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to validate token: %w", err)
 	}

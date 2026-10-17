@@ -90,7 +90,11 @@ func (p *GenericProvider) ValidateToken(ctx context.Context, token *Token) error
 
 	client := p.config.Client(ctx, token.ToOAuth2Token())
 
-	resp, err := client.Get(p.UserInfoURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.UserInfoURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to validate token: %w", err)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to validate token: %w", err)
 	}
