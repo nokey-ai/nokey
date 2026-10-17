@@ -99,6 +99,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `policies.yaml` and prints `{"config": {...}, "policy": {...}}` with
   `path`, `found`, `valid` and `error` for each. It still exits 1 if
   either file is invalid.
+- Shell completion suggests values for `export --shell`,
+  `exec --auth-method`, `audit export --format`, `audit list/export
+  --operation` and `auth oauth setup/refresh/logout --provider`. Secret
+  names are not completed on purpose: listing them opens the keyring,
+  which can raise an unlock dialog on every Tab press.
 
 ### Changed
 - `nokey status` validates `config.yaml` strictly, so a file with an
