@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -312,5 +313,55 @@ func TestVerifyArgon2id_InvalidHashEncoding(t *testing.T) {
 	_, err := VerifyPIN("test", "$argon2id$v=19$m=65536,t=3,p=2$c2FsdA$!!!invalid!!!")
 	if err == nil {
 		t.Error("should fail with invalid hash encoding")
+	}
+}
+
+// TestVerifyPIN_RejectsBadParams covers hashes nokey never writes. The
+// parameters come from the keyring, and x/crypto/argon2 panics on zero time
+// or threads and allocates whatever memory it is told to, so a corrupted or
+// planted hash must produce an error rather than a crash.
+func TestVerifyPIN_RejectsBadParams(t *testing.T) {
+	salt := base64.RawStdEncoding.EncodeToString(make([]byte, 16))
+	hash := base64.RawStdEncoding.EncodeToString(make([]byte, 32))
+	tests := []struct {
+		name    string
+		encoded string
+	}{
+		{"version", "$argon2id$v=16$m=65536,t=3,p=2$" + salt + "$" + hash},
+		{"time zero", "$argon2id$v=19$m=65536,t=0,p=2$" + salt + "$" + hash},
+		{"time huge", "$argon2id$v=19$m=65536,t=1000000,p=2$" + salt + "$" + hash},
+		{"threads zero", "$argon2id$v=19$m=65536,t=3,p=0$" + salt + "$" + hash},
+		{"threads high", "$argon2id$v=19$m=65536,t=3,p=255$" + salt + "$" + hash},
+		{"memory huge", "$argon2id$v=19$m=4294967295,t=3,p=2$" + salt + "$" + hash},
+		{"memory below threads", "$argon2id$v=19$m=8,t=3,p=2$" + salt + "$" + hash},
+		{"salt short", "$argon2id$v=19$m=65536,t=3,p=2$" + base64.RawStdEncoding.EncodeToString(make([]byte, 4)) + "$" + hash},
+		{"hash short", "$argon2id$v=19$m=65536,t=3,p=2$" + salt + "$" + base64.RawStdEncoding.EncodeToString(make([]byte, 8))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ok, err := VerifyPIN("1234", tt.encoded)
+			if err == nil {
+				t.Errorf("VerifyPIN = %v, nil; want an error", ok)
+			}
+			if ok {
+				t.Error("VerifyPIN accepted a PIN against an invalid hash")
+			}
+		})
+	}
+}
+
+// TestVerifyPIN_AcceptsWrittenParams pins the parameters HashPINArgon2id writes inside
+// the accepted ranges, so tightening them can never lock out existing PINs.
+func TestVerifyPIN_AcceptsWrittenParams(t *testing.T) {
+	hash, err := HashPINArgon2id("1234")
+	if err != nil {
+		t.Fatalf("HashPINArgon2id: %v", err)
+	}
+	if !strings.Contains(hash, "$v=19$m=65536,t=3,p=2$") {
+		t.Fatalf("HashPINArgon2id wrote unexpected parameters: %s", hash)
+	}
+	ok, err := VerifyPIN("1234", hash)
+	if err != nil || !ok {
+		t.Errorf("VerifyPIN = %v, %v; want true, nil", ok, err)
 	}
 }

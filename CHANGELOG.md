@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the proxy too, and are blocked unless a rule matches them.
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
+- A corrupted or planted PIN hash can no longer crash or exhaust
+  memory in nokey. The Argon2id parameters are read back from the stored
+  hash and were passed to `argon2.IDKey` unchecked: `t=0` or `p=0`
+  panics inside x/crypto, and a large `m` allocates that much memory
+  before the PIN is ever compared. The version must now be 19, time and
+  threads 1-16, memory between 8 KiB per thread and 1 GB, the salt at
+  least 8 bytes and the hash at least 16; anything else is an error.
+  Hashes nokey writes (`m=65536,t=3,p=2`) are well inside these bounds.
 - Redaction now catches a secret embedded in a larger base64 value. The
   password in `curl -u user:${{NOKEY:PASS}}` sits after `user:` inside
   the `Authorization: Basic` header, usually at an offset that is not a
