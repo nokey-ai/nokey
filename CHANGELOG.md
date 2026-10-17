@@ -140,6 +140,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quotes `\\` and `\'` are escape sequences, so a value ending in `\`
   swallowed the closing quote and broke the whole snippet. Values are
   now quoted with `\\` and `\'`.
+- `nokey import` accepts shell-style `export KEY=VALUE` lines instead of
+  rejecting them as invalid secret names, and writes secrets in sorted
+  order so a partial failure is reproducible.
 
 ### Changed
 - Redaction no longer copies the output once per pattern. Each

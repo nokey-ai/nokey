@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -15,7 +16,8 @@ var importCmd = &cobra.Command{
 	Long: `Import secrets from a .env file into the OS keyring.
 
 The file should contain KEY=VALUE pairs, one per line.
-Lines starting with # are treated as comments.
+Lines starting with # are treated as comments, and a leading "export "
+(as written by shell scripts) is ignored.
 After importing, consider deleting the .env file for security.
 
 Example:
@@ -65,6 +67,11 @@ func runImport(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
+		// Accept shell-style "export KEY=VALUE" lines
+		if rest, ok := strings.CutPrefix(line, "export"); ok && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
+			line = strings.TrimSpace(rest)
+		}
+
 		// Parse KEY=VALUE
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
@@ -107,8 +114,15 @@ func runImport(cmd *cobra.Command, args []string) error {
 	importedKeys := make([]string, 0, len(secrets))
 	failedKeys := make([]string, 0)
 
-	for key, value := range secrets {
-		if err := store.Set(key, value); err != nil {
+	// Write in sorted order so partial failures are reproducible
+	keys := make([]string, 0, len(secrets))
+	for key := range secrets {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		if err := store.Set(key, secrets[key]); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: failed to import %s: %v\n", key, err)
 			failedKeys = append(failedKeys, key)
 			continue
