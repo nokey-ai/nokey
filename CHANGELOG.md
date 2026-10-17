@@ -125,10 +125,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   redacted, as are variables that change what code a program loads or
   runs, such as `PATH`, `LD_*`, `DYLD_*`, `BASH_ENV`, `NODE_OPTIONS`,
   `PYTHON*` and `GIT_SSH*`) and `separate_stderr` (stderr returned after
-  stdout under a `[stderr]` line, each stream capped and redacted
-  separately). When any of them is set, the approval prompt shows the
+  stdout under a `[stderr]` line, each stream redacted separately and
+  given half of the 1 MiB output limit). When any of them is set, the approval prompt shows the
   cwd, the env entries and a preview of stdin. Leaving them out runs
   exactly as before.
+- `exec` and `exec_with_secrets` declare an output schema and return
+  structured content next to their unchanged text: `output`, `stderr`
+  (when split), `exit_code`, `timed_out`, `truncated`, `original_bytes`
+  and `secrets_injected`. Clients that read structured results no longer
+  have to parse the `[exit code: N]` prefix or guess whether output was
+  cut.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.

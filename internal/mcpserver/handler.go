@@ -182,6 +182,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			mcp.WithString("token",
 				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
 			),
+			mcp.WithOutputSchema[execOutput](),
 		),
 		h.HandleExec,
 	)
@@ -226,6 +227,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			mcp.WithString("token",
 				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
 			),
+			mcp.WithOutputSchema[execOutput](),
 		),
 		h.HandleExecWithSecrets,
 	)
@@ -1076,10 +1078,12 @@ type runSpec struct {
 // redacted and truncated, so they are safe to return to the model. stderr
 // is set only when it was captured separately.
 type runResult struct {
-	output   []byte
-	stderr   []byte
-	err      error
-	timedOut bool
+	output        []byte
+	stderr        []byte
+	err           error
+	timedOut      bool
+	truncated     bool  // some output was cut
+	originalBytes int64 // everything the command wrote, both streams
 }
 
 // text renders the output for the tool result.
@@ -1120,12 +1124,18 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 	// Keep only what can reach the result instead of buffering everything
 	// the command prints. The same writer for both streams preserves
 	// CombinedOutput's interleaving.
-	buf := &cappedBuffer{limit: MaxOutputBytes + redactSlack(spec.secrets)}
+	// Split streams share the output budget, half each, so the result is
+	// no larger than when they are interleaved.
+	budget := MaxOutputBytes
+	if spec.opts.separateStderr {
+		budget /= 2
+	}
+	buf := newCappedBuffer(budget, spec.secrets)
 	cmd.Stdout = buf
 	cmd.Stderr = buf
 	var errBuf *cappedBuffer
 	if spec.opts.separateStderr {
-		errBuf = &cappedBuffer{limit: buf.limit}
+		errBuf = newCappedBuffer(budget, spec.secrets)
 		cmd.Stderr = errBuf
 	}
 	err := cmd.Run()
@@ -1137,12 +1147,16 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 	}
 
 	res := runResult{
-		output:   redactCaptured(buf, spec.secrets),
-		err:      err,
-		timedOut: errors.Is(execCtx.Err(), context.DeadlineExceeded),
+		err:           err,
+		timedOut:      errors.Is(execCtx.Err(), context.DeadlineExceeded),
+		originalBytes: buf.total,
 	}
+	res.output, res.truncated = redactCaptured(buf, spec.secrets)
 	if errBuf != nil {
-		res.stderr = redactCaptured(errBuf, spec.secrets)
+		var cut bool
+		res.stderr, cut = redactCaptured(errBuf, spec.secrets)
+		res.truncated = res.truncated || cut
+		res.originalBytes += errBuf.total
 	}
 	return res
 }
@@ -1150,10 +1164,11 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 // redactCaptured returns the redacted, truncated contents of b and zeroes
 // the raw bytes. It clones first: with nothing to replace, redaction and
 // truncation return the raw buffer itself.
-func redactCaptured(b *cappedBuffer, secrets map[string]string) []byte {
-	out := bytes.Clone(capOutput(b, secrets))
+func redactCaptured(b *cappedBuffer, secrets map[string]string) (out []byte, truncated bool) {
+	out, truncated = capOutput(b, secrets)
+	out = bytes.Clone(out)
 	sensitive.ClearBytes(b.buf)
-	return out
+	return out, truncated
 }
 
 // cappedBuffer is an io.Writer that keeps the first limit bytes written and
@@ -1161,8 +1176,14 @@ func redactCaptured(b *cappedBuffer, secrets map[string]string) []byte {
 // SIGPIPE or a short write when its output runs long.
 type cappedBuffer struct {
 	buf   []byte
-	limit int
+	max   int // output size after redaction and truncation
+	limit int // bytes kept: max plus redactSlack
 	total int64
+}
+
+// newCappedBuffer returns a cappedBuffer whose redacted output fits in size.
+func newCappedBuffer(size int, secrets map[string]string) *cappedBuffer {
+	return &cappedBuffer{max: size, limit: size + redactSlack(secrets)}
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
@@ -1191,12 +1212,13 @@ func redactSlack(secrets map[string]string) int {
 	return 6*longest + 4
 }
 
-// capOutput redacts and truncates what a cappedBuffer kept. Output that fit
-// is treated exactly as before the cap existed.
-func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
+// capOutput redacts and truncates what a cappedBuffer kept, reporting
+// whether anything was cut. Output that fit is treated exactly as before
+// the cap existed.
+func capOutput(b *cappedBuffer, secrets map[string]string) ([]byte, bool) {
 	out := redact.RedactBytes(b.buf, secrets)
 	if !b.overflowed() {
-		return truncateOutput(out, MaxOutputBytes)
+		return truncateOutput(out, b.max), len(out) > b.max
 	}
 	// The cap may have cut a secret, or an encoding of one, leaving a
 	// prefix that redaction can't recognise. That fragment is unchanged by
@@ -1204,7 +1226,7 @@ func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
 	// Redaction can also shrink the output below MaxOutputBytes, so the
 	// truncation notice is added explicitly rather than by length.
 	drop := min(redactSlack(secrets)-1, len(out))
-	return withTruncationNotice(out[:len(out)-drop], MaxOutputBytes)
+	return withTruncationNotice(out[:len(out)-drop], b.max), true
 }
 
 // exitCode returns the exit status carried by err, if it has one.
@@ -1216,6 +1238,18 @@ func exitCode(err error) (int, bool) {
 	return 0, false
 }
 
+// execOutput is the structured result of the exec tools, sent alongside
+// the same text content they have always returned.
+type execOutput struct {
+	Output          string   `json:"output" jsonschema_description:"Redacted output; stdout only when separate_stderr is set"`
+	Stderr          string   `json:"stderr,omitempty" jsonschema_description:"Redacted stderr, when separate_stderr is set"`
+	ExitCode        int      `json:"exit_code"`
+	TimedOut        bool     `json:"timed_out"`
+	Truncated       bool     `json:"truncated" jsonschema_description:"Output was cut to fit the size limit"`
+	OriginalBytes   int64    `json:"original_bytes" jsonschema_description:"Bytes the command wrote before redaction and truncation"`
+	SecretsInjected []string `json:"secrets_injected" jsonschema_description:"Names of the secrets the command was given"`
+}
+
 // execOutcome records the audit entry for a finished run and builds the
 // tool result.
 func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
@@ -1224,22 +1258,29 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutS
 	if clamped {
 		note = fmt.Sprintf("[timeout_seconds clamped to %d]\n", MaxTimeoutSecs)
 	}
+	code, exited := exitCode(res.err)
+	structured := execOutput{
+		Output:          string(res.output),
+		Stderr:          string(res.stderr),
+		ExitCode:        code,
+		TimedOut:        res.timedOut,
+		Truncated:       res.truncated,
+		OriginalBytes:   res.originalBytes,
+		SecretsInjected: append([]string{}, secretNames...),
+	}
 
 	// Check the deadline first: a child killed by it reports an ExitError
 	// ("signal: killed"), which would otherwise read as an ordinary exit.
 	if res.timedOut {
 		h.recordAudit(op, command, target, false, "timeout")
-		return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.text()))
+		result := mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.text()))
+		result.StructuredContent = structured
+		return result
 	}
 
-	code := 0
-	if res.err != nil {
-		if c, ok := exitCode(res.err); ok {
-			code = c
-		} else {
-			h.recordAudit(op, command, target, false, res.err.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
-		}
+	if res.err != nil && !exited {
+		h.recordAudit(op, command, target, false, res.err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
 	}
 
 	errMsg := ""
@@ -1252,7 +1293,7 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutS
 	if code != 0 {
 		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
 	}
-	return mcp.NewToolResultText(note + resultText)
+	return mcp.NewToolResultStructured(structured, note+resultText)
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.
