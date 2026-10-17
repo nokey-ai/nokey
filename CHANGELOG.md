@@ -108,6 +108,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the audit log instead of the ID itself.
 
 ### Added
+- `nokey mcp serve` sends server instructions at initialize: call
+  `list_secrets` first, prefer `exec_with_secrets` placeholders over
+  `exec`'s environment injection, how approval prompts and `mint_token`
+  fit in, and the policy command name the GitHub tools are checked
+  against.
+- The MCP server recovers from a panic in a tool handler and returns it
+  as an error for that call, instead of exiting and dropping the
+  session.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.

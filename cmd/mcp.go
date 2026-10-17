@@ -69,11 +69,29 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		GetConfigDir: getConfigDir,
 	})
 
-	s := server.NewMCPServer("nokey", version.Version,
-		server.WithToolCapabilities(false),
-		server.WithElicitation(),
-	)
+	s := newMCPServer()
 	h.RegisterTools(s)
 
 	return server.ServeStdio(s)
+}
+
+// mcpInstructions is sent to clients at initialize, for the model to read
+// before it picks a tool.
+const mcpInstructions = `nokey runs commands with secrets from the OS keyring without revealing their values. All output is redacted: secret values appear as [REDACTED:NAME].
+
+Call list_secrets first to see which secret names exist.
+
+Prefer exec_with_secrets: put ${{NOKEY:NAME}} placeholders in args (for example a header value). Only the referenced secrets are read, and they never enter the environment. Use exec when a program reads its credentials from environment variables; narrow what it receives with only/except.
+
+The user may be asked to approve access through an elicitation prompt. policies.yaml can deny a command or require a token: mint_token creates a short-lived lease (it needs approval once) that you pass as the token parameter. The github_* tools use the GITHUB_TOKEN secret and are checked by policy as the command nokey:integration:github.`
+
+// newMCPServer builds the MCP server with nokey's options.
+func newMCPServer() *server.MCPServer {
+	return server.NewMCPServer("nokey", version.Version,
+		server.WithToolCapabilities(false),
+		server.WithElicitation(),
+		server.WithInstructions(mcpInstructions),
+		// A panic in one tool call must not take down the server.
+		server.WithRecovery(),
+	)
 }
