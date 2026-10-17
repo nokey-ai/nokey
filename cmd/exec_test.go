@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"runtime"
 	"strings"
@@ -2094,5 +2095,80 @@ func TestRunExec_AuditRecordWarning(t *testing.T) {
 	})
 	if !strings.Contains(stderr, "failed to record audit") {
 		t.Errorf("stderr = %q, want 'failed to record audit' warning", stderr)
+	}
+}
+
+// TestRunExec_CleansUpBeforeExit verifies that the secrets map is wiped and
+// the isolation proxy stopped before runExec exits with the child's code.
+// os.Exit skips deferred calls, so cleanup left to defers never runs.
+func TestRunExec_CleansUpBeforeExit(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	store.Set("MY_KEY", "secret-val")
+
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	enforce := false
+	c.Auth.CLIEnforcePolicy = &enforce
+	withTestConfig(t, c)
+
+	configDir, err := getConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	polYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_KEY"
+`
+	if err := os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	withExecGlobals(t)
+	oldIsolate := enableIsolate
+	t.Cleanup(func() { enableIsolate = oldIsolate })
+	enableIsolate = true
+
+	var injected map[string]string
+	var proxyAddr string
+	execRunFn = func(_ string, _ []string, secrets map[string]string, extraEnv ...string) (int, error) {
+		injected = secrets
+		for _, ev := range extraEnv {
+			if v, ok := strings.CutPrefix(ev, "http_proxy=http://"); ok {
+				proxyAddr = v
+			}
+		}
+		return 3, nil
+	}
+	exited := false
+	osExitFn = func(code int) {
+		exited = true
+		if code != 3 {
+			t.Errorf("exit code = %d, want 3", code)
+		}
+		if len(injected) != 0 {
+			t.Error("secrets map not cleared before exit")
+		}
+		if conn, err := net.DialTimeout("tcp", proxyAddr, time.Second); err == nil {
+			_ = conn.Close()
+			t.Error("isolation proxy still listening at exit")
+		}
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+	if err := runExec(cmd, []string{"echo"}); err != nil {
+		t.Fatalf("runExec: %v", err)
+	}
+	if !exited {
+		t.Fatal("expected runExec to exit with the child's code")
+	}
+	if proxyAddr == "" {
+		t.Fatal("expected the isolation proxy address in the child env")
 	}
 }

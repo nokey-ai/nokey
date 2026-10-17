@@ -57,6 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hard links, with an exclusive create), concurrent first runs agree on
   one CA, a key that does not match the cert or a non-CA cert is
   rejected, and a CA key readable by other users triggers a warning.
+- `nokey exec` now wipes the secrets map and stops the `--isolate`
+  proxy before exiting with the child's exit code. Both were left to
+  deferred calls, which `os.Exit` skips.
 
 ## [0.5.3] - 2026-08-31
 

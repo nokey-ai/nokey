@@ -257,6 +257,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 
 	// Set up egress-filtering proxy if --isolate is enabled.
 	var proxyEnv []string
+	stopProxy := func() {}
 	if enableIsolate {
 		env, cleanup, err := setupIsolationProxy(secrets)
 		if err != nil {
@@ -264,6 +265,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 		}
 		defer cleanup()
 		proxyEnv = env
+		stopProxy = cleanup
 	}
 
 	// Execute the command
@@ -292,7 +294,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return execErr
 	}
 
-	// Exit with the same code as the subprocess
+	// Exit with the same code as the subprocess. os.Exit skips deferred
+	// calls, so stop the proxy and wipe the secrets first.
+	stopProxy()
+	sensitive.ClearMap(allSecrets)
 	osExitFn(exitCode)
 	return nil
 }
