@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/nokey-ai/nokey/internal/policy"
 )
@@ -993,4 +994,129 @@ type auditEntry struct {
 	secrets string
 	ok      bool
 	errMsg  string
+}
+
+// TestStopWithSilentCONNECTClient verifies that a client which sends
+// CONNECT and then never starts the TLS handshake cannot hang Stop. The
+// hijacked conn used to be registered only after the handshake, so Stop
+// had nothing to close and inflight.Wait blocked forever.
+func TestStopWithSilentCONNECTClient(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+	fmt.Fprint(conn, "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
+	status, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil || !strings.Contains(status, "200") {
+		t.Fatalf("expected 200 Connection Established, got %q (%v)", status, err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Stop(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop hung on a CONNECT client that never handshakes")
+	}
+}
+
+// TestStopAbortsSlowUpstream verifies that Stop does not wait on an
+// upstream that never answers: upstream calls run on a context that Stop
+// cancels.
+func TestStopAbortsSlowUpstream(t *testing.T) {
+	release := make(chan struct{})
+	arrived := make(chan struct{}, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		arrived <- struct{}{}
+		<-release
+	}))
+	defer upstream.Close()
+	defer close(release)
+
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	client := &http.Client{Transport: proxyTransport(addr)}
+	reqDone := make(chan struct{})
+	go func() {
+		defer close(reqDone)
+		resp, err := client.Get(upstream.URL)
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+
+	// Wait until the upstream has the request, so the proxy is mid-RoundTrip.
+	select {
+	case <-arrived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never reached upstream")
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Stop(context.Background()) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop hung on a request waiting for a silent upstream")
+	}
+	<-reqDone
+}
+
+func TestGetOrCreateCert_RegeneratesNearExpiry(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+
+	cert, err := srv.getOrCreateCert("example.com")
+	if err != nil {
+		t.Fatalf("getOrCreateCert: %v", err)
+	}
+	if cert.Leaf == nil {
+		t.Fatal("expected cached cert to carry its parsed leaf")
+	}
+	// Simulate a cert cached long enough ago that it is about to expire.
+	cert.Leaf.NotAfter = time.Now().Add(30 * time.Minute)
+
+	fresh, err := srv.getOrCreateCert("example.com")
+	if err != nil {
+		t.Fatalf("getOrCreateCert: %v", err)
+	}
+	if fresh == cert {
+		t.Fatal("expected a near-expiry cached cert to be regenerated")
+	}
+	if time.Until(fresh.Leaf.NotAfter) < 23*time.Hour {
+		t.Errorf("regenerated cert expires too soon: %v", fresh.Leaf.NotAfter)
+	}
+}
+
+func TestGetOrCreateCert_CacheBounded(t *testing.T) {
+	ca := newTestCA(t)
+	srv := NewServer(ca, nil, nil, nil, nil)
+
+	for i := 0; i < maxCachedCerts+10; i++ {
+		if _, err := srv.getOrCreateCert(fmt.Sprintf("h%d.example.com", i)); err != nil {
+			t.Fatalf("getOrCreateCert: %v", err)
+		}
+	}
+	srv.certMu.Lock()
+	n := len(srv.certCache)
+	srv.certMu.Unlock()
+	if n > maxCachedCerts {
+		t.Errorf("cert cache holds %d entries, want at most %d", n, maxCachedCerts)
+	}
 }

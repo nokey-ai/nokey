@@ -17,6 +17,21 @@ import (
 	"github.com/nokey-ai/nokey/internal/sensitive"
 )
 
+const (
+	// connectHandshakeTimeout bounds how long a CONNECT client may take to
+	// complete the TLS handshake after the tunnel is established.
+	connectHandshakeTimeout = 10 * time.Second
+	// connectIdleTimeout bounds how long a tunnel may sit idle between
+	// requests, matching the http.Server IdleTimeout.
+	connectIdleTimeout = 120 * time.Second
+	// leafRenewBefore is how close to expiry a cached leaf cert may get
+	// before it is regenerated.
+	leafRenewBefore = time.Hour
+	// maxCachedCerts caps the leaf cert cache; without rules blocking
+	// unmatched hosts, every distinct CONNECT host adds an entry.
+	maxCachedCerts = 1024
+)
+
 // AuditFunc is called after each proxied request with operation details.
 type AuditFunc func(operation, host, secrets string, ok bool, errMsg string)
 
@@ -30,8 +45,10 @@ type Server struct {
 	auditFn        AuditFunc
 	listener       net.Listener
 	server         *http.Server
-	certCache      sync.Map // host → *tls.Certificate
+	certMu         sync.Mutex
+	certCache      map[string]*tls.Certificate // host → leaf cert; guarded by certMu
 	mu             sync.Mutex
+	cancel         context.CancelFunc // cancels the base context of requests and upstream calls
 	running        bool
 	blockUnmatched bool              // if true, reject requests to hosts with no matching proxy rule
 	transport      http.RoundTripper // forward transport; nil falls back to http.DefaultTransport
@@ -40,7 +57,7 @@ type Server struct {
 	// them before clearing s.secrets — otherwise an in-flight request
 	// loop in handleConnect would read a nil secrets map mid-RoundTrip.
 	inflight      sync.WaitGroup
-	inflightConns sync.Map // *tls.Conn → struct{}; force-closed on Stop to unblock ReadRequest
+	inflightConns sync.Map // net.Conn → struct{}; force-closed on Stop to unblock the handshake and ReadRequest
 }
 
 // SetTransport overrides the round-tripper used to forward proxied
@@ -112,9 +129,12 @@ func (s *Server) Start(addr string) (string, error) {
 		return "", err
 	}
 
+	baseCtx, cancel := context.WithCancel(context.Background())
+	s.cancel = cancel
 	s.listener = ln
 	s.server = &http.Server{
 		Handler:      s,
+		BaseContext:  func(net.Listener) context.Context { return baseCtx },
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -184,10 +204,11 @@ func verifyLoopbackListener(ln net.Listener) error {
 	return nil
 }
 
-// Stop gracefully shuts down the proxy server.
-// Order matters: shut down the http.Server first to refuse new
-// connections, wait for in-flight hijacked CONNECT goroutines to
-// finish, and only then clear the secrets map. Reversing this risks
+// Stop shuts down the proxy server.
+// Order matters: cancel the base context so upstream calls still in
+// flight are aborted rather than waited on, shut down the http.Server to
+// refuse new connections, wait for in-flight hijacked CONNECT goroutines
+// to finish, and only then clear the secrets map. Reversing this risks
 // in-flight goroutines reading a nil map mid-request.
 func (s *Server) Stop(ctx context.Context) error {
 	s.mu.Lock()
@@ -199,13 +220,14 @@ func (s *Server) Stop(ctx context.Context) error {
 	srv := s.server
 	s.mu.Unlock()
 
+	s.cancel()
 	shutdownErr := srv.Shutdown(ctx)
 
 	// Force-close hijacked TLS conns so blocked ReadRequest calls
 	// inside handleConnect return immediately; otherwise idle clients
 	// (between requests on the same tunnel) would hang inflight.Wait.
 	s.inflightConns.Range(func(k, _ any) bool {
-		_ = k.(*tls.Conn).Close()
+		_ = k.(net.Conn).Close()
 		return true
 	})
 	s.inflight.Wait()
@@ -317,13 +339,25 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Register the hijacked goroutine so Stop can wait for it to drain
-	// before clearing s.secrets.
+	// before clearing s.secrets, and the conn so Stop can force-close it
+	// whatever state the tunnel is in. Registering under s.mu once Stop
+	// has begun would race its Range and Wait, so refuse instead.
+	s.mu.Lock()
+	if !s.running {
+		s.mu.Unlock()
+		_ = clientConn.Close()
+		return
+	}
 	s.inflight.Add(1)
+	s.inflightConns.Store(clientConn, struct{}{})
+	s.mu.Unlock()
 	defer s.inflight.Done()
+	defer s.inflightConns.Delete(clientConn)
 	defer clientConn.Close()
 
-	// Clear deadlines for the tunneled connection
-	_ = clientConn.SetDeadline(time.Time{})
+	// Bound the tunnel setup; a client that never handshakes must not
+	// hold the goroutine forever.
+	_ = clientConn.SetDeadline(time.Now().Add(connectHandshakeTimeout))
 
 	// Send 200 Connection Established.
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
@@ -344,6 +378,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tlsConn.Close()
+	_ = clientConn.SetDeadline(time.Time{})
 
 	// Validate the TLS SNI matches the CONNECT-line host. Without this,
 	// a client could CONNECT to an allow-listed host (and get policy rules
@@ -360,18 +395,15 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Track the live TLS conn so Stop can force-close it to unblock the
-	// read loop below.
-	s.inflightConns.Store(tlsConn, struct{}{})
-	defer s.inflightConns.Delete(tlsConn)
-
 	// Read requests from the TLS connection.
 	reader := bufio.NewReader(tlsConn)
 	for {
+		_ = clientConn.SetReadDeadline(time.Now().Add(connectIdleTimeout))
 		req, err := http.ReadRequest(reader)
 		if err != nil {
-			return // Client closed connection or read error.
+			return // Client closed connection, idle timeout, or read error.
 		}
+		_ = clientConn.SetReadDeadline(time.Time{})
 
 		// Validate the inner request Host matches the CONNECT-line host.
 		// Even with SNI pinned, the inner HTTP/1.1 request can carry an
@@ -393,7 +425,9 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Set the full URL for the upstream request.
+		// Set the full URL for the upstream request, and tie it to the
+		// server's context so Stop aborts it.
+		req = req.WithContext(r.Context())
 		req.URL.Scheme = "https"
 		req.URL.Host = hostPort
 		req.RequestURI = ""
@@ -467,14 +501,31 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) getOrCreateCert(host string) (*tls.Certificate, error) {
-	if cached, ok := s.certCache.Load(host); ok {
-		return cached.(*tls.Certificate), nil
+	s.certMu.Lock()
+	cached, ok := s.certCache[host]
+	s.certMu.Unlock()
+	if ok && cached.Leaf != nil && time.Until(cached.Leaf.NotAfter) > leafRenewBefore {
+		return cached, nil
 	}
+
 	cert, err := s.ca.GenerateHostCert(host)
 	if err != nil {
 		return nil, err
 	}
-	s.certCache.Store(host, cert)
+
+	s.certMu.Lock()
+	defer s.certMu.Unlock()
+	if s.certCache == nil {
+		s.certCache = make(map[string]*tls.Certificate)
+	}
+	if _, exists := s.certCache[host]; !exists && len(s.certCache) >= maxCachedCerts {
+		// Evict an arbitrary entry; map iteration order is unspecified.
+		for k := range s.certCache {
+			delete(s.certCache, k)
+			break
+		}
+	}
+	s.certCache[host] = cert
 	return cert, nil
 }
 
