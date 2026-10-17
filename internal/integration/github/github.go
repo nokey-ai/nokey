@@ -235,6 +235,7 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
 			mcp.WithString("labels", mcp.Description("Comma-separated list of label names to filter by")),
 			mcp.WithNumber("per_page", mcp.Description("Results per page (default: 30, max: 100)")),
+			mcp.WithNumber("page", mcp.Description("Page number of the results to fetch (default: 1)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -245,7 +246,7 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 			}
 
 			path := fmt.Sprintf("/repos/%s/%s/issues", escapeSegment(owner), escapeSegment(repo))
-			params := buildQuery(req, "state", "labels", "per_page")
+			params := buildQuery(req, "state", "labels", "per_page", "page")
 			if params != "" {
 				path += "?" + params
 			}
@@ -270,6 +271,7 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
 			mcp.WithNumber("per_page", mcp.Description("Results per page (default: 30, max: 100)")),
+			mcp.WithNumber("page", mcp.Description("Page number of the results to fetch (default: 1)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -280,7 +282,7 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 			}
 
 			path := fmt.Sprintf("/repos/%s/%s/pulls", escapeSegment(owner), escapeSegment(repo))
-			params := buildQuery(req, "state", "per_page")
+			params := buildQuery(req, "state", "per_page", "page")
 			if params != "" {
 				path += "?" + params
 			}
@@ -305,6 +307,7 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("path", mcp.Required(), mcp.Description("File path within the repository")),
 			mcp.WithString("ref", mcp.Description("Git ref (branch, tag, or SHA; default: default branch)")),
+			mcp.WithBoolean("raw", mcp.Description("Return the file's contents as-is instead of the JSON metadata with base64 content (default: false)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -326,7 +329,11 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 				apiPath += "?" + params
 			}
 
-			body, code, err := client.Do(ctx, "GET", apiPath, nil, defaultHeaders(""))
+			accept := ""
+			if req.GetBool("raw", false) {
+				accept = "application/vnd.github.raw+json"
+			}
+			body, code, err := client.Do(ctx, "GET", apiPath, nil, defaultHeaders(accept))
 			return toolResult(body, code, err)
 		},
 	}
@@ -338,7 +345,7 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 func buildQuery(req mcp.CallToolRequest, keys ...string) string {
 	params := url.Values{}
 	for _, key := range keys {
-		if key == "per_page" {
+		if key == "per_page" || key == "page" {
 			if v := req.GetInt(key, 0); v > 0 {
 				params.Set(key, strconv.Itoa(v))
 			}
