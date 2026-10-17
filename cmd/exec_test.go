@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
 	kring "github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/config"
+	iexec "github.com/nokey-ai/nokey/internal/exec"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/session"
@@ -1660,6 +1662,84 @@ func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected http_proxy in env vars, got: %v", envVars)
+	}
+}
+
+func TestSetupIsolationProxy_OverridesProxyBypassVars(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses the POSIX env command")
+	}
+	dir := t.TempDir()
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
+	os.Setenv("HOME", dir)
+	// An inherited NO_PROXY=* would let the child skip the isolation proxy
+	// entirely, and ALL_PROXY would route non-HTTP clients elsewhere.
+	t.Setenv("NO_PROXY", "*")
+	t.Setenv("no_proxy", "*")
+	t.Setenv("ALL_PROXY", "socks5://127.0.0.1:1")
+	t.Setenv("all_proxy", "socks5://127.0.0.1:1")
+
+	configDir := fmt.Sprintf("%s/.config/nokey", dir)
+	os.MkdirAll(configDir, 0700)
+	polYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_KEY"
+`
+	os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600)
+
+	envVars, cleanup, err := setupIsolationProxy(map[string]string{"MY_KEY": "secret-val"})
+	if err != nil {
+		t.Fatalf("setupIsolationProxy: %v", err)
+	}
+	defer cleanup()
+
+	// Run a real child through the same env merge nokey exec uses, and
+	// read back the environment it actually received.
+	out, err := os.CreateTemp(t.TempDir(), "env")
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStdout := os.Stdout
+	os.Stdout = out
+	code, runErr := iexec.Run("env", nil, nil, envVars...)
+	os.Stdout = oldStdout
+	if runErr != nil || code != 0 {
+		t.Fatalf("running env: code=%d err=%v", code, runErr)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, kv := range strings.Split(string(data), "\n") {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			got[k] = v
+		}
+	}
+	var proxyURL string
+	for _, ev := range envVars {
+		if v, ok := strings.CutPrefix(ev, "http_proxy="); ok {
+			proxyURL = v
+		}
+	}
+	if proxyURL == "" {
+		t.Fatalf("expected http_proxy in env vars, got: %v", envVars)
+	}
+	for _, k := range []string{"NO_PROXY", "no_proxy"} {
+		if got[k] != "" {
+			t.Errorf("%s = %q, want empty", k, got[k])
+		}
+	}
+	for _, k := range []string{"ALL_PROXY", "all_proxy"} {
+		if got[k] != proxyURL {
+			t.Errorf("%s = %q, want %q", k, got[k], proxyURL)
+		}
 	}
 }
 

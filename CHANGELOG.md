@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   The path and the two-line format are unchanged, but tickets issued by
   an older version no longer validate: expect one PIN prompt after
   upgrading.
+- `nokey exec --isolate` no longer lets an inherited `NO_PROXY` bypass
+  the egress filter. The isolation env set `http_proxy`/`https_proxy`
+  but passed the parent's `NO_PROXY`/`no_proxy` through untouched, so
+  with `NO_PROXY=*` in the environment (common in corporate and CI
+  setups) proxy-aware clients connected to every host directly and
+  nothing was blocked. Both are now cleared for the child, and
+  `ALL_PROXY`/`all_proxy` point at the isolation proxy instead of any
+  inherited value. Requests to localhost and internal hosts now go
+  through the proxy too, and are blocked unless a rule matches them.
+  Proxy variables are advisory, so a client that ignores them is still
+  not filtered.
 
 ## [0.5.3] - 2026-08-31
 

@@ -380,6 +380,12 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 		"https_proxy=" + proxyURL,
 		"HTTP_PROXY=" + proxyURL,
 		"HTTPS_PROXY=" + proxyURL,
+		"all_proxy=" + proxyURL,
+		"ALL_PROXY=" + proxyURL,
+		// Clear any inherited bypass list, which would let the child
+		// reach hosts directly and skip the egress filter.
+		"no_proxy=",
+		"NO_PROXY=",
 		"SSL_CERT_FILE=" + certFile,
 		"NODE_EXTRA_CA_CERTS=" + certFile,
 		"REQUESTS_CA_BUNDLE=" + certFile,
