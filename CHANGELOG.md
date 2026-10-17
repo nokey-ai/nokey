@@ -212,6 +212,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   string as no arguments at all, so `{"command": "echo", "args":
   "[\"hi\"]"}` ran a bare `echo`. Both exec tools now accept either
   form and reject a string that isn't a JSON array of strings.
+- MCP exec timeouts are reported as timeouts, and actually end the run.
+  A child killed at the deadline surfaces as an exit error, so the
+  "timed out" branch was unreachable and a timeout came back as
+  `[exit code: -1]`. Worse, a background process that inherited the
+  output pipe (`sh -c "server & …"`) kept the read open after the kill,
+  so the call blocked until that process exited, regardless of
+  `timeout_seconds`. Commands now run in their own process group, which
+  is killed as a whole at the deadline (on Windows the direct child is
+  killed and the wait is bounded), and the result is an error with the
+  same `command timed out after N seconds` message followed by whatever
+  output was produced, redacted. A command that exits normally but
+  leaves a background process holding its output returns its output and
+  exit code once the two-second wait for that process runs out. A
+  `timeout_seconds` above 300 now says it was clamped.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of

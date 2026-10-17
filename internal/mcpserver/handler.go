@@ -423,7 +423,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	timeoutSecs := timeoutParam(request)
+	timeoutSecs, clamped := timeoutParam(request)
 
 	// Open keyring (no PIN auth — OS keyring ACL is the gate). Enumerate names
 	// first so we can apply policy/approval *before* reading any secret values.
@@ -477,7 +477,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
 	})
-	return h.execOutcome("mcp:exec", command, secretNames, "all", timeoutSecs, res), nil
+	return h.execOutcome("mcp:exec", command, secretNames, "all", timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -499,7 +499,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	timeoutSecs := timeoutParam(request)
+	timeoutSecs, clamped := timeoutParam(request)
 
 	// Extract referenced secret names from args
 	secretNames := placeholder.Extract("", args)
@@ -556,7 +556,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
 	})
-	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, strings.Join(secretNames, ","), timeoutSecs, res), nil
+	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, strings.Join(secretNames, ","), timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -843,16 +843,17 @@ func argsParam(request mcp.CallToolRequest) ([]string, error) {
 }
 
 // timeoutParam reads timeout_seconds, defaulting non-positive values and
-// clamping to MaxTimeoutSecs.
-func timeoutParam(request mcp.CallToolRequest) int {
-	secs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
+// clamping to MaxTimeoutSecs. clamped reports that the caller asked for
+// more than the maximum, so the result can say so.
+func timeoutParam(request mcp.CallToolRequest) (secs int, clamped bool) {
+	secs = request.GetInt("timeout_seconds", DefaultTimeoutSecs)
 	if secs <= 0 {
 		secs = DefaultTimeoutSecs
 	}
 	if secs > MaxTimeoutSecs {
-		secs = MaxTimeoutSecs
+		return MaxTimeoutSecs, true
 	}
-	return secs
+	return secs, false
 }
 
 // runSpec describes a command for runRedacted.
@@ -872,6 +873,10 @@ type runResult struct {
 	timedOut bool
 }
 
+// killWaitDelay bounds how long a run may outlive its timeout while
+// something still holds the output pipe open.
+const killWaitDelay = 2 * time.Second
+
 // runRedacted runs spec non-interactively (stdin is the MCP JSON-RPC
 // transport, so the child gets none) and returns its redacted output.
 func runRedacted(ctx context.Context, spec runSpec) runResult {
@@ -881,8 +886,19 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 	cmd := osexec.CommandContext(execCtx, spec.command, spec.args...)
 	cmd.Env = spec.env
 	cmd.Stdin = nil
+	// On timeout kill the whole process tree, not just the direct child:
+	// a background grandchild would otherwise keep the pipe open and the
+	// read blocked. WaitDelay is the backstop where that isn't possible.
+	killProcessTreeOnCancel(cmd)
+	cmd.WaitDelay = killWaitDelay
 
 	output, err := cmd.CombinedOutput()
+	// ErrWaitDelay means the command exited 0 but something it started
+	// still held the output open (a daemonised child, say). The run itself
+	// finished, so keep its output rather than calling it a failure.
+	if errors.Is(err, osexec.ErrWaitDelay) {
+		err = nil
+	}
 
 	// Always redact output
 	output = redact.RedactBytes(output, spec.secrets)
@@ -907,14 +923,23 @@ func exitCode(err error) (int, bool) {
 // execOutcome records the audit entry for a finished run and builds the
 // tool result. failTarget is the audit target used when the command could
 // not be run at all.
-func (h *Handler) execOutcome(op, command string, secretNames []string, failTarget string, timeoutSecs int, res runResult) *mcp.CallToolResult {
+func (h *Handler) execOutcome(op, command string, secretNames []string, failTarget string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
+	note := ""
+	if clamped {
+		note = fmt.Sprintf("[timeout_seconds clamped to %d]\n", MaxTimeoutSecs)
+	}
+
+	// Check the deadline first: a child killed by it reports an ExitError
+	// ("signal: killed"), which would otherwise read as an ordinary exit.
+	if res.timedOut {
+		h.recordAudit(op, command, failTarget, false, "timeout")
+		return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.output))
+	}
+
 	code := 0
 	if res.err != nil {
 		if c, ok := exitCode(res.err); ok {
 			code = c
-		} else if res.timedOut {
-			h.recordAudit(op, command, failTarget, false, "timeout")
-			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs))
 		} else {
 			h.recordAudit(op, command, failTarget, false, res.err.Error())
 			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
@@ -931,7 +956,7 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, failTarg
 	if code != 0 {
 		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
 	}
-	return mcp.NewToolResultText(resultText)
+	return mcp.NewToolResultText(note + resultText)
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.
