@@ -676,6 +676,14 @@ Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`
 
 All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
 
+The `github_*` tools read the `GITHUB_TOKEN` secret and are checked against `policies.yaml` as the command `nokey:integration:github` (not `gh`). Once a policy file exists, they are denied unless a rule allows that name:
+
+```yaml
+rules:
+  - commands: ["nokey:integration:github"]
+    secrets: ["GITHUB_TOKEN"]
+```
+
 ### Session Tokens
 
 Session tokens allow a single user approval to cover multiple secret accesses within a session:
@@ -779,6 +787,9 @@ rules:
     secrets: ["GITHUB_TOKEN"]
     approval: always          # Always prompt
     token_required: true      # Require a session token (no per-call approval fallback)
+
+  - commands: ["nokey:integration:github"]  # The MCP github_* tools
+    secrets: ["GITHUB_TOKEN"]
 
   - commands: ["*"]
     secrets: ["*"]
