@@ -478,7 +478,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
 	})
-	return h.execOutcome("mcp:exec", command, secretNames, "all", timeoutSecs, clamped, res), nil
+	return h.execOutcome("mcp:exec", command, secretNames, timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -557,7 +557,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
 	})
-	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, strings.Join(secretNames, ","), timeoutSecs, clamped, res), nil
+	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -980,9 +980,9 @@ func exitCode(err error) (int, bool) {
 }
 
 // execOutcome records the audit entry for a finished run and builds the
-// tool result. failTarget is the audit target used when the command could
-// not be run at all.
-func (h *Handler) execOutcome(op, command string, secretNames []string, failTarget string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
+// tool result.
+func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
+	target := strings.Join(secretNames, ",")
 	note := ""
 	if clamped {
 		note = fmt.Sprintf("[timeout_seconds clamped to %d]\n", MaxTimeoutSecs)
@@ -991,7 +991,7 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, failTarg
 	// Check the deadline first: a child killed by it reports an ExitError
 	// ("signal: killed"), which would otherwise read as an ordinary exit.
 	if res.timedOut {
-		h.recordAudit(op, command, failTarget, false, "timeout")
+		h.recordAudit(op, command, target, false, "timeout")
 		return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.output))
 	}
 
@@ -1000,7 +1000,7 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, failTarg
 		if c, ok := exitCode(res.err); ok {
 			code = c
 		} else {
-			h.recordAudit(op, command, failTarget, false, res.err.Error())
+			h.recordAudit(op, command, target, false, res.err.Error())
 			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
 		}
 	}
@@ -1009,7 +1009,7 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, failTarg
 	if res.err != nil {
 		errMsg = res.err.Error()
 	}
-	h.recordAudit(op, command, strings.Join(secretNames, ","), res.err == nil, errMsg)
+	h.recordAudit(op, command, target, res.err == nil, errMsg)
 
 	resultText := string(res.output)
 	if code != 0 {

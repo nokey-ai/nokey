@@ -235,6 +235,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   returned byte-for-byte as before; longer output is still a redacted
   prefix ending in `[output truncated]`, though when redaction shortens
   it the prefix can now be shorter than 1 MiB.
+- When an MCP `exec` command times out or can't be started, the audit
+  entry now names the secrets that were injected, as `exec_with_secrets`
+  and every successful run already did, instead of recording `all`.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of

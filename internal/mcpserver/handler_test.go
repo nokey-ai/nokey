@@ -2728,3 +2728,26 @@ func TestCapOutput_ShrinkingRedaction(t *testing.T) {
 		t.Errorf("len = %d, want <= %d", len(out), MaxOutputBytes)
 	}
 }
+
+// Once the secrets are known, a failed run is audited against them, the
+// same as a successful one, not as "all".
+func TestHandleExec_FailedRunAuditsSecretNames(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"A": "1", "B": "2"}}
+	var targets []string
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       config.DefaultConfig(),
+		ApprovalFn:   func(context.Context, approval.Requester, string, []string, string) error { return nil },
+		AuditFn:      func(_, _, target string, _ bool, _ string) { targets = append(targets, target) },
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	req := makeCallToolRequest(map[string]any{"command": "nokey-no-such-command", "only": "A"})
+	if _, err := h.HandleExec(context.Background(), req); err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if len(targets) == 0 || targets[len(targets)-1] != "A" {
+		t.Errorf("audit targets = %q, want the failed run audited as %q", targets, "A")
+	}
+}
