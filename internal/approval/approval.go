@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
@@ -22,6 +23,9 @@ const maxDetailArgsBytes = 512
 
 // maxDetailValueBytes caps one model-supplied value shown by Quote.
 const maxDetailValueBytes = 256
+
+// stdinPreviewBytes is how much of stdin FormatStdin shows.
+const stdinPreviewBytes = 64
 
 // Request sends an MCP elicitation prompt asking the user to approve
 // secret access for the given command. Returns nil if approved, an error otherwise.
@@ -84,14 +88,49 @@ func RequestWithDetail(ctx context.Context, requester Requester, command string,
 // so a newline or control character can't forge a line of the prompt, and
 // capped at maxDetailValueBytes.
 func Quote(s string) string {
-	if len(s) <= maxDetailValueBytes {
+	return quoteCapped(s, maxDetailValueBytes)
+}
+
+func quoteCapped(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
 		return fmt.Sprintf("%q", s)
 	}
-	cut := maxDetailValueBytes
+	cut := maxBytes
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
 	return fmt.Sprintf("%q …(truncated)", s[:cut])
+}
+
+// FormatEnv renders extra environment variables for an approval prompt,
+// sorted by name with each value quoted. Returns "" for none.
+func FormatEnv(env map[string]string) string {
+	if len(env) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(env))
+	for name := range env {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	vars := make([]string, len(names))
+	for i, name := range names {
+		vars[i] = name + "=" + Quote(env[name])
+	}
+	line, hidden := capDetail("env: " + strings.Join(vars, " "))
+	if hidden > 0 {
+		line += fmt.Sprintf(" … (+%d more bytes; %d variables in all)", hidden, len(names))
+	}
+	return line
+}
+
+// FormatStdin describes stdin for an approval prompt: its size and a short
+// quoted preview. Returns "" for none.
+func FormatStdin(stdin string) string {
+	if stdin == "" {
+		return ""
+	}
+	return fmt.Sprintf("stdin: %d bytes, starting %s", len(stdin), quoteCapped(stdin, stdinPreviewBytes))
 }
 
 // FormatArgs renders args for an approval prompt: each one %q-quoted so
@@ -106,13 +145,23 @@ func FormatArgs(args []string) string {
 	for i, a := range args {
 		quoted[i] = fmt.Sprintf("%q", a)
 	}
-	s := "args: " + strings.Join(quoted, " ")
+	line, hidden := capDetail("args: " + strings.Join(quoted, " "))
+	if hidden > 0 {
+		line += fmt.Sprintf(" … (+%d more bytes; %d args in all)", hidden, len(args))
+	}
+	return line
+}
+
+// capDetail cuts one line of detail to maxDetailArgsBytes, returning the
+// kept part and how many bytes were cut. Callers say what was cut: what
+// the prompt doesn't show still takes effect.
+func capDetail(s string) (string, int) {
 	if len(s) <= maxDetailArgsBytes {
-		return s
+		return s, 0
 	}
 	cut := maxDetailArgsBytes
 	for cut > 0 && !utf8.RuneStart(s[cut]) {
 		cut--
 	}
-	return s[:cut] + " …(truncated)"
+	return s[:cut], len(s) - cut
 }
