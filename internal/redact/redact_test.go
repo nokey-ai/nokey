@@ -6,9 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRedactBytes(t *testing.T) {
@@ -495,6 +497,62 @@ func TestRedactingReader_Clear(t *testing.T) {
 	}
 }
 
+// TestRedactingReader_PeriodicSecretBoundedHoldback is the pathological case
+// for the straddling-match rule: in a long run of a periodic secret every
+// position starts a complete match, so without a bound the split walked back
+// to the start of the buffer, the holdback grew with the stream and nothing
+// was released until EOF.
+func TestRedactingReader_PeriodicSecretBoundedHoldback(t *testing.T) {
+	secrets := map[string]string{"A": strings.Repeat("a", 12)}
+
+	run := func(size int) time.Duration {
+		data := bytes.Repeat([]byte("a"), size)
+		var chunks [][]byte
+		for rest := data; len(rest) > 0; {
+			n := min(4096, len(rest))
+			chunks = append(chunks, rest[:n])
+			rest = rest[n:]
+		}
+		src := &chunkReader{chunks: chunks}
+		reader := &redactingReader{reader: src, redactor: newRedactor(secrets)}
+		limit := 2 * reader.redactor.maxLen
+
+		start := time.Now()
+		var got []byte
+		buf := make([]byte, 4096)
+		for {
+			n, err := reader.Read(buf)
+			if len(got) == 0 && src.i > 2 {
+				t.Fatalf("first output only after %d of %d reads", src.i, len(chunks))
+			}
+			got = append(got, buf[:n]...)
+			if len(reader.hold) > limit {
+				t.Fatalf("holdback is %d bytes after %d bytes of output, want at most %d", len(reader.hold), len(got), limit)
+			}
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+		}
+		elapsed := time.Since(start)
+
+		if want := RedactBytes(data, secrets); !bytes.Equal(got, want) {
+			t.Fatalf("stream differs from RedactBytes for %d bytes (got %d bytes, want %d)", size, len(got), len(want))
+		}
+		return elapsed
+	}
+
+	small := run(128 << 10)
+	large := run(1 << 20)
+	// Eight times the input should cost about eight times as long; a
+	// quadratic holdback makes it sixty-four.
+	if small > 0 && large > 32*small {
+		t.Errorf("1 MiB took %v, 128 KiB took %v: not linear", large, small)
+	}
+}
+
 // --- benchmarks ---
 
 // benchSecrets is a handful of realistic secrets, all long enough to get
@@ -546,4 +604,62 @@ func BenchmarkRedactingReader(b *testing.B) {
 			}
 		}
 	}
+}
+
+// --- fuzzing ---
+
+// FuzzRedactingReader_MatchesRedactBytes checks the streaming invariant: no
+// matter where the reads split the output, the reader produces exactly what
+// RedactBytes produces for the whole output at once.
+//
+// Secrets containing '[' or ']' are skipped. Such a secret can match across
+// a [REDACTED:...] label inserted for another secret, which makes the result
+// depend on how the output was split; real secrets that look like redaction
+// labels are not worth the extra holdback it would take to cover them.
+//
+// So are runs in which the reader had to take a bounded cut (see safeSplit):
+// a chain of overlapping matches longer than twice the longest pattern, which
+// takes periodic secrets that overlap each other, such as "00" and "0" in a
+// run of zeros. There the reader keeps its holdback bounded rather than wait
+// for the run to end; the labels it picks can differ from RedactBytes, and
+// fragments shorter than a secret can remain unredacted (see boundedSplit).
+// TestRedactingReader_PeriodicSecretBoundedHoldback covers the single-secret
+// case, where the output is still exactly equal.
+func FuzzRedactingReader_MatchesRedactBytes(f *testing.F) {
+	f.Add([]byte("prefix sk-live-0123456789abcdef suffix"), "sk-live-0123456789abcdef", "", int64(1))
+	f.Add([]byte("xabcdy"), "abcd", "xab", int64(2))
+	f.Add([]byte("Authorization: Basic "+base64.StdEncoding.EncodeToString([]byte("user:hunter2-hunter2"))), "hunter2-hunter2", "user", int64(3))
+	f.Add([]byte(base64.StdEncoding.EncodeToString([]byte("correct-horse-battery-staple"))+"\n"), "correct-horse-battery-staple", "", int64(4))
+
+	f.Fuzz(func(t *testing.T, data []byte, s1, s2 string, seed int64) {
+		if strings.ContainsAny(s1+s2, "[]") {
+			t.Skip()
+		}
+		secrets := map[string]string{"A": s1, "B": s2}
+
+		rng := rand.New(rand.NewSource(seed))
+		var chunks [][]byte
+		for rest := data; len(rest) > 0; {
+			n := 1 + rng.Intn(len(rest))
+			chunks = append(chunks, rest[:n])
+			rest = rest[n:]
+		}
+
+		reader := &redactingReader{
+			reader:   &chunkReader{chunks: chunks},
+			redactor: newRedactor(secrets),
+		}
+		got, err := io.ReadAll(reader)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		if reader.inexact {
+			t.Skip("bounded cut taken")
+		}
+
+		want := RedactBytes(data, secrets)
+		if !bytes.Equal(got, want) {
+			t.Errorf("stream = %q, whole = %q (chunks %q)", got, want, chunks)
+		}
+	})
 }

@@ -29,16 +29,29 @@ func newRedactor(secrets map[string]string) *redactor {
 		replacements: make(map[string]string),
 	}
 
-	for key, value := range secrets {
-		if value == "" {
-			continue
-		}
-		label := fmt.Sprintf("[REDACTED:%s]", key)
-		r.replacements[value] = label
+	// Walk the names in order so that when two secrets share a value, or one
+	// secret's encoding is another's literal, the same label wins every time.
+	names := make([]string, 0, len(secrets))
+	for key := range secrets {
+		names = append(names, key)
+	}
+	sort.Strings(names)
 
+	// Literals first: a secret's own value takes its label even when it
+	// happens to equal some other secret's encoding.
+	for _, key := range names {
+		value := secrets[key]
+		if _, exists := r.replacements[value]; value != "" && !exists {
+			r.replacements[value] = fmt.Sprintf("[REDACTED:%s]", key)
+		}
+	}
+
+	for _, key := range names {
+		value := secrets[key]
 		if len(value) < minSecretLenForVariants {
 			continue
 		}
+		label := fmt.Sprintf("[REDACTED:%s]", key)
 
 		// Generate encoding variants, all mapping to the same label.
 		variants := encodingVariants(value)
@@ -49,13 +62,18 @@ func newRedactor(secrets map[string]string) *redactor {
 		}
 	}
 
-	// Precompute sorted keys (longest first) so longer matches win.
+	// Precompute sorted keys (longest first) so longer matches win. Ties
+	// break on the key itself so two redactors built from the same secrets
+	// always agree, which the streaming reader relies on.
 	r.sortedKeys = make([]string, 0, len(r.replacements))
 	for k := range r.replacements {
 		r.sortedKeys = append(r.sortedKeys, k)
 	}
 	sort.Slice(r.sortedKeys, func(i, j int) bool {
-		return len(r.sortedKeys[i]) > len(r.sortedKeys[j])
+		if len(r.sortedKeys[i]) != len(r.sortedKeys[j]) {
+			return len(r.sortedKeys[i]) > len(r.sortedKeys[j])
+		}
+		return r.sortedKeys[i] < r.sortedKeys[j]
 	})
 
 	if len(r.sortedKeys) > 0 {
@@ -145,8 +163,8 @@ func (r *redactor) pendingLen(data []byte) int {
 	for ; n > 0; n-- {
 		suffix := string(data[len(data)-n:])
 		for _, key := range r.sortedKeys {
-			// Only a proper prefix is interesting: an exact-length match would
-			// already have been replaced by redact.
+			// Only a proper prefix is interesting: an exact-length match is
+			// complete and needs nothing more from the next read.
 			if len(key) > n && strings.HasPrefix(key, suffix) {
 				return n
 			}
@@ -156,16 +174,80 @@ func (r *redactor) pendingLen(data []byte) int {
 	return 0
 }
 
+// safeSplit returns the longest prefix of data that can be redacted now with
+// the same result as redacting the whole stream at once, and whether that
+// guarantee holds (see below).
+//
+// No match may straddle the split. pendingLen keeps back a tail that could
+// grow into a match. A match that is already complete but runs across that
+// cut has to stay whole as well: redacting the part before the cut on its own
+// could let a shorter, overlapping secret win there — the unpadded base64 of
+// a secret matching ahead of the padded form, say — and leak the rest. The
+// split moves back past any such match until none remains.
+//
+// Overlapping matches can chain without end — in a long run of a periodic
+// secret such as "aaaaaaaaaaaa" every position starts one — so the retreat
+// stops at 2*maxLen from the end and boundedSplit picks the cut instead,
+// keeping the holdback bounded. The second result reports that a bounded cut
+// was taken; what that does and does not preserve is set out at boundedSplit.
+func (r *redactor) safeSplit(data []byte) (int, bool) {
+	split := len(data) - r.pendingLen(data)
+	floor := len(data) - 2*r.maxLen
+
+	for moved := true; moved; {
+		moved = false
+		for _, key := range r.sortedKeys {
+			for i := max(0, split-len(key)+1); i < split; i++ {
+				if len(data)-i >= len(key) && string(data[i:i+len(key)]) == key {
+					split = i
+					moved = true
+					break
+				}
+			}
+		}
+		if split < floor {
+			return r.boundedSplit(data, floor), false
+		}
+	}
+
+	return split, true
+}
+
+// boundedSplit chooses a cut no lower than floor when chained matches leave
+// no clean one. It takes the highest cut whose prefix redacts to something
+// ending in a label, so the prefix ends on a whole match rather than a
+// fragment of one and the next read starts a fresh match where this one
+// ended. If no such cut exists, the prefix ends at floor as is.
+//
+// With a single periodic secret the output is exactly what RedactBytes
+// produces. With several periodic secrets that overlap one another, the
+// labels can differ from RedactBytes and fragments shorter than a secret can
+// remain unredacted around the cut — as they could with the per-chunk
+// redaction this replaced.
+func (r *redactor) boundedSplit(data []byte, floor int) int {
+	for c := len(data) - r.maxLen; c >= floor && c > 0; c-- {
+		head := r.redact(data[:c])
+		for _, key := range r.sortedKeys {
+			if bytes.HasSuffix(head, []byte(r.replacements[key])) {
+				return c
+			}
+		}
+	}
+	return floor
+}
+
 // redactingReader wraps an io.Reader and redacts secrets from the data.
 //
 // Matching spans reads. A secret arriving in two pieces — the tail of one read
 // and the head of the next — is still caught, because any tail that could
-// begin a secret is held back until the following read confirms or refutes it.
+// begin a secret is held back, unredacted, until the following read confirms
+// or refutes it. The output is the same as redacting everything in one go.
 type redactingReader struct {
 	reader   io.Reader
 	redactor *redactor
 	out      []byte // redacted bytes ready for the caller
-	hold     []byte // withheld tail; may be the start of a secret
+	hold     []byte // withheld raw tail; may be the start of a secret
+	inexact  bool   // a bounded cut was taken; output may differ from RedactBytes
 	done     bool   // underlying reader is finished
 	err      error  // its terminal error, returned once out and hold drain
 }
@@ -198,15 +280,15 @@ func (r *redactingReader) Read(p []byte) (int, error) {
 		nRead, readErr := r.reader.Read(readBuf)
 		if nRead > 0 {
 			combined := append(r.hold, readBuf[:nRead]...)
-			redacted := r.redactor.redact(combined)
+			split, exact := r.redactor.safeSplit(combined)
+			if !exact {
+				r.inexact = true
+			}
 
-			keep := r.redactor.pendingLen(redacted)
-			split := len(redacted) - keep
-
-			r.out = redacted[:split]
-			// Copy the tail: redacted may alias combined, whose backing array
+			r.out = r.redactor.redact(combined[:split])
+			// Copy the tail: r.out may alias combined, whose backing array
 			// the next append would overwrite.
-			r.hold = append([]byte(nil), redacted[split:]...)
+			r.hold = append([]byte(nil), combined[split:]...)
 		}
 
 		if readErr != nil {

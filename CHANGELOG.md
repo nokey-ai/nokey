@@ -34,6 +34,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the proxy too, and are blocked unless a rule matches them.
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
+- Streamed redaction now produces exactly what redacting the whole
+  output at once would. The reader replaced a match as soon as it
+  completed, even when a longer form of the same secret was still
+  arriving, so the unpadded base64 of a secret could win over the padded
+  form and let its trailing characters through. The held-back tail is
+  now kept unredacted and the split point moves back past any complete
+  match that runs across it, and a fuzz test checks the invariant over
+  random read boundaries. When two secrets share a value, the label is
+  now always the alphabetically first name instead of depending on map
+  order. The holdback stays within twice the longest pattern even in a
+  long run of a periodic secret such as `aaaaaaaaaaaa`; only when such
+  secrets also overlap each other can the labels chosen there differ.
+  With several overlapping periodic secrets, fragments shorter than a
+  secret can still be left unredacted there, as they could before.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
