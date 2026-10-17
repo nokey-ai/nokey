@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
+	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/token"
 )
 
@@ -2608,5 +2610,121 @@ func TestHandleExec_TimeoutClampNoted(t *testing.T) {
 	want := fmt.Sprintf("[timeout_seconds clamped to %d]\nhi\n", MaxTimeoutSecs)
 	if text := getResultText(t, result); text != want {
 		t.Errorf("result = %q, want %q", text, want)
+	}
+}
+
+func TestCappedBuffer(t *testing.T) {
+	b := &cappedBuffer{limit: 5}
+	for _, chunk := range []string{"ab", "cd", "efg", "h"} {
+		if n, err := b.Write([]byte(chunk)); n != len(chunk) || err != nil {
+			t.Fatalf("Write(%q) = %d, %v; a capped writer must not fail the child's writes", chunk, n, err)
+		}
+	}
+	if got := string(b.buf); got != "abcde" {
+		t.Errorf("kept %q, want %q", got, "abcde")
+	}
+	if b.total != 8 || !b.overflowed() {
+		t.Errorf("total = %d, overflowed = %v; want 8, true", b.total, b.overflowed())
+	}
+
+	under := &cappedBuffer{limit: 5}
+	under.Write([]byte("abcde"))
+	if under.overflowed() {
+		t.Error("output exactly at the limit is not an overflow")
+	}
+}
+
+// runBoth runs script through HandleExec and directly, returning the tool
+// result and the full, uncapped output with the same environment.
+func runBoth(t *testing.T, script string, secrets map[string]string) (got string, full []byte) {
+	t.Helper()
+	h := newTestHandler(t, &mapStore{secrets: secrets}, nil, nil)
+	result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh",
+		"args":    []any{"-c", script},
+	}))
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = os.Environ()
+	for k, v := range secrets {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	full, err = cmd.Output()
+	if err != nil {
+		t.Fatalf("reference run: %v", err)
+	}
+	return getResultText(t, result), full
+}
+
+// Output that fits must come back byte-for-byte as it did when the whole
+// output was buffered, redacted and then truncated.
+func TestHandleExec_OutputUnderCapUnchanged(t *testing.T) {
+	skipOnWindows(t)
+	secrets := map[string]string{"K": "s3cr3t-value-xyz"}
+	// Just under MaxOutputBytes of raw output, each line carrying the secret.
+	script := `i=0; while [ $i -lt 26000 ]; do echo "line $i $K padding-pad"; i=$((i+1)); done`
+
+	got, full := runBoth(t, script, secrets)
+	if len(full) > MaxOutputBytes {
+		t.Fatalf("reference output is %d bytes; the test needs it under %d", len(full), MaxOutputBytes)
+	}
+	if want := string(truncateOutput(redact.RedactBytes(full, secrets), MaxOutputBytes)); got != want {
+		t.Errorf("output changed (len %d vs %d)", len(got), len(want))
+	}
+}
+
+// Output past the cap is a redacted prefix of the full output, marked as
+// truncated, and never longer than MaxOutputBytes.
+func TestHandleExec_OutputOverCapTruncated(t *testing.T) {
+	skipOnWindows(t)
+	secret := "s3cr3t-value-xyz"
+	secrets := map[string]string{"K": secret}
+	// ~2.4 MiB of raw output.
+	script := `i=0; while [ $i -lt 60000 ]; do echo "line $i $K padding-padding"; i=$((i+1)); done`
+
+	got, full := runBoth(t, script, secrets)
+	if len(full) <= MaxOutputBytes {
+		t.Fatalf("reference output is only %d bytes; the test needs more than %d", len(full), MaxOutputBytes)
+	}
+	if len(got) > MaxOutputBytes {
+		t.Errorf("len = %d, want <= %d", len(got), MaxOutputBytes)
+	}
+	body, ok := strings.CutSuffix(got, "\n\n[output truncated]")
+	if !ok {
+		t.Fatal("over-cap output does not report truncation")
+	}
+	if !strings.HasPrefix(string(redact.RedactBytes(full, secrets)), body) {
+		t.Error("over-cap output is not a prefix of the redacted full output")
+	}
+	if strings.Contains(got, secret) {
+		t.Error("output leaks the secret")
+	}
+}
+
+// When redaction shrinks the kept output below the limit, the result must
+// still say it was truncated and must not end in a fragment of a secret
+// that was cut off at the cap.
+func TestCapOutput_ShrinkingRedaction(t *testing.T) {
+	secret := strings.Repeat("S", 100)
+	secrets := map[string]string{"K": secret}
+	slack := redactSlack(secrets)
+
+	// The cap lands 40 bytes into a final copy of the secret.
+	body := strings.Repeat(secret, (MaxOutputBytes+slack)/len(secret)+1)
+	raw := []byte(body[:MaxOutputBytes+slack-40] + secret[:40])
+	b := &cappedBuffer{limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
+
+	out := capOutput(b, secrets)
+	if !bytes.HasSuffix(out, []byte("\n\n[output truncated]")) {
+		t.Errorf("output does not report truncation: tail %q", out[max(0, len(out)-40):])
+	}
+	if bytes.Contains(out, []byte(secret[:20])) {
+		t.Error("output contains a fragment of the secret")
+	}
+	if len(out) > MaxOutputBytes {
+		t.Errorf("len = %d, want <= %d", len(out), MaxOutputBytes)
 	}
 }
