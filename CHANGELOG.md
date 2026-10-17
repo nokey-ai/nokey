@@ -34,6 +34,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the proxy too, and are blocked unless a rule matches them.
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
+- Redaction now catches a secret embedded in a larger base64 value. The
+  password in `curl -u user:${{NOKEY:PASS}}` sits after `user:` inside
+  the `Authorization: Basic` header, usually at an offset that is not a
+  multiple of three bytes, so none of its whole-value encodings appear
+  and it reached the output intact. For each base64 alphabet and each
+  of the three possible offsets, the characters that depend on the
+  secret alone are now matched too; at most a character or two either
+  side, which mix in bits of the neighbouring bytes, survive. The
+  `url.PathEscape` form and the JSON-escaped forms, with and without
+  HTML escaping, are matched as well. Labels are unchanged.
 - Streamed redaction now produces exactly what redacting the whole
   output at once would. The reader replaced a match as soon as it
   completed, even when a longer form of the same secret was still

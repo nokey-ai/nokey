@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/url"
@@ -16,6 +17,13 @@ import (
 // minSecretLenForVariants is the minimum secret length to generate encoding
 // variants. Shorter secrets produce too many false positives.
 const minSecretLenForVariants = 8
+
+// minBase64MiddleLen is the shortest offset base64 form worth matching. Eight
+// characters carry 48 bits taken entirely from the secret, so unrelated base64
+// reproduces one by chance about once in 2^48 positions. With secrets of at
+// least minSecretLenForVariants bytes every middle is ten characters or more,
+// so this is a floor rather than a filter today.
+const minBase64MiddleLen = 8
 
 // redactor handles the actual redaction logic
 type redactor struct {
@@ -101,13 +109,68 @@ func encodingVariants(value string) []string {
 	add(base64.URLEncoding.EncodeToString(raw))
 	add(base64.RawStdEncoding.EncodeToString(raw))
 	add(base64.RawURLEncoding.EncodeToString(raw))
+	// A secret embedded in a longer value — the password in a Basic auth
+	// "user:pass" — lands 0, 1 or 2 bytes into a base64 group, and the
+	// characters at either edge mix in bits from its neighbours.
+	for _, enc := range []*base64.Encoding{
+		base64.StdEncoding, base64.URLEncoding,
+		base64.RawStdEncoding, base64.RawURLEncoding,
+	} {
+		for offset := 0; offset < 3; offset++ {
+			add(base64Middle(enc, raw, offset))
+		}
+	}
 	add(url.QueryEscape(value))
+	add(url.PathEscape(value))
+	add(jsonEscape(value, true))
+	add(jsonEscape(value, false))
 	hexLower := hex.EncodeToString(raw)
 	add(hexLower)
 	hexUpper := strings.ToUpper(hexLower)
 	add(hexUpper)
 
 	return out
+}
+
+// base64Middle returns the characters of raw's base64 encoding that depend on
+// raw alone when raw starts offset bytes into the encoded data. Bytes either
+// side are unknown, so the edge characters that share bits with them are
+// dropped. Padding only ever follows those edges, which is why the padded and
+// unpadded forms of an alphabet give the same middle.
+func base64Middle(enc *base64.Encoding, raw []byte, offset int) string {
+	start := (8*offset + 5) / 6
+	end := 8 * (offset + len(raw)) / 6
+	if end-start < minBase64MiddleLen {
+		return ""
+	}
+
+	// Zero bytes stand in for the unknown neighbours; two trailing ones keep
+	// the last whole character clear of padding.
+	buf := make([]byte, offset+len(raw)+2)
+	copy(buf[offset:], raw)
+	dst := make([]byte, enc.EncodedLen(len(buf)))
+	enc.Encode(dst, buf)
+	middle := string(dst[start:end])
+
+	sensitive.ClearBytes(buf)
+	sensitive.ClearBytes(dst)
+	return middle
+}
+
+// jsonEscape returns value as it appears inside a JSON string, with or without
+// the HTML escaping of <, > and & that encoding/json applies by default.
+func jsonEscape(value string, escapeHTML bool) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(escapeHTML)
+	if err := enc.Encode(value); err != nil {
+		return ""
+	}
+	quoted := bytes.TrimSuffix(buf.Bytes(), []byte("\n"))
+	escaped := string(quoted[1 : len(quoted)-1])
+
+	sensitive.ClearBytes(buf.Bytes())
+	return escaped
 }
 
 // Clear zeros the sensitive data held by the redactor. Keys in the

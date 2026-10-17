@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/rand"
@@ -314,6 +315,99 @@ func TestRedactBytesEncodedVariants(t *testing.T) {
 				t.Errorf("variant %s: got %q, want %q", v.name, got, want)
 			}
 		})
+	}
+}
+
+// TestRedactBytes_BasicAuth is the curl -v -u user:${{NOKEY:PASS}} case. The
+// password sits after "user:" inside the base64, at an offset that is not a
+// multiple of three bytes, so none of its whole-value encodings appear.
+func TestRedactBytes_BasicAuth(t *testing.T) {
+	const secret = "hunter2-correct-horse"
+	secrets := map[string]string{"PASS": secret}
+
+	// One username per base64 offset of the password: 5, 6 and 7 bytes of
+	// "user:" prefix leave it 2, 0 and 1 bytes into a group.
+	for _, user := range []string{"user", "admin", "deploy"} {
+		t.Run(user, func(t *testing.T) {
+			creds := base64.StdEncoding.EncodeToString([]byte(user + ":" + secret))
+			line := "> Authorization: Basic " + creds + "\r\n"
+
+			got := string(RedactBytes([]byte(line), secrets))
+			before, after, ok := strings.Cut(got, "[REDACTED:PASS]")
+			if !ok {
+				t.Fatalf("password not redacted: %q", got)
+			}
+			// What survives either side of the label can only be the
+			// username's encoding, one character that mixes it with the
+			// password, and at the end a boundary character plus padding.
+			before = strings.TrimPrefix(before, "> Authorization: Basic ")
+			after = strings.TrimSuffix(after, "\r\n")
+			if maxBefore := (len(user)+1)*8/6 + 1; len(before) > maxBefore {
+				t.Errorf("%d characters before the label, want at most %d: %q", len(before), maxBefore, got)
+			}
+			if len(after) > 3 {
+				t.Errorf("%d characters after the label, want at most 3: %q", len(after), got)
+			}
+		})
+	}
+}
+
+func TestRedactBytes_PathAndJSONEscaped(t *testing.T) {
+	const secret = "p@ss word/<&>\"quoted\"\\x"
+	secrets := map[string]string{"PW": secret}
+	label := "[REDACTED:PW]"
+
+	jsonNoHTML := func(s string) string {
+		var buf strings.Builder
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		_ = enc.Encode(s)
+		out := strings.TrimSuffix(buf.String(), "\n")
+		return out[1 : len(out)-1]
+	}
+	jsonHTML, _ := json.Marshal(secret)
+
+	for _, v := range []struct {
+		name    string
+		encoded string
+	}{
+		{"path-escape", url.PathEscape(secret)},
+		{"json", string(jsonHTML[1 : len(jsonHTML)-1])},
+		{"json-no-html-escape", jsonNoHTML(secret)},
+	} {
+		t.Run(v.name, func(t *testing.T) {
+			if v.encoded == secret {
+				t.Fatalf("fixture does not exercise %s: encoding is the literal", v.name)
+			}
+			got := string(RedactBytes([]byte(`{"x":"`+v.encoded+`"}`), secrets))
+			if want := `{"x":"` + label + `"}`; got != want {
+				t.Errorf("got %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// TestEncodingVariants_Base64MiddlesAreLongEnough guards against false
+// positives: the offset base64 forms drop boundary characters, so for the
+// shortest secret that gets variants they must still be long enough to be
+// specific to it.
+func TestEncodingVariants_Base64MiddlesAreLongEnough(t *testing.T) {
+	for _, v := range encodingVariants(strings.Repeat("s", minSecretLenForVariants)) {
+		if len(v) < minBase64MiddleLen {
+			t.Errorf("variant %q is shorter than %d", v, minBase64MiddleLen)
+		}
+	}
+}
+
+// TestRedactBytes_LeavesUnrelatedBase64Alone checks that the offset forms do
+// not eat base64 that merely shares a few characters with the secret's.
+func TestRedactBytes_LeavesUnrelatedBase64Alone(t *testing.T) {
+	secrets := map[string]string{"PASS": "hunter2-correct-horse"}
+	for _, plain := range []string{"user:hunter2", "hunter3-correct-horse", "nothing secret in here at all"} {
+		data := []byte(base64.StdEncoding.EncodeToString([]byte(plain)))
+		if got := RedactBytes(data, secrets); !bytes.Equal(got, data) {
+			t.Errorf("unrelated base64 of %q was changed: %q", plain, got)
+		}
 	}
 }
 
