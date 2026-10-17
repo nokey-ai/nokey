@@ -125,15 +125,19 @@ func New(deps Deps) *Handler {
 // RegisterTools adds all MCP tool handlers to the server.
 func (h *Handler) RegisterTools(s *server.MCPServer) {
 	h.mcpSrv = s
-	readOnly := true
+
+	// Annotations: mcp-go's NewTool defaults every tool to destructive and
+	// open-world, so each tool states the hints that differ.
 
 	// list_secrets — read-only, AI needs to know available secret names
 	s.AddTool(
 		mcp.NewTool("list_secrets",
 			mcp.WithDescription("List all stored secret key names (not values)"),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
-				ReadOnlyHint: &readOnly,
-			}),
+			mcp.WithTitleAnnotation("List secret names"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleListSecrets,
 	)
@@ -142,6 +146,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("exec",
 			mcp.WithDescription("Execute a command with secrets injected as environment variables. Output is automatically redacted — secret values are replaced with [REDACTED:KEY_NAME]."),
+			mcp.WithTitleAnnotation("Run command with secrets in env"),
 			mcp.WithString("command",
 				mcp.Required(),
 				mcp.Description("Command to run"),
@@ -174,6 +179,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"Only referenced secrets are fetched. Secrets are never placed in "+
 					"environment variables. Output is automatically redacted.",
 			),
+			mcp.WithTitleAnnotation("Run command with secret placeholders"),
 			mcp.WithString("command",
 				mcp.Required(),
 				mcp.Description("Command to run (must not contain placeholders)"),
@@ -203,6 +209,9 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"The token can be passed to exec or exec_with_secrets to skip per-call approval. "+
 					"Always requires user approval at mint time. Max TTL: 3600 seconds.",
 			),
+			mcp.WithTitleAnnotation("Mint access token"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithArray("secrets",
 				mcp.Required(),
 				mcp.WithStringItems(),
@@ -226,6 +235,9 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("revoke_token",
 			mcp.WithDescription("Revoke an access lease token by ID."),
+			mcp.WithTitleAnnotation("Revoke access token"),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("token_id",
 				mcp.Required(),
 				mcp.Description("The token ID to revoke"),
@@ -238,9 +250,11 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("list_tokens",
 			mcp.WithDescription("List all active access lease tokens."),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
-				ReadOnlyHint: &readOnly,
-			}),
+			mcp.WithTitleAnnotation("List access tokens"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleListTokens,
 	)
@@ -253,6 +267,11 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"based on proxy rules in policies.yaml. Returns the proxy address. "+
 					"Set http_proxy and https_proxy to route requests through it.",
 			),
+			// Idempotent: a second call returns the running proxy's address.
+			mcp.WithTitleAnnotation("Start secret-injecting proxy"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("addr",
 				mcp.Description("Loopback address to listen on (default: 127.0.0.1:0 for random port). "+
 					"Non-loopback addresses are rejected."),
@@ -265,6 +284,10 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("stop_proxy",
 			mcp.WithDescription("Stop the running local HTTP/HTTPS proxy."),
+			mcp.WithTitleAnnotation("Stop proxy"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleStopProxy,
 	)

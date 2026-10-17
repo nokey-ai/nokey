@@ -645,3 +645,31 @@ func TestGetFile_RejectsTraversal(t *testing.T) {
 		t.Error("request reached the API despite a rejected path")
 	}
 }
+
+func TestTools_Annotations(t *testing.T) {
+	type hints struct{ readOnly, destructive, idempotent, openWorld bool }
+	want := map[string]hints{
+		"github_api":          {destructive: true, openWorld: true},
+		"github_create_issue": {openWorld: true},
+		"github_create_pr":    {openWorld: true},
+		"github_list_issues":  {readOnly: true, idempotent: true, openWorld: true},
+		"github_list_prs":     {readOnly: true, idempotent: true, openWorld: true},
+		"github_get_file":     {readOnly: true, idempotent: true, openWorld: true},
+	}
+	got := func(p *bool) bool { return p != nil && *p }
+	for _, tool := range (&GitHub{}).Tools(integration.Deps{}) {
+		w, ok := want[tool.Tool.Name]
+		if !ok {
+			t.Errorf("unexpected tool %s", tool.Tool.Name)
+			continue
+		}
+		a := tool.Tool.Annotations
+		if a.Title == "" {
+			t.Errorf("%s: no title", tool.Tool.Name)
+		}
+		h := hints{got(a.ReadOnlyHint), got(a.DestructiveHint), got(a.IdempotentHint), got(a.OpenWorldHint)}
+		if h != w {
+			t.Errorf("%s: hints %+v, want %+v", tool.Tool.Name, h, w)
+		}
+	}
+}

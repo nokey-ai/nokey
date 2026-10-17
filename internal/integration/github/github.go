@@ -80,6 +80,7 @@ func toolGitHubAPI(client *apiclient.Client) server.ServerTool {
 				"Call any GitHub API endpoint with automatic token injection. "+
 					"Response is automatically redacted to remove secret values.",
 			),
+			mcp.WithTitleAnnotation("Call GitHub API"),
 			mcp.WithString("method",
 				mcp.Required(),
 				mcp.Description("HTTP method (GET, POST, PUT, PATCH, DELETE)"),
@@ -137,6 +138,8 @@ func toolCreateIssue(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_create_issue",
 			mcp.WithDescription("Create a GitHub issue with automatic token injection."),
+			mcp.WithTitleAnnotation("Create GitHub issue"),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("title", mcp.Required(), mcp.Description("Issue title")),
@@ -179,6 +182,8 @@ func toolCreatePR(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_create_pr",
 			mcp.WithDescription("Create a GitHub pull request with automatic token injection."),
+			mcp.WithTitleAnnotation("Create GitHub pull request"),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("title", mcp.Required(), mcp.Description("PR title")),
@@ -221,6 +226,10 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_list_issues",
 			mcp.WithDescription("List issues in a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("List GitHub issues"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
@@ -253,6 +262,10 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_list_prs",
 			mcp.WithDescription("List pull requests in a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("List GitHub pull requests"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
@@ -284,6 +297,10 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_get_file",
 			mcp.WithDescription("Get a file's contents from a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("Get GitHub file"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("path", mcp.Required(), mcp.Description("File path within the repository")),

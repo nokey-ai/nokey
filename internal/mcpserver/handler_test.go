@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -2750,4 +2751,51 @@ func TestHandleExec_FailedRunAuditsSecretNames(t *testing.T) {
 	if len(targets) == 0 || targets[len(targets)-1] != "A" {
 		t.Errorf("audit targets = %q, want the failed run audited as %q", targets, "A")
 	}
+}
+
+// --- tool metadata ---
+
+// wantHints are the annotation hints a tool must advertise. mcp-go's
+// NewTool defaults to destructive and open-world, so a tool that sets
+// nothing is presented to clients as dangerous.
+type wantHints struct {
+	readOnly, destructive, idempotent, openWorld bool
+}
+
+func checkAnnotations(t *testing.T, tools map[string]*server.ServerTool, want map[string]wantHints) {
+	t.Helper()
+	for name, w := range want {
+		st, ok := tools[name]
+		if !ok {
+			t.Errorf("tool %s not registered", name)
+			continue
+		}
+		a := st.Tool.Annotations
+		if a.Title == "" {
+			t.Errorf("%s: no title", name)
+		}
+		got := func(p *bool) bool { return p != nil && *p }
+		if got(a.ReadOnlyHint) != w.readOnly || got(a.DestructiveHint) != w.destructive ||
+			got(a.IdempotentHint) != w.idempotent || got(a.OpenWorldHint) != w.openWorld {
+			t.Errorf("%s: hints readOnly=%v destructive=%v idempotent=%v openWorld=%v, want %+v",
+				name, got(a.ReadOnlyHint), got(a.DestructiveHint), got(a.IdempotentHint), got(a.OpenWorldHint), w)
+		}
+	}
+}
+
+func TestRegisterTools_Annotations(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	s := server.NewMCPServer("nokey-test", "0")
+	h.RegisterTools(s)
+
+	checkAnnotations(t, s.ListTools(), map[string]wantHints{
+		"list_secrets":      {readOnly: true, idempotent: true},
+		"list_tokens":       {readOnly: true, idempotent: true},
+		"exec":              {destructive: true, openWorld: true},
+		"exec_with_secrets": {destructive: true, openWorld: true},
+		"mint_token":        {},
+		"revoke_token":      {destructive: true, idempotent: true},
+		"start_proxy":       {idempotent: true},
+		"stop_proxy":        {idempotent: true},
+	})
 }
