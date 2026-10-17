@@ -104,9 +104,21 @@ func NewAuditEntry(operation, command, authMethod string, secretNames []string, 
 
 // Load reads the audit log from the encrypted file with chain verification.
 func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
-	encKey, err := getOrCreateEncryptionKey(store)
+	encKey, err := encryptionKey(store, false)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get encryption key: %w", err)
+	}
+
+	unlock, err := lockAuditDirForLoad()
+	if err != nil {
+		return nil, err
+	}
+	defer unlock()
+
+	if encKey == nil {
+		if encKey, err = getOrCreateEncryptionKey(store); err != nil {
+			return nil, fmt.Errorf("failed to get encryption key: %w", err)
+		}
 	}
 	hmacKey := deriveHMACKey(encKey)
 
@@ -140,9 +152,8 @@ func Load(store *nokeyKeyring.Store) (*AuditLog, error) {
 
 // recordMu serializes the load-head / append / save-head sequence in
 // Record so concurrent in-process callers (e.g. parallel MCP tool calls)
-// cannot interleave and produce a broken hash chain. Cross-process
-// concurrent writes are still a hazard — a separate file lock would be
-// needed for that case, but today only one nokey process writes the log.
+// cannot interleave and produce a broken hash chain. lockAuditDir does the
+// same across processes.
 var recordMu sync.Mutex
 
 // Record appends a new entry to the audit log file with chain integrity.
@@ -151,9 +162,25 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 	recordMu.Lock()
 	defer recordMu.Unlock()
 
-	encKey, err := getOrCreateEncryptionKey(store)
+	// Fetch the key before taking the audit lock: a Keychain prompt lasts as
+	// long as the user takes to answer it, and every other nokey process
+	// would wait on the lock meanwhile. Only creating the key waits for the
+	// lock, so that two first writers agree on one.
+	encKey, err := encryptionKey(store, false)
 	if err != nil {
 		return fmt.Errorf("failed to get encryption key: %w", err)
+	}
+
+	unlock, err := lockAuditDir()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
+	if encKey == nil {
+		if encKey, err = getOrCreateEncryptionKey(store); err != nil {
+			return fmt.Errorf("failed to get encryption key: %w", err)
+		}
 	}
 	hmacKey := deriveHMACKey(encKey)
 
@@ -176,6 +203,8 @@ func Record(store *nokeyKeyring.Store, entry *AuditEntry, maxEntries, retentionD
 	if err := migrateChainHeadFromKeyring(store, chPath); err != nil {
 		return fmt.Errorf("failed to migrate chain head: %w", err)
 	}
+
+	removeStaleChainHeadTemps(chPath)
 
 	head, err := loadChainHead(chPath)
 	if err != nil {
@@ -297,6 +326,12 @@ func compactFile(filePath, chainHeadPath string, encKey *[32]byte, hmacKey []byt
 
 // Clear removes the audit log file and chain head file.
 func Clear(store *nokeyKeyring.Store) error {
+	unlock, err := lockAuditDir()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+
 	filePath, err := auditLogPath()
 	if err != nil {
 		return err
@@ -737,8 +772,20 @@ func saveChainHead(chainHeadPath string, head *chainHead) error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize chain head: %w", err)
 	}
-	tmpPath := chainHeadPath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	// A unique temp name, so a writer that does not take the audit lock
+	// cannot rename another's half-written head into place.
+	f, err := os.CreateTemp(filepath.Dir(chainHeadPath), chainHeadFileName+".*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to write chain head: %w", err)
+	}
+	tmpPath := f.Name()
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("failed to write chain head: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmpPath)
 		return fmt.Errorf("failed to write chain head: %w", err)
 	}
 	if err := os.Rename(tmpPath, chainHeadPath); err != nil {
@@ -746,6 +793,27 @@ func saveChainHead(chainHeadPath string, head *chainHead) error {
 		return fmt.Errorf("failed to save chain head: %w", err)
 	}
 	return nil
+}
+
+// removeStaleChainHeadTemps deletes chain head temp files that a writer left
+// behind by dying between write and rename, including the fixed
+// chain_head.json.tmp older versions used. Callers hold the audit lock, so
+// no live writer owns one.
+//
+// Names are matched by hand rather than with filepath.Glob, which would read
+// any [, * or ? in the config dir's own path as pattern syntax.
+func removeStaleChainHeadTemps(chainHeadPath string) {
+	dir := filepath.Dir(chainHeadPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if strings.HasPrefix(name, chainHeadFileName) && strings.HasSuffix(name, ".tmp") && !e.IsDir() {
+			_ = os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // migrateChainHeadFromKeyring moves the chain head from keyring to file.
@@ -795,20 +863,26 @@ var (
 // The lock is held across the load so that concurrent first callers do not each
 // trigger their own keyring write — that race would cost an extra keychain prompt.
 func getOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
+	return encryptionKey(store, true)
+}
+
+// encryptionKey is getOrCreateEncryptionKey, except that with create false it
+// returns nil rather than create a key that does not exist yet.
+func encryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byte, error) {
 	cachedEncKeyMu.Lock()
 	defer cachedEncKeyMu.Unlock()
 	if cachedEncKey != nil {
 		return cachedEncKey, nil
 	}
-	key, err := loadOrCreateEncryptionKey(store)
-	if err != nil {
+	key, err := loadOrCreateEncryptionKey(store, create)
+	if err != nil || key == nil {
 		return nil, err
 	}
 	cachedEncKey = key
 	return key, nil
 }
 
-func loadOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
+func loadOrCreateEncryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byte, error) {
 	// Try to load existing key
 	keyStr, err := store.Get(AuditEncryptionKeyKey)
 	if err == nil {
@@ -830,6 +904,10 @@ func loadOrCreateEncryptionKey(store *nokeyKeyring.Store) (*[32]byte, error) {
 		}
 
 		return nil, fmt.Errorf("invalid encryption key length")
+	}
+
+	if !create {
+		return nil, nil
 	}
 
 	// Key doesn't exist, create new one
