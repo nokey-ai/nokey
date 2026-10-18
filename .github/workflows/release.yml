@@ -22,7 +22,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.7"
+          go-version: "1.26.9"
 
       - name: Test
         run: go test ./...
@@ -41,7 +41,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version: "1.26.7"
+          go-version: "1.26.9"
 
       # The indirect dependency on github.com/1password/onepassword-sdk-go
       # (pulled in via byteness/keyring's opdesktop.go) fails to cross-compile
