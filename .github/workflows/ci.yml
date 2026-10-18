@@ -82,6 +82,15 @@ jobs:
       - name: Check go.mod and go.sum are tidy
         run: go mod tidy -diff
 
+      # Windows ships but has no CI runner here; vetting for it catches
+      # build breaks in the windows-tagged files (redact, audit lock) and
+      # type-checks the tests against them. The Windows build is CGO-free,
+      # so it cross-compiles cleanly from Linux.
+      - name: Vet for Windows
+        env:
+          GOOS: windows
+        run: go vet ./...
+
   vulncheck:
     runs-on: ubuntu-latest
     steps:
