@@ -34,6 +34,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the proxy too, and are blocked unless a rule matches them.
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
+- Redaction now catches a secret embedded in a larger base64 value. The
+  password in `curl -u user:${{NOKEY:PASS}}` sits after `user:` inside
+  the `Authorization: Basic` header, usually at an offset that is not a
+  multiple of three bytes, so none of its whole-value encodings appear
+  and it reached the output intact. For each base64 alphabet and each
+  of the three possible offsets, the characters that depend on the
+  secret alone are now matched too; at most a character or two either
+  side, which mix in bits of the neighbouring bytes, survive. The
+  `url.PathEscape` form and the JSON-escaped forms, with and without
+  HTML escaping, are matched as well. Labels are unchanged.
+- Streamed redaction now produces exactly what redacting the whole
+  output at once would. The reader replaced a match as soon as it
+  completed, even when a longer form of the same secret was still
+  arriving, so the unpadded base64 of a secret could win over the padded
+  form and let its trailing characters through. The held-back tail is
+  now kept unredacted and the split point moves back past any complete
+  match that runs across it, and a fuzz test checks the invariant over
+  random read boundaries. When two secrets share a value, the label is
+  now always the alphabetically first name instead of depending on map
+  order. The holdback stays within twice the longest pattern even in a
+  long run of a periodic secret such as `aaaaaaaaaaaa`; only when such
+  secrets also overlap each other can the labels chosen there differ.
+  With several overlapping periodic secrets, fragments shorter than a
+  secret can still be left unredacted there, as they could before.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
@@ -64,6 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactive terminal. The stdin forwarder was waited on during
   teardown, but it sits blocked reading the terminal, so `nokey` only
   returned after the next keystroke.
+
+### Changed
+- Redaction no longer copies the output once per pattern. Each
+  secret's patterns are converted to bytes once, a pattern is replaced
+  only when it is present, and the redacting reader reuses its read
+  buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
+  65 allocations to none, and runs about 1.8x faster.
 
 ## [0.5.3] - 2026-08-31
 
