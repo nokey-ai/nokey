@@ -206,6 +206,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- `exec` no longer drops its arguments. The tool schema declares `args`
+  as a string holding a JSON array, which is what schema-following
+  clients send, but the handler only read a native array and treated a
+  string as no arguments at all, so `{"command": "echo", "args":
+  "[\"hi\"]"}` ran a bare `echo`. Both exec tools now accept either
+  form and reject a string that isn't a JSON array of strings.
+- MCP exec timeouts are reported as timeouts, and actually end the run.
+  A child killed at the deadline surfaces as an exit error, so the
+  "timed out" branch was unreachable and a timeout came back as
+  `[exit code: -1]`. Worse, a background process that inherited the
+  output pipe (`sh -c "server & …"`) kept the read open after the kill,
+  so the call blocked until that process exited, regardless of
+  `timeout_seconds`. Commands now run in their own process group, which
+  is killed as a whole at the deadline (on Windows the direct child is
+  killed and the wait is bounded), and the result is an error with the
+  same `command timed out after N seconds` message followed by whatever
+  output was produced, redacted. A command that exits normally but
+  leaves a background process holding its output returns its output and
+  exit code once the two-second wait for that process runs out. A
+  `timeout_seconds` above 300 now says it was clamped.
+- MCP exec no longer buffers unbounded output. The whole of a command's
+  output was held in memory and only cut to 1 MiB afterwards, so a
+  chatty or hostile command could grow the long-lived `nokey mcp serve`
+  process without limit. Output is now capped as it arrives, just past
+  1 MiB so a secret straddling the limit is still redacted whole, and
+  the raw buffer is zeroed once redacted. Output under the limit is
+  returned byte-for-byte as before; longer output is still a redacted
+  prefix ending in `[output truncated]`, though when redaction shortens
+  it the prefix can now be shorter than 1 MiB.
+- When an MCP `exec` command times out or can't be started, the audit
+  entry now names the secrets that were injected, as `exec_with_secrets`
+  and every successful run already did, instead of recording `all`.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of

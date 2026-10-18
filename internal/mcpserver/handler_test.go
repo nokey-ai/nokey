@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -17,6 +19,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
+	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/token"
 )
 
@@ -2430,5 +2433,321 @@ func TestHandleRevokeToken_AuditsHashedID(t *testing.T) {
 		if !strings.HasPrefix(target, "sha256:") {
 			t.Errorf("audit target %q, want a sha256: prefix", target)
 		}
+	}
+}
+
+// --- exec correctness ---
+
+// The exec schema declares args as a string ("JSON array of strings"), so
+// that is what schema-following clients send. It must not be dropped.
+func TestHandleExec_ArgsAsJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    `["hello", "world"]`,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if text := getResultText(t, result); text != "hello world\n" {
+		t.Errorf("result = %q, want %q", text, "hello world\n")
+	}
+}
+
+func TestHandleExecWithSecrets_ArgsAsJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    `["v=${{NOKEY:K}}"]`,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if text := getResultText(t, result); text != "v=[REDACTED:K]\n" {
+		t.Errorf("result = %q, want %q", text, "v=[REDACTED:K]\n")
+	}
+}
+
+func TestHandleExec_ArgsInvalidJSONString(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	for _, args := range []string{`hello`, `{"a":1}`, `[1, 2]`} {
+		req := makeCallToolRequest(map[string]any{"command": "echo", "args": args})
+		result, err := h.HandleExec(context.Background(), req)
+		if err != nil {
+			t.Fatalf("HandleExec: %v", err)
+		}
+		if !result.IsError || !strings.Contains(getResultText(t, result), "'args'") {
+			t.Errorf("args %q: result = %q, want an 'args' error", args, getResultText(t, result))
+		}
+	}
+}
+
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses sh")
+	}
+}
+
+// A context-killed child surfaces as an *exec.ExitError ("signal: killed"),
+// so the timeout must be detected from the context, not the error type.
+func TestHandleExec_TimeoutReported(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo started $K; sleep 30"},
+		"timeout_seconds": 1,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	if !result.IsError {
+		t.Errorf("timed-out run should be an error result, got %q", text)
+	}
+	// The old message stays as the prefix for clients that match on it.
+	if !strings.HasPrefix(text, "command timed out after 1 seconds\n") {
+		t.Errorf("result = %q, want the timeout message first", text)
+	}
+	if !strings.Contains(text, "started [REDACTED:K]") {
+		t.Errorf("result = %q, want the partial output, redacted", text)
+	}
+}
+
+func TestHandleExecWithSecrets_TimeoutReported(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{"K": "secret-value"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo started ${{NOKEY:K}}; sleep 30"},
+		"timeout_seconds": 1,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	text := getResultText(t, result)
+	if !strings.HasPrefix(text, "command timed out after 1 seconds\n") || !strings.Contains(text, "started [REDACTED:K]") {
+		t.Errorf("result = %q, want a timeout header and redacted partial output", text)
+	}
+}
+
+// A background grandchild that inherits the output pipe used to keep the
+// read open long after the timeout killed the direct child.
+func TestHandleExec_TimeoutKillsProcessTree(t *testing.T) {
+	skipOnWindows(t)
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "sleep 30 & echo started; wait"},
+		"timeout_seconds": 1,
+	})
+	start := time.Now()
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 10*time.Second {
+		t.Errorf("returned after %s; the timeout should end the whole process tree", elapsed)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "timed out") {
+		t.Errorf("result = %q, want a timeout", text)
+	}
+}
+
+// A daemonised grandchild that keeps the output pipe open makes Wait
+// return ErrWaitDelay once WaitDelay expires, even though the command
+// itself exited. That is still a finished run, not a failure to execute.
+func TestHandleExec_GrandchildHoldingPipeKeepsResult(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+
+	for script, want := range map[string]string{
+		"(sleep 4 &); echo done":         "done\n",
+		"(sleep 4 &); echo done; exit 3": "[exit code: 3]\ndone\n",
+	} {
+		result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+			"command": "sh", "args": []any{"-c", script},
+		}))
+		if err != nil {
+			t.Fatalf("HandleExec: %v", err)
+		}
+		if got := getResultText(t, result); result.IsError || got != want {
+			t.Errorf("%s: result = %q (error %v), want %q", script, got, result.IsError, want)
+		}
+	}
+}
+
+func TestHandleExec_TimeoutClampNoted(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	h := newTestHandler(t, store, nil, nil)
+
+	req := makeCallToolRequest(map[string]any{
+		"command":         "echo",
+		"args":            []any{"hi"},
+		"timeout_seconds": 9999,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	want := fmt.Sprintf("[timeout_seconds clamped to %d]\nhi\n", MaxTimeoutSecs)
+	if text := getResultText(t, result); text != want {
+		t.Errorf("result = %q, want %q", text, want)
+	}
+}
+
+func TestCappedBuffer(t *testing.T) {
+	b := &cappedBuffer{limit: 5}
+	for _, chunk := range []string{"ab", "cd", "efg", "h"} {
+		if n, err := b.Write([]byte(chunk)); n != len(chunk) || err != nil {
+			t.Fatalf("Write(%q) = %d, %v; a capped writer must not fail the child's writes", chunk, n, err)
+		}
+	}
+	if got := string(b.buf); got != "abcde" {
+		t.Errorf("kept %q, want %q", got, "abcde")
+	}
+	if b.total != 8 || !b.overflowed() {
+		t.Errorf("total = %d, overflowed = %v; want 8, true", b.total, b.overflowed())
+	}
+
+	under := &cappedBuffer{limit: 5}
+	under.Write([]byte("abcde"))
+	if under.overflowed() {
+		t.Error("output exactly at the limit is not an overflow")
+	}
+}
+
+// runBoth runs script through HandleExec and directly, returning the tool
+// result and the full, uncapped output with the same environment.
+func runBoth(t *testing.T, script string, secrets map[string]string) (got string, full []byte) {
+	t.Helper()
+	h := newTestHandler(t, &mapStore{secrets: secrets}, nil, nil)
+	result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh",
+		"args":    []any{"-c", script},
+	}))
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Env = os.Environ()
+	for k, v := range secrets {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
+	full, err = cmd.Output()
+	if err != nil {
+		t.Fatalf("reference run: %v", err)
+	}
+	return getResultText(t, result), full
+}
+
+// Output that fits must come back byte-for-byte as it did when the whole
+// output was buffered, redacted and then truncated.
+func TestHandleExec_OutputUnderCapUnchanged(t *testing.T) {
+	skipOnWindows(t)
+	secrets := map[string]string{"K": "s3cr3t-value-xyz"}
+	// Just under MaxOutputBytes of raw output, each line carrying the secret.
+	script := `i=0; while [ $i -lt 26000 ]; do echo "line $i $K padding-pad"; i=$((i+1)); done`
+
+	got, full := runBoth(t, script, secrets)
+	if len(full) > MaxOutputBytes {
+		t.Fatalf("reference output is %d bytes; the test needs it under %d", len(full), MaxOutputBytes)
+	}
+	if want := string(truncateOutput(redact.RedactBytes(full, secrets), MaxOutputBytes)); got != want {
+		t.Errorf("output changed (len %d vs %d)", len(got), len(want))
+	}
+}
+
+// Output past the cap is a redacted prefix of the full output, marked as
+// truncated, and never longer than MaxOutputBytes.
+func TestHandleExec_OutputOverCapTruncated(t *testing.T) {
+	skipOnWindows(t)
+	secret := "s3cr3t-value-xyz"
+	secrets := map[string]string{"K": secret}
+	// ~2.4 MiB of raw output.
+	script := `i=0; while [ $i -lt 60000 ]; do echo "line $i $K padding-padding"; i=$((i+1)); done`
+
+	got, full := runBoth(t, script, secrets)
+	if len(full) <= MaxOutputBytes {
+		t.Fatalf("reference output is only %d bytes; the test needs more than %d", len(full), MaxOutputBytes)
+	}
+	if len(got) > MaxOutputBytes {
+		t.Errorf("len = %d, want <= %d", len(got), MaxOutputBytes)
+	}
+	body, ok := strings.CutSuffix(got, "\n\n[output truncated]")
+	if !ok {
+		t.Fatal("over-cap output does not report truncation")
+	}
+	if !strings.HasPrefix(string(redact.RedactBytes(full, secrets)), body) {
+		t.Error("over-cap output is not a prefix of the redacted full output")
+	}
+	if strings.Contains(got, secret) {
+		t.Error("output leaks the secret")
+	}
+}
+
+// When redaction shrinks the kept output below the limit, the result must
+// still say it was truncated and must not end in a fragment of a secret
+// that was cut off at the cap.
+func TestCapOutput_ShrinkingRedaction(t *testing.T) {
+	secret := strings.Repeat("S", 100)
+	secrets := map[string]string{"K": secret}
+	slack := redactSlack(secrets)
+
+	// The cap lands 40 bytes into a final copy of the secret.
+	body := strings.Repeat(secret, (MaxOutputBytes+slack)/len(secret)+1)
+	raw := []byte(body[:MaxOutputBytes+slack-40] + secret[:40])
+	b := &cappedBuffer{limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
+
+	out := capOutput(b, secrets)
+	if !bytes.HasSuffix(out, []byte("\n\n[output truncated]")) {
+		t.Errorf("output does not report truncation: tail %q", out[max(0, len(out)-40):])
+	}
+	if bytes.Contains(out, []byte(secret[:20])) {
+		t.Error("output contains a fragment of the secret")
+	}
+	if len(out) > MaxOutputBytes {
+		t.Errorf("len = %d, want <= %d", len(out), MaxOutputBytes)
+	}
+}
+
+// Once the secrets are known, a failed run is audited against them, the
+// same as a successful one, not as "all".
+func TestHandleExec_FailedRunAuditsSecretNames(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"A": "1", "B": "2"}}
+	var targets []string
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       config.DefaultConfig(),
+		ApprovalFn:   func(context.Context, approval.Requester, string, []string, string) error { return nil },
+		AuditFn:      func(_, _, target string, _ bool, _ string) { targets = append(targets, target) },
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	req := makeCallToolRequest(map[string]any{"command": "nokey-no-such-command", "only": "A"})
+	if _, err := h.HandleExec(context.Background(), req); err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	if len(targets) == 0 || targets[len(targets)-1] != "A" {
+		t.Errorf("audit targets = %q, want the failed run audited as %q", targets, "A")
 	}
 }

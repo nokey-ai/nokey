@@ -1,9 +1,12 @@
 package mcpserver
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -409,7 +412,10 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError("command must not contain '..' (path traversal)"), nil
 	}
 
-	args := request.GetStringSlice("args", nil)
+	args, err := argsParam(request)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	only := request.GetString("only", "")
 	except := request.GetString("except", "")
 
@@ -418,13 +424,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	timeoutSecs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
-	if timeoutSecs <= 0 {
-		timeoutSecs = DefaultTimeoutSecs
-	}
-	if timeoutSecs > MaxTimeoutSecs {
-		timeoutSecs = MaxTimeoutSecs
-	}
+	timeoutSecs, clamped := timeoutParam(request)
 
 	// Open keyring (no PIN auth — OS keyring ACL is the gate). Enumerate names
 	// first so we can apply policy/approval *before* reading any secret values.
@@ -471,49 +471,14 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer sensitive.ClearMap(secrets)
 
-	// Execute command with timeout
-	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
-	defer cancel()
-
-	cmd := osexec.CommandContext(execCtx, command, args...)
-	cmd.Env = env.MergeEnvironment(os.Environ(), secrets)
-	cmd.Stdin = nil // non-interactive — stdin is the MCP JSON-RPC transport
-
-	output, execErr := cmd.CombinedOutput()
-
-	// Always redact output
-	output = redact.RedactBytes(output, secrets)
-
-	// Truncate if needed
-	output = truncateOutput(output, MaxOutputBytes)
-
-	// Build result text
-	exitCode := 0
-	if execErr != nil {
-		if exitError, ok := execErr.(*osexec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		} else if execCtx.Err() == context.DeadlineExceeded {
-			h.recordAudit("mcp:exec", command, "all", false, "timeout")
-			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs)), nil
-		} else {
-			h.recordAudit("mcp:exec", command, "all", false, execErr.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", execErr)), nil
-		}
-	}
-
-	// Record audit
-	errMsg := ""
-	if execErr != nil {
-		errMsg = execErr.Error()
-	}
-	h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
-
-	resultText := string(output)
-	if exitCode != 0 {
-		resultText = fmt.Sprintf("[exit code: %d]\n%s", exitCode, resultText)
-	}
-
-	return mcp.NewToolResultText(resultText), nil
+	res := runRedacted(ctx, runSpec{
+		command: command,
+		args:    args,
+		env:     env.MergeEnvironment(os.Environ(), secrets),
+		secrets: secrets,
+		timeout: time.Duration(timeoutSecs) * time.Second,
+	})
+	return h.execOutcome("mcp:exec", command, secretNames, timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -530,15 +495,12 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError("placeholders are not allowed in 'command' — use them only in 'args'"), nil
 	}
 
-	args := request.GetStringSlice("args", nil)
+	args, err := argsParam(request)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
-	timeoutSecs := request.GetInt("timeout_seconds", DefaultTimeoutSecs)
-	if timeoutSecs <= 0 {
-		timeoutSecs = DefaultTimeoutSecs
-	}
-	if timeoutSecs > MaxTimeoutSecs {
-		timeoutSecs = MaxTimeoutSecs
-	}
+	timeoutSecs, clamped := timeoutParam(request)
 
 	// Extract referenced secret names from args
 	secretNames := placeholder.Extract("", args)
@@ -588,44 +550,14 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	}
 
 	// Execute with clean environment (no secrets in env vars)
-	execCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSecs)*time.Second)
-	defer cancel()
-
-	cmd := osexec.CommandContext(execCtx, command, resolvedArgs...)
-	cmd.Env = os.Environ()
-	cmd.Stdin = nil
-
-	output, execErr := cmd.CombinedOutput()
-
-	// Always redact output
-	output = redact.RedactBytes(output, secrets)
-	output = truncateOutput(output, MaxOutputBytes)
-
-	exitCode := 0
-	if execErr != nil {
-		if exitError, ok := execErr.(*osexec.ExitError); ok {
-			exitCode = exitError.ExitCode()
-		} else if execCtx.Err() == context.DeadlineExceeded {
-			h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, "timeout")
-			return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds", timeoutSecs)), nil
-		} else {
-			h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, execErr.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", execErr)), nil
-		}
-	}
-
-	errMsg := ""
-	if execErr != nil {
-		errMsg = execErr.Error()
-	}
-	h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), execErr == nil, errMsg)
-
-	resultText := string(output)
-	if exitCode != 0 {
-		resultText = fmt.Sprintf("[exit code: %d]\n%s", exitCode, resultText)
-	}
-
-	return mcp.NewToolResultText(resultText), nil
+	res := runRedacted(ctx, runSpec{
+		command: command,
+		args:    resolvedArgs,
+		env:     os.Environ(),
+		secrets: secrets,
+		timeout: time.Duration(timeoutSecs) * time.Second,
+	})
+	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, timeoutSecs, clamped, res), nil
 }
 
 func (h *Handler) HandleMintToken(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -893,6 +825,199 @@ func (h *Handler) mintSessionToken(ctx context.Context, secretNames []string) er
 	return nil
 }
 
+// argsParam reads the "args" parameter. exec's schema declares it as a
+// string holding a JSON array, so that form is accepted alongside a plain
+// array; GetStringSlice alone silently drops a string.
+func argsParam(request mcp.CallToolRequest) ([]string, error) {
+	raw, ok := request.GetArguments()["args"].(string)
+	if !ok {
+		return request.GetStringSlice("args", nil), nil
+	}
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	var args []string
+	if err := json.Unmarshal([]byte(raw), &args); err != nil {
+		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %s", err)
+	}
+	return args, nil
+}
+
+// timeoutParam reads timeout_seconds, defaulting non-positive values and
+// clamping to MaxTimeoutSecs. clamped reports that the caller asked for
+// more than the maximum, so the result can say so.
+func timeoutParam(request mcp.CallToolRequest) (secs int, clamped bool) {
+	secs = request.GetInt("timeout_seconds", DefaultTimeoutSecs)
+	if secs <= 0 {
+		secs = DefaultTimeoutSecs
+	}
+	if secs > MaxTimeoutSecs {
+		return MaxTimeoutSecs, true
+	}
+	return secs, false
+}
+
+// runSpec describes a command for runRedacted.
+type runSpec struct {
+	command string
+	args    []string
+	env     []string
+	secrets map[string]string // values redacted from the output
+	timeout time.Duration
+}
+
+// runResult is what runRedacted observed. output is already redacted and
+// truncated, so it is safe to return to the model.
+type runResult struct {
+	output   []byte
+	err      error
+	timedOut bool
+}
+
+// killWaitDelay bounds how long a run may outlive its timeout while
+// something still holds the output pipe open.
+const killWaitDelay = 2 * time.Second
+
+// runRedacted runs spec non-interactively (stdin is the MCP JSON-RPC
+// transport, so the child gets none) and returns its redacted output.
+func runRedacted(ctx context.Context, spec runSpec) runResult {
+	execCtx, cancel := context.WithTimeout(ctx, spec.timeout)
+	defer cancel()
+
+	cmd := osexec.CommandContext(execCtx, spec.command, spec.args...)
+	cmd.Env = spec.env
+	cmd.Stdin = nil
+	// On timeout kill the whole process tree, not just the direct child:
+	// a background grandchild would otherwise keep the pipe open and the
+	// read blocked. WaitDelay is the backstop where that isn't possible.
+	killProcessTreeOnCancel(cmd)
+	cmd.WaitDelay = killWaitDelay
+
+	// Keep only what can reach the result instead of buffering everything
+	// the command prints. The same writer for both streams preserves
+	// CombinedOutput's interleaving.
+	buf := &cappedBuffer{limit: MaxOutputBytes + redactSlack(spec.secrets)}
+	cmd.Stdout = buf
+	cmd.Stderr = buf
+	err := cmd.Run()
+	// ErrWaitDelay means the command exited 0 but something it started
+	// still held the output open (a daemonised child, say). The run itself
+	// finished, so keep its output rather than calling it a failure.
+	if errors.Is(err, osexec.ErrWaitDelay) {
+		err = nil
+	}
+
+	// Always redact output. Clone before zeroing the raw buffer: with
+	// nothing to replace, redaction and truncation return it as is.
+	output := bytes.Clone(capOutput(buf, spec.secrets))
+	sensitive.ClearBytes(buf.buf)
+
+	return runResult{
+		output:   output,
+		err:      err,
+		timedOut: errors.Is(execCtx.Err(), context.DeadlineExceeded),
+	}
+}
+
+// cappedBuffer is an io.Writer that keeps the first limit bytes written and
+// counts the rest. It never fails a write, so the child isn't killed by
+// SIGPIPE or a short write when its output runs long.
+type cappedBuffer struct {
+	buf   []byte
+	limit int
+	total int64
+}
+
+func (b *cappedBuffer) Write(p []byte) (int, error) {
+	b.total += int64(len(p))
+	if room := b.limit - len(b.buf); room > 0 {
+		b.buf = append(b.buf, p[:min(room, len(p))]...)
+	}
+	return len(p), nil
+}
+
+// overflowed reports whether output was dropped.
+func (b *cappedBuffer) overflowed() bool {
+	return b.total > int64(len(b.buf))
+}
+
+// redactSlack is how far past MaxOutputBytes a cappedBuffer keeps, so that
+// a secret straddling the MaxOutputBytes mark is still whole and gets
+// redacted exactly as it would have been in the full output. It is a
+// generous bound on the longest form redact matches: the value, its
+// base64/hex/URL encodings, or a JSON \uXXXX escape at 6 bytes per byte.
+func redactSlack(secrets map[string]string) int {
+	longest := 0
+	for _, v := range secrets {
+		longest = max(longest, len(v))
+	}
+	return 6*longest + 4
+}
+
+// capOutput redacts and truncates what a cappedBuffer kept. Output that fit
+// is treated exactly as before the cap existed.
+func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
+	out := redact.RedactBytes(b.buf, secrets)
+	if !b.overflowed() {
+		return truncateOutput(out, MaxOutputBytes)
+	}
+	// The cap may have cut a secret, or an encoding of one, leaving a
+	// prefix that redaction can't recognise. That fragment is unchanged by
+	// redaction and sits in the last redactSlack-1 bytes, so drop them.
+	// Redaction can also shrink the output below MaxOutputBytes, so the
+	// truncation notice is added explicitly rather than by length.
+	drop := min(redactSlack(secrets)-1, len(out))
+	return withTruncationNotice(out[:len(out)-drop], MaxOutputBytes)
+}
+
+// exitCode returns the exit status carried by err, if it has one.
+func exitCode(err error) (int, bool) {
+	var exitErr *osexec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), true
+	}
+	return 0, false
+}
+
+// execOutcome records the audit entry for a finished run and builds the
+// tool result.
+func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
+	target := strings.Join(secretNames, ",")
+	note := ""
+	if clamped {
+		note = fmt.Sprintf("[timeout_seconds clamped to %d]\n", MaxTimeoutSecs)
+	}
+
+	// Check the deadline first: a child killed by it reports an ExitError
+	// ("signal: killed"), which would otherwise read as an ordinary exit.
+	if res.timedOut {
+		h.recordAudit(op, command, target, false, "timeout")
+		return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.output))
+	}
+
+	code := 0
+	if res.err != nil {
+		if c, ok := exitCode(res.err); ok {
+			code = c
+		} else {
+			h.recordAudit(op, command, target, false, res.err.Error())
+			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
+		}
+	}
+
+	errMsg := ""
+	if res.err != nil {
+		errMsg = res.err.Error()
+	}
+	h.recordAudit(op, command, target, res.err == nil, errMsg)
+
+	resultText := string(res.output)
+	if code != 0 {
+		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
+	}
+	return mcp.NewToolResultText(note + resultText)
+}
+
 // requireSecretsExist returns an error naming any of names that isn't stored.
 func requireSecretsExist(store SecretStore, names []string) error {
 	stored, err := store.List()
@@ -918,15 +1043,24 @@ func tokenFingerprint(id string) string {
 	return "sha256:" + hex.EncodeToString(sum[:6])
 }
 
+// truncationNotice ends output that was cut short.
+const truncationNotice = "\n\n[output truncated]"
+
 // truncateOutput truncates output to maxBytes, appending a truncation notice.
 func truncateOutput(data []byte, maxBytes int) []byte {
 	if len(data) <= maxBytes {
 		return data
 	}
-	notice := "\n\n[output truncated]"
-	truncated := make([]byte, maxBytes)
-	copy(truncated, data[:maxBytes-len(notice)])
-	copy(truncated[maxBytes-len(notice):], notice)
+	return withTruncationNotice(data, maxBytes)
+}
+
+// withTruncationNotice returns data, cut if necessary, followed by the
+// truncation notice, in at most maxBytes.
+func withTruncationNotice(data []byte, maxBytes int) []byte {
+	keep := min(len(data), maxBytes-len(truncationNotice))
+	truncated := make([]byte, keep+len(truncationNotice))
+	copy(truncated, data[:keep])
+	copy(truncated[keep:], truncationNotice)
 	return truncated
 }
 
