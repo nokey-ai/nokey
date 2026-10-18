@@ -3,6 +3,7 @@
 package redact
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -126,7 +127,8 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	// Get exit code
 	exitCode := 0
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
 			exitCode = exitError.ExitCode()
 		} else {
 			return 1, fmt.Errorf("command execution failed: %w", err)
