@@ -68,6 +68,20 @@ jobs:
       - name: golangci-lint
         run: golangci-lint run --timeout=5m
 
+      # golangci-lint covers formatting too, but this names the files and
+      # does not depend on the linter's config staying in step.
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Check go.mod and go.sum are tidy
+        run: go mod tidy -diff
+
   vulncheck:
     runs-on: ubuntu-latest
     steps:
