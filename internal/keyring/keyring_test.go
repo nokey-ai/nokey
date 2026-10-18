@@ -1138,3 +1138,18 @@ func TestDedicatedKeychainPath(t *testing.T) {
 		t.Errorf("non-darwin path should be empty, got %q", got)
 	}
 }
+
+// TestStore_WrappedNotFound checks a backend that wraps ErrKeyNotFound is
+// still reported as a missing secret, which IsNotFound callers rely on.
+func TestStore_WrappedNotFound(t *testing.T) {
+	wrapped := fmt.Errorf("backend: %w", keyring.ErrKeyNotFound)
+	ring := &errorRing{mockRing: *newMockRing(), getErr: wrapped, removeErr: wrapped}
+	s := NewWithRing(ring, "test")
+
+	if _, err := s.Get("KEY"); !IsNotFound(err) {
+		t.Errorf("Get error = %v, want a not-found error", err)
+	}
+	if err := s.Delete("KEY"); !IsNotFound(err) {
+		t.Errorf("Delete error = %v, want a not-found error", err)
+	}
+}

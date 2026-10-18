@@ -1,8 +1,10 @@
 package policy
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -182,10 +184,86 @@ func TestStore_CurrentHandlesDeletion(t *testing.T) {
 		t.Fatalf("remove: %v", err)
 	}
 
-	got := s.Current()
-	if got != nil {
-		t.Errorf("Current after deletion = %+v, want nil (allow-all)", got)
+	clock := time.Now()
+	s.now = func() time.Time { return clock }
+
+	// A brief absence is not enough: an editor that deletes and rewrites the
+	// file must not open a window in which everything is allowed.
+	stderr := captureStderr(t, func() {
+		if got := s.Current(); got == nil {
+			t.Error("Current right after deletion = nil, want the previous policy kept")
+		}
+		clock = clock.Add(time.Second)
+		if got := s.Current(); got == nil {
+			t.Error("Current 1s after deletion = nil, want the previous policy kept")
+		}
+	})
+	if stderr != "" {
+		t.Errorf("warned before dropping the policy: %q", stderr)
 	}
+
+	clock = clock.Add(time.Second)
+	stderr = captureStderr(t, func() {
+		if got := s.Current(); got != nil {
+			t.Errorf("Current 2s after deletion = %+v, want nil (allow-all)", got)
+		}
+	})
+	if !strings.Contains(stderr, "policies.yaml") {
+		t.Errorf("dropping to allow-all did not warn on stderr, got %q", stderr)
+	}
+}
+
+func TestStore_CurrentKeepsPolicyWhenFileReturns(t *testing.T) {
+	dir := t.TempDir()
+	const content = `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`
+	writePolicy(t, dir, content, 0)
+
+	s, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	clock := time.Now()
+	s.now = func() time.Time { return clock }
+
+	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	_ = s.Current()
+	clock = clock.Add(1500 * time.Millisecond)
+	writePolicy(t, dir, content, time.Second)
+
+	// The file came back, so its absence restarts the clock.
+	_ = s.Current()
+	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	_ = s.Current()
+	clock = clock.Add(1500 * time.Millisecond)
+	if got := s.Current(); got == nil {
+		t.Error("policy dropped 1.5s after the file went missing again")
+	}
+}
+
+// captureStderr runs fn with os.Stderr redirected and returns what it wrote.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+
+	fn()
+
+	_ = w.Close()
+	out, _ := io.ReadAll(r)
+	_ = r.Close()
+	return string(out)
 }
 
 func TestStore_CurrentHandlesLateCreation(t *testing.T) {

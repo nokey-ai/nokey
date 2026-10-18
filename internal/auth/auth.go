@@ -29,6 +29,19 @@ const (
 	argon2SaltLen = 16
 )
 
+// Bounds on the Argon2id parameters accepted from a stored hash. The hash
+// comes from the keyring, and argon2.IDKey panics on zero time or threads and
+// allocates whatever memory it is asked for, so out-of-range values are
+// refused rather than passed on. The ranges leave ample room around what
+// HashPINArgon2id writes.
+const (
+	maxArgon2Time    = 16
+	maxArgon2Memory  = 1024 * 1024 // 1 GB
+	maxArgon2Threads = 16
+	minArgon2SaltLen = 8
+	minArgon2KeyLen  = 16
+)
+
 // Terminal interaction functions, overridable for testing.
 var (
 	isTerminalFn             = func(fd int) bool { return term.IsTerminal(fd) }
@@ -131,12 +144,21 @@ func verifyArgon2id(pin, encoded string) (bool, error) {
 		return false, fmt.Errorf("invalid argon2id hash format")
 	}
 
+	if parts[2] != fmt.Sprintf("v=%d", argon2.Version) {
+		return false, fmt.Errorf("unsupported argon2id version %q", parts[2])
+	}
+
 	var memory uint32
 	var time uint32
 	var threads uint8
 	_, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &time, &threads)
 	if err != nil {
 		return false, fmt.Errorf("invalid argon2id parameters: %w", err)
+	}
+	if time < 1 || time > maxArgon2Time ||
+		threads < 1 || threads > maxArgon2Threads ||
+		memory < 8*uint32(threads) || memory > maxArgon2Memory {
+		return false, fmt.Errorf("argon2id parameters out of range: %s", parts[3])
 	}
 
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
@@ -147,6 +169,9 @@ func verifyArgon2id(pin, encoded string) (bool, error) {
 	expectedHash, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
 		return false, fmt.Errorf("invalid hash encoding: %w", err)
+	}
+	if len(salt) < minArgon2SaltLen || len(expectedHash) < minArgon2KeyLen {
+		return false, fmt.Errorf("argon2id salt or hash too short")
 	}
 
 	// Compute hash with same parameters

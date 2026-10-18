@@ -34,6 +34,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   through the proxy too, and are blocked unless a rule matches them.
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
+- A corrupted or planted PIN hash can no longer crash or exhaust
+  memory in nokey. The Argon2id parameters are read back from the stored
+  hash and were passed to `argon2.IDKey` unchecked: `t=0` or `p=0`
+  panics inside x/crypto, and a large `m` allocates that much memory
+  before the PIN is ever compared. The version must now be 19, time and
+  threads 1-16, memory between 8 KiB per thread and 1 GB, the salt at
+  least 8 bytes and the hash at least 16; anything else is an error.
+  Hashes nokey writes (`m=65536,t=3,p=2`) are well inside these bounds.
+- Deleting `policies.yaml` no longer switches a running MCP server to
+  allow-all on the very next request. The policy store dropped to no
+  policy the first time it found the file missing, so an editor that
+  deletes and rewrites the file opened a window in which every command
+  was allowed. The file now has to stay missing for two seconds before
+  the policy is dropped, and the drop is announced on stderr.
 - Redaction now catches a secret embedded in a larger base64 value. The
   password in `curl -u user:${{NOKEY:PASS}}` sits after `user:` inside
   the `Authorization: Basic` header, usually at an offset that is not a
@@ -92,6 +106,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactive terminal. The stdin forwarder was waited on during
   teardown, but it sits blocked reading the terminal, so `nokey` only
   returned after the next keystroke.
+- OAuth token validation now honours its context. `ValidateToken` for
+  the GitHub and generic providers fetched user info with `client.Get`,
+  which ignores the caller's context, so cancelling or giving it a
+  deadline had no effect. Today's callers pass `context.Background()`,
+  so behaviour is unchanged until one sets a deadline.
+- A keyring backend that wraps `ErrKeyNotFound` is now reported as a
+  missing secret instead of a generic retrieval or delete failure.
 - Concurrent nokey processes no longer fork the audit log's hash chain.
   The append was serialized only within one process, but the CLI, the
   proxy and the MCP server all record: two processes could read the same
