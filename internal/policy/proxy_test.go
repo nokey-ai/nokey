@@ -321,7 +321,7 @@ func TestProxyRequiresApproval(t *testing.T) {
 	}
 }
 
-func TestMatchesAnyHost(t *testing.T) {
+func TestProxyRuleMatchesHost(t *testing.T) {
 	tests := []struct {
 		host     string
 		patterns []string
@@ -335,8 +335,8 @@ func TestMatchesAnyHost(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := matchesAnyHost(tt.host, tt.patterns); got != tt.want {
-			t.Errorf("matchesAnyHost(%q, %v) = %v, want %v", tt.host, tt.patterns, got, tt.want)
+		if got := (ProxyRule{Hosts: tt.patterns}).MatchesHost(tt.host); got != tt.want {
+			t.Errorf("MatchesHost(%q) with hosts %v = %v, want %v", tt.host, tt.patterns, got, tt.want)
 		}
 	}
 }

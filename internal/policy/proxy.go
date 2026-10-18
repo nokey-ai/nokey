@@ -2,7 +2,6 @@ package policy
 
 import (
 	"fmt"
-	"path"
 	"regexp"
 )
 
@@ -98,7 +97,7 @@ func (p *Policy) ProxyRequiresApproval(host string, secretNames []string) bool {
 // Fail-closed: if no matching rule is found, returns true.
 func (p *Policy) proxySecretRequiresApproval(host, secret string) bool {
 	for _, rule := range p.Proxy.Rules {
-		if matchesAnyHost(host, rule.Hosts) && containsSecret(secret, rule.Secrets) {
+		if rule.MatchesHost(host) && containsSecret(secret, rule.Secrets) {
 			mode := rule.Approval
 			if mode == "" {
 				mode = p.Proxy.Approval
@@ -113,15 +112,11 @@ func (p *Policy) proxySecretRequiresApproval(host, secret string) bool {
 	return true
 }
 
-// matchesAnyHost returns true if host matches any of the given host patterns.
-// Uses path.Match for glob matching, consistent with command matching.
-func matchesAnyHost(host string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if matched, err := path.Match(pattern, host); err == nil && matched {
-			return true
-		}
-	}
-	return false
+// MatchesHost reports whether host matches any of the rule's host patterns.
+// It uses the same glob matching as command and secret patterns, so
+// malformed patterns are treated as non-matching.
+func (r ProxyRule) MatchesHost(host string) bool {
+	return matchesAny(host, r.Hosts)
 }
 
 // containsSecret returns true if the secret name is in the list.

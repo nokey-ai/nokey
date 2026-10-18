@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"fmt"
-	"path"
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -12,11 +11,8 @@ import (
 func MatchRules(host string, rules []policy.ProxyRule) []policy.ProxyRule {
 	var matched []policy.ProxyRule
 	for _, rule := range rules {
-		for _, pattern := range rule.Hosts {
-			if ok, err := path.Match(pattern, host); err == nil && ok {
-				matched = append(matched, rule)
-				break
-			}
+		if rule.MatchesHost(host) {
+			matched = append(matched, rule)
 		}
 	}
 	return matched
