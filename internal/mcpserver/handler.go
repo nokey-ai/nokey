@@ -7,6 +7,7 @@ import (
 	osexec "os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -30,6 +31,12 @@ const (
 	MaxTimeoutSecs     = 300
 	AutoMintTTLSecs    = 3600 // 1 hour — session token lifetime
 )
+
+// autoMintPromptTimeout bounds how long an auto-mint approval prompt may
+// stay unanswered. Calls arriving meanwhile wait for its outcome, so an
+// abandoned prompt must end eventually; three minutes leaves time to read
+// the prompt and switch windows. A var so tests can shorten it.
+var autoMintPromptTimeout = 3 * time.Minute
 
 // SecretStore is the subset of keyring functionality that MCP handlers need.
 type SecretStore interface {
@@ -67,10 +74,29 @@ type Handler struct {
 	auditFn      AuditFunc
 	getConfigDir func() (string, error)
 
-	tokenStore     *token.Store
-	mcpSrv         *server.MCPServer
-	proxyServer    *proxy.Server
+	tokenStore *token.Store
+	mcpSrv     *server.MCPServer
+
+	// mcp-go dispatches tool calls on a pool of workers, so handlers run
+	// concurrently. proxyMu is held for the whole of start_proxy/stop_proxy
+	// so two starts can't both pass the "already running" check.
+	proxyMu     sync.Mutex
+	proxyServer *proxy.Server
+
+	// sessionMu guards sessionTokenID and minting. It is only ever held
+	// briefly, never across a prompt, so reading the cached token can't
+	// block behind a pending approval.
+	sessionMu      sync.Mutex
 	sessionTokenID string
+	// minting is the auto-mint in flight, if any. Concurrent calls wait on
+	// it and share its outcome instead of each raising a prompt.
+	minting *mintCall
+}
+
+// mintCall is one in-flight auto-mint. done is closed once err is set.
+type mintCall struct {
+	done chan struct{}
+	err  error
 }
 
 // New creates a Handler from the given dependencies.
@@ -263,6 +289,9 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 }
 
 func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.proxyMu.Lock()
+	defer h.proxyMu.Unlock()
+
 	// If already running, return the address.
 	if h.proxyServer != nil {
 		addr := h.proxyServer.Addr()
@@ -331,6 +360,9 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 }
 
 func (h *Handler) HandleStopProxy(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	h.proxyMu.Lock()
+	defer h.proxyMu.Unlock()
+
 	if h.proxyServer == nil {
 		return mcp.NewToolResultText("No proxy running."), nil
 	}
@@ -688,14 +720,9 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	}
 
 	// Try cached session token (auto-minted).
-	if h.sessionTokenID != "" {
-		result := h.tokenStore.Validate(h.sessionTokenID, secretNames)
-		if result.Valid {
-			h.recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
-			return nil
-		}
-		// Token expired or doesn't cover these secrets — clear and fall through.
-		h.sessionTokenID = ""
+	if h.useSessionToken(secretNames) {
+		h.recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
+		return nil
 	}
 
 	// No token provided — check if policy requires one. Snapshot the
@@ -724,8 +751,74 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	return nil
 }
 
-// tryAutoMint requests a one-time approval to mint a session token covering all secrets.
+// useSessionToken reports whether the cached session token covers
+// secretNames, clearing it if it has expired or doesn't.
+func (h *Handler) useSessionToken(secretNames []string) bool {
+	h.sessionMu.Lock()
+	defer h.sessionMu.Unlock()
+	return h.validSessionTokenLocked(secretNames)
+}
+
+// validSessionTokenLocked is useSessionToken for callers holding sessionMu.
+func (h *Handler) validSessionTokenLocked(secretNames []string) bool {
+	if h.sessionTokenID == "" {
+		return false
+	}
+	if h.tokenStore.Validate(h.sessionTokenID, secretNames).Valid {
+		return true
+	}
+	h.sessionTokenID = ""
+	return false
+}
+
+// tryAutoMint requests a one-time approval to mint a session token covering
+// all secrets. Only one mint runs at a time; a call that arrives during one
+// waits for it, for no longer than its own context allows, and takes its
+// result.
 func (h *Handler) tryAutoMint(ctx context.Context, secretNames []string) error {
+	for {
+		h.sessionMu.Lock()
+		if h.validSessionTokenLocked(secretNames) {
+			h.sessionMu.Unlock()
+			return nil
+		}
+		if call := h.minting; call != nil {
+			h.sessionMu.Unlock()
+			select {
+			case <-call.done:
+				if call.err != nil {
+					return call.err
+				}
+				continue // re-check: the new token may not cover secretNames
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		call := &mintCall{done: make(chan struct{})}
+		h.minting = call
+		h.sessionMu.Unlock()
+		return h.leadMint(ctx, call, secretNames)
+	}
+}
+
+// leadMint runs the mint for call and then releases it, even if the prompt
+// panics: WithRecovery keeps the server alive after a panic, and a mint
+// left in flight would make every later call wait on it.
+func (h *Handler) leadMint(ctx context.Context, call *mintCall, secretNames []string) error {
+	call.err = fmt.Errorf("auto-mint did not complete")
+	defer func() {
+		h.sessionMu.Lock()
+		h.minting = nil
+		h.sessionMu.Unlock()
+		close(call.done)
+	}()
+	call.err = h.mintSessionToken(ctx, secretNames)
+	return call.err
+}
+
+// mintSessionToken prompts for and mints the session token. The caller
+// owns h.minting.
+func (h *Handler) mintSessionToken(ctx context.Context, secretNames []string) error {
 	// Gather all secret names so the token covers everything.
 	store, err := h.getStore()
 	if err != nil {
@@ -739,7 +832,9 @@ func (h *Handler) tryAutoMint(ctx context.Context, secretNames []string) error {
 		allNames = secretNames
 	}
 
-	if err := h.approvalFn(ctx, h.mcpSrv, "session_token", allNames); err != nil {
+	promptCtx, cancel := context.WithTimeout(ctx, autoMintPromptTimeout)
+	defer cancel()
+	if err := h.approvalFn(promptCtx, h.mcpSrv, "session_token", allNames); err != nil {
 		return err
 	}
 
@@ -753,7 +848,9 @@ func (h *Handler) tryAutoMint(ctx context.Context, secretNames []string) error {
 		return err
 	}
 
+	h.sessionMu.Lock()
 	h.sessionTokenID = tok.ID
+	h.sessionMu.Unlock()
 	h.recordAudit("mcp:auto_mint", "session_token", strings.Join(allNames, ","), true, "")
 	return nil
 }
