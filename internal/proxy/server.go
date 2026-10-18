@@ -116,7 +116,7 @@ func (s *Server) Start(addr string) (string, error) {
 		return "", err
 	}
 
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to listen: %w", err)
 	}
@@ -374,7 +374,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		NextProtos:   []string{"http/1.1"}, // Force HTTP/1.1
 		MinVersion:   tls.VersionTLS12,
 	})
-	if err := tlsConn.Handshake(); err != nil {
+	if err := tlsConn.HandshakeContext(r.Context()); err != nil {
 		return
 	}
 	defer tlsConn.Close()
