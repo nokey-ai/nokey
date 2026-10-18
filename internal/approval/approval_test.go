@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -87,5 +88,87 @@ func TestRequest(t *testing.T) {
 				t.Errorf("error %q should contain %q", err.Error(), tt.wantErr)
 			}
 		})
+	}
+}
+
+type capturingRequester struct {
+	msg string
+}
+
+func (c *capturingRequester) RequestElicitation(_ context.Context, req mcp.ElicitationRequest) (*mcp.ElicitationResult, error) {
+	c.msg = req.Params.Message
+	return &mcp.ElicitationResult{
+		ElicitationResponse: mcp.ElicitationResponse{Action: mcp.ElicitationResponseActionAccept},
+	}, nil
+}
+
+func TestRequestWithDetail_ShowsDetail(t *testing.T) {
+	c := &capturingRequester{}
+	if err := RequestWithDetail(context.Background(), c, "curl", []string{"K"}, "args: \"https://example.com\""); err != nil {
+		t.Fatalf("RequestWithDetail: %v", err)
+	}
+	if !strings.Contains(c.msg, `args: "https://example.com"`) {
+		t.Errorf("prompt %q does not show the detail", c.msg)
+	}
+	if !strings.HasSuffix(c.msg, "Do you approve?") {
+		t.Errorf("prompt %q should still end with the question", c.msg)
+	}
+}
+
+// Request must keep its exact prompt so existing callers see no change.
+func TestRequest_UnchangedPrompt(t *testing.T) {
+	c := &capturingRequester{}
+	if err := Request(context.Background(), c, "gh", []string{"A", "B"}); err != nil {
+		t.Fatalf("Request: %v", err)
+	}
+	want := "nokey: \"gh\" wants to access secret(s): A, B\n\nDo you approve?"
+	if c.msg != want {
+		t.Errorf("prompt = %q, want %q", c.msg, want)
+	}
+}
+
+func TestFormatArgs(t *testing.T) {
+	if got := FormatArgs(nil); got != "" {
+		t.Errorf("FormatArgs(nil) = %q, want empty", got)
+	}
+	got := FormatArgs([]string{"-H", "X: ${{NOKEY:K}}", "line\nbreak"})
+	want := `args: "-H" "X: ${{NOKEY:K}}" "line\nbreak"`
+	if got != want {
+		t.Errorf("FormatArgs = %q, want %q", got, want)
+	}
+	// Capped output must say how much is hidden: args past the cut are
+	// still run, so the user needs to know they exist.
+	long := FormatArgs([]string{strings.Repeat("a", 600), "--hidden", "x"})
+	if len(long) > maxDetailArgsBytes+64 {
+		t.Errorf("FormatArgs not capped: %d bytes", len(long))
+	}
+	if !strings.HasSuffix(long, "… (+111 more bytes; 3 args in all)") {
+		t.Errorf("capped args should say what was cut, got tail %q", long[len(long)-40:])
+	}
+}
+
+func TestQuote(t *testing.T) {
+	if got := Quote("a\nb"); got != `"a\nb"` {
+		t.Errorf("Quote = %q, want %q", got, `"a\nb"`)
+	}
+	long := Quote(strings.Repeat("é", 500))
+	if !strings.HasSuffix(long, "…(truncated)") || len(long) > maxDetailValueBytes+len(` "…(truncated)`)+2 {
+		t.Errorf("Quote not capped: %d bytes, tail %q", len(long), long[len(long)-20:])
+	}
+	if !utf8.ValidString(long) {
+		t.Error("Quote split a rune")
+	}
+}
+
+func TestFormatEnvAndStdin(t *testing.T) {
+	if FormatEnv(nil) != "" || FormatStdin("") != "" {
+		t.Error("empty env and stdin should render as nothing")
+	}
+	if got := FormatEnv(map[string]string{"B": "2", "A": "x\ny"}); got != `env: A="x\ny" B="2"` {
+		t.Errorf("FormatEnv = %q", got)
+	}
+	got := FormatStdin("echo hi\n" + strings.Repeat("z", 200))
+	if !strings.HasPrefix(got, `stdin: 208 bytes, starting "echo hi\n`) || strings.Contains(got, strings.Repeat("z", 100)) {
+		t.Errorf("FormatStdin = %q, want the size and a short preview", got)
 	}
 }

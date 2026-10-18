@@ -142,6 +142,13 @@ rules:
       - "GITHUB_TOKEN"
     approval: never
 
+  # Allow nokey's MCP GitHub tools (github_api, github_create_pr, ...).
+  # They are checked as this command name, not as "gh".
+  # - commands:
+  #     - "nokey:integration:github"
+  #   secrets:
+  #     - "GITHUB_TOKEN"
+
 # Proxy rules — inject secrets into HTTP headers via nokey proxy
 # proxy:
 #   rules:

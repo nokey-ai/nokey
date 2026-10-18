@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"path"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -35,7 +37,10 @@ type MintRequest struct {
 // ValidationResult describes whether a token is valid for the requested operation.
 type ValidationResult struct {
 	Valid  bool
-	Reason string // "ok", "expired", "exhausted", "not_found", "wrong_secret"
+	Reason string // "ok", "expired", "exhausted", "not_found", "wrong_secret", "wrong_command"
+	// MintedFor is the token's command pattern, set with "wrong_command"
+	// so the caller can say what the token is for.
+	MintedFor string
 }
 
 // Store is an in-memory, session-scoped token store. Tokens die with the process.
@@ -53,19 +58,31 @@ func NewStore() *Store {
 	}
 }
 
-// Mint creates a new access lease token. Returns an error if the request is invalid.
-func (s *Store) Mint(req MintRequest) (*Token, error) {
+// Validate reports whether Mint would accept the request, so callers can
+// reject a bad request before asking the user to approve it.
+func (req MintRequest) Validate() error {
 	if len(req.Secrets) == 0 {
-		return nil, fmt.Errorf("at least one secret is required")
+		return fmt.Errorf("at least one secret is required")
 	}
 	if req.TTLSecs <= 0 {
-		return nil, fmt.Errorf("ttl_seconds must be positive")
+		return fmt.Errorf("ttl_seconds must be positive")
 	}
 	if req.TTLSecs > maxTTLSecs {
-		return nil, fmt.Errorf("ttl_seconds exceeds maximum of %d", maxTTLSecs)
+		return fmt.Errorf("ttl_seconds exceeds maximum of %d", maxTTLSecs)
 	}
 	if req.MaxUses < 0 {
-		return nil, fmt.Errorf("max_uses must be non-negative")
+		return fmt.Errorf("max_uses must be non-negative")
+	}
+	if _, err := path.Match(req.MintedFor, ""); err != nil {
+		return fmt.Errorf("invalid 'for' pattern %q: %w", req.MintedFor, err)
+	}
+	return nil
+}
+
+// Mint creates a new access lease token. Returns an error if the request is invalid.
+func (s *Store) Mint(req MintRequest) (*Token, error) {
+	if err := req.Validate(); err != nil {
+		return nil, err
 	}
 
 	id, err := generateID()
@@ -102,8 +119,15 @@ func (s *Store) Validate(id string, secrets []string) ValidationResult {
 	return s.validate(id, secrets)
 }
 
-// Use validates and then consumes one use of the token. Auto-removes exhausted tokens.
+// Use is UseFor with an unknown command: only tokens minted for "*" pass.
 func (s *Store) Use(id string, secrets []string) ValidationResult {
+	return s.UseFor(id, "*", secrets)
+}
+
+// UseFor validates the token for running command with secrets and then
+// consumes one use. The token's MintedFor pattern is matched against the
+// command's base name, as policy rules are. Auto-removes exhausted tokens.
+func (s *Store) UseFor(id, command string, secrets []string) ValidationResult {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -113,6 +137,10 @@ func (s *Store) Use(id string, secrets []string) ValidationResult {
 	}
 
 	tok := s.tokens[id]
+	if !matchesCommand(tok.MintedFor, command) {
+		return ValidationResult{Valid: false, Reason: "wrong_command", MintedFor: tok.MintedFor}
+	}
+
 	if tok.MaxUses > 0 {
 		tok.UsesLeft--
 		if tok.UsesLeft <= 0 {
@@ -185,6 +213,15 @@ func (s *Store) cleanup() {
 			delete(s.tokens, id)
 		}
 	}
+}
+
+// matchesCommand reports whether a MintedFor pattern covers command.
+func matchesCommand(pattern, command string) bool {
+	if pattern == "*" {
+		return true
+	}
+	matched, err := path.Match(pattern, filepath.Base(command))
+	return err == nil && matched
 }
 
 func generateID() (string, error) {

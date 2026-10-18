@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/integration"
 	"github.com/nokey-ai/nokey/internal/integration/apiclient"
+	"github.com/nokey-ai/nokey/internal/policy"
 )
 
 const (
@@ -63,6 +65,10 @@ func defaultHeaders(accept string) map[string]string {
 // Non-2xx responses are returned as tool errors.
 func toolResult(body string, code int, err error) (*mcp.CallToolResult, error) {
 	if err != nil {
+		var denial *policy.Denial
+		if errors.As(err, &denial) {
+			return mcp.NewToolResultError(err.Error() + "\n\n" + denial.Hint("")), nil
+		}
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	if code >= 400 {
@@ -80,6 +86,7 @@ func toolGitHubAPI(client *apiclient.Client) server.ServerTool {
 				"Call any GitHub API endpoint with automatic token injection. "+
 					"Response is automatically redacted to remove secret values.",
 			),
+			mcp.WithTitleAnnotation("Call GitHub API"),
 			mcp.WithString("method",
 				mcp.Required(),
 				mcp.Description("HTTP method (GET, POST, PUT, PATCH, DELETE)"),
@@ -137,6 +144,8 @@ func toolCreateIssue(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_create_issue",
 			mcp.WithDescription("Create a GitHub issue with automatic token injection."),
+			mcp.WithTitleAnnotation("Create GitHub issue"),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("title", mcp.Required(), mcp.Description("Issue title")),
@@ -179,6 +188,8 @@ func toolCreatePR(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_create_pr",
 			mcp.WithDescription("Create a GitHub pull request with automatic token injection."),
+			mcp.WithTitleAnnotation("Create GitHub pull request"),
+			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("title", mcp.Required(), mcp.Description("PR title")),
@@ -221,11 +232,16 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_list_issues",
 			mcp.WithDescription("List issues in a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("List GitHub issues"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
 			mcp.WithString("labels", mcp.Description("Comma-separated list of label names to filter by")),
 			mcp.WithNumber("per_page", mcp.Description("Results per page (default: 30, max: 100)")),
+			mcp.WithNumber("page", mcp.Description("Page number of the results to fetch (default: 1)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -236,7 +252,7 @@ func toolListIssues(client *apiclient.Client) server.ServerTool {
 			}
 
 			path := fmt.Sprintf("/repos/%s/%s/issues", escapeSegment(owner), escapeSegment(repo))
-			params := buildQuery(req, "state", "labels", "per_page")
+			params := buildQuery(req, "state", "labels", "per_page", "page")
 			if params != "" {
 				path += "?" + params
 			}
@@ -253,10 +269,15 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_list_prs",
 			mcp.WithDescription("List pull requests in a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("List GitHub pull requests"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("state", mcp.Description("Filter by state: open, closed, all (default: open)")),
 			mcp.WithNumber("per_page", mcp.Description("Results per page (default: 30, max: 100)")),
+			mcp.WithNumber("page", mcp.Description("Page number of the results to fetch (default: 1)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -267,7 +288,7 @@ func toolListPRs(client *apiclient.Client) server.ServerTool {
 			}
 
 			path := fmt.Sprintf("/repos/%s/%s/pulls", escapeSegment(owner), escapeSegment(repo))
-			params := buildQuery(req, "state", "per_page")
+			params := buildQuery(req, "state", "per_page", "page")
 			if params != "" {
 				path += "?" + params
 			}
@@ -284,10 +305,15 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("github_get_file",
 			mcp.WithDescription("Get a file's contents from a GitHub repository with automatic token injection."),
+			mcp.WithTitleAnnotation("Get GitHub file"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithString("owner", mcp.Required(), mcp.Description("Repository owner")),
 			mcp.WithString("repo", mcp.Required(), mcp.Description("Repository name")),
 			mcp.WithString("path", mcp.Required(), mcp.Description("File path within the repository")),
 			mcp.WithString("ref", mcp.Description("Git ref (branch, tag, or SHA; default: default branch)")),
+			mcp.WithBoolean("raw", mcp.Description("Return the file's contents as-is instead of the JSON metadata with base64 content (default: false)")),
 		),
 		Handler: func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			owner := req.GetString("owner", "")
@@ -309,7 +335,11 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 				apiPath += "?" + params
 			}
 
-			body, code, err := client.Do(ctx, "GET", apiPath, nil, defaultHeaders(""))
+			accept := ""
+			if req.GetBool("raw", false) {
+				accept = "application/vnd.github.raw+json"
+			}
+			body, code, err := client.Do(ctx, "GET", apiPath, nil, defaultHeaders(accept))
 			return toolResult(body, code, err)
 		},
 	}
@@ -321,7 +351,7 @@ func toolGetFile(client *apiclient.Client) server.ServerTool {
 func buildQuery(req mcp.CallToolRequest, keys ...string) string {
 	params := url.Values{}
 	for _, key := range keys {
-		if key == "per_page" {
+		if key == "per_page" || key == "page" {
 			if v := req.GetInt(key, 0); v > 0 {
 				params.Set(key, strconv.Itoa(v))
 			}

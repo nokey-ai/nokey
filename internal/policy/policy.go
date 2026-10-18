@@ -44,6 +44,17 @@ func (d *Denial) Error() string {
 	return fmt.Sprintf("policy denied: command %q is not allowed to access secret %q", d.Command, d.Secret)
 }
 
+// Hint tells the user how to allow what d refused. It is meant for an agent
+// that hit the denial and cannot edit the policy itself. policyPath is the
+// policy file's location, or "" if the caller doesn't know it.
+func (d *Denial) Hint(policyPath string) string {
+	if policyPath == "" {
+		policyPath = "policies.yaml in the nokey config directory"
+	}
+	return fmt.Sprintf("To allow it, the user can add a rule to %s:\n  rules:\n    - commands: [%q]\n      secrets: [%q]",
+		policyPath, d.Command, d.Secret)
+}
+
 // Load reads the policy file from configDir/policies.yaml.
 // Returns (nil, nil) if the file does not exist (allow-all).
 // Returns an error if the file exists but is malformed or invalid.

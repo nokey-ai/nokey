@@ -199,6 +199,72 @@ func TestUseInvalidToken(t *testing.T) {
 	}
 }
 
+func TestUseForEnforcesMintedFor(t *testing.T) {
+	tests := []struct {
+		name      string
+		mintedFor string
+		command   string
+		want      string
+	}{
+		{"wildcard matches anything", "*", "curl", "ok"},
+		{"exact match", "gh", "gh", "ok"},
+		{"matches basename of a path", "gh", "/usr/local/bin/gh", "ok"},
+		{"glob match", "nokey:integration:*", "nokey:integration:github", "ok"},
+		{"other command rejected", "gh", "curl", "wrong_command"},
+		{"prefix is not a match", "gh", "ghx", "wrong_command"},
+		{"scoped token rejected for unknown command", "gh", "*", "wrong_command"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestStore(time.Now())
+			tok, err := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MaxUses: 1, MintedFor: tt.mintedFor})
+			if err != nil {
+				t.Fatalf("Mint: %v", err)
+			}
+			result := s.UseFor(tok.ID, tt.command, []string{"A"})
+			if result.Reason != tt.want {
+				t.Fatalf("UseFor(%q) = %+v, want reason %q", tt.command, result, tt.want)
+			}
+			if tt.want == "wrong_command" && result.MintedFor != tt.mintedFor {
+				t.Errorf("MintedFor = %q, want %q so the caller can explain the rejection", result.MintedFor, tt.mintedFor)
+			}
+			// A rejected use must not consume the token.
+			if tt.want != "ok" && len(s.List()) != 1 {
+				t.Error("rejected use consumed the token")
+			}
+		})
+	}
+}
+
+func TestUseIsUnscopedUseFor(t *testing.T) {
+	s := newTestStore(time.Now())
+
+	unscoped, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60})
+	if r := s.Use(unscoped.ID, []string{"A"}); !r.Valid {
+		t.Errorf("Use on a '*' token: %+v, want valid", r)
+	}
+	scoped, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MintedFor: "gh"})
+	if r := s.Use(scoped.ID, []string{"A"}); r.Reason != "wrong_command" {
+		t.Errorf("Use on a scoped token: %+v, want wrong_command", r)
+	}
+}
+
+func TestMintRejectsBadPattern(t *testing.T) {
+	s := newTestStore(time.Now())
+	if _, err := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MintedFor: "[gh"}); err == nil {
+		t.Fatal("expected error for malformed 'for' pattern")
+	}
+}
+
+func TestValidateMintRequest(t *testing.T) {
+	if err := (MintRequest{Secrets: []string{"A"}, TTLSecs: 60}).Validate(); err != nil {
+		t.Errorf("valid request: %v", err)
+	}
+	if err := (MintRequest{Secrets: []string{"A"}, TTLSecs: 7200}).Validate(); err == nil {
+		t.Error("expected error for TTL over the maximum")
+	}
+}
+
 func TestRevokeSuccess(t *testing.T) {
 	s := newTestStore(time.Now())
 

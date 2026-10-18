@@ -125,3 +125,11 @@ func TestInit_WriteError(t *testing.T) {
 		t.Error("init should fail when write fails")
 	}
 }
+
+// The MCP GitHub tools are policy-checked under a name users can't guess,
+// so the starter policy has to show it.
+func TestStarterPolicies_DocumentsIntegrationCommand(t *testing.T) {
+	if !strings.Contains(starterPolicies, `"nokey:integration:github"`) {
+		t.Error("starter policy does not mention nokey:integration:github")
+	}
+}
