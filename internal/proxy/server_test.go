@@ -455,6 +455,7 @@ func TestCONNECTRejectsHostMismatch(t *testing.T) {
 		t.Fatalf("write CONNECT: %v", err)
 	}
 	br := bufio.NewReader(rawConn)
+	//nolint:bodyclose // the conn becomes the tunnel; closing the body would drain it
 	resp, err := http.ReadResponse(br, &http.Request{Method: "CONNECT"})
 	if err != nil {
 		t.Fatalf("read CONNECT response: %v", err)
@@ -604,8 +605,9 @@ func TestBlockUnmatchedCONNECT(t *testing.T) {
 	}
 
 	// Use HTTPS to trigger a CONNECT request.
-	_, err = client.Get("https://evil.example.com/steal")
+	resp, err := client.Get("https://evil.example.com/steal")
 	if err == nil {
+		resp.Body.Close()
 		t.Fatal("expected error for blocked CONNECT, got nil")
 	}
 	// The error message should indicate the request was forbidden.
