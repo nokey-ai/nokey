@@ -88,6 +88,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   interactive terminal. The stdin forwarder was waited on during
   teardown, but it sits blocked reading the terminal, so `nokey` only
   returned after the next keystroke.
+- Concurrent nokey processes no longer fork the audit log's hash chain.
+  The append was serialized only within one process, but the CLI, the
+  proxy and the MCP server all record: two processes could read the same
+  chain head and each link a new entry to it, which `nokey audit` then
+  reported as a chain break or possible tampering, and a compaction
+  renaming the log under another process's append dropped that entry.
+  Every load, append, compaction and clear now holds an advisory lock on
+  `audit.lock` in the audit directory (`flock` on Unix, `LockFileEx` on
+  Windows). The chain head is also written through a uniquely named temp
+  file instead of a fixed `chain_head.json.tmp`, which concurrent writers
+  renamed out from under each other. With six processes appending 25
+  entries each, one run previously kept 65 of 150 entries and reported
+  chain breaks throughout. The log and chain head formats are unchanged.
+  Reading the log takes the lock without creating anything it cannot:
+  on a read-only audit directory it runs unlocked as before, and it
+  never creates the directory. The encryption key is fetched before the
+  lock is taken, so a pending Keychain prompt in one process does not
+  stall the others. Temp files left by a writer that died mid-save are
+  removed.
+  That includes the fixed `chain_head.json.tmp` an older nokey uses, so
+  an older version still running alongside can have its save fail.
 
 ### Changed
 - Redaction no longer copies the output once per pattern. Each
