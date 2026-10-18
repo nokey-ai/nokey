@@ -2,6 +2,8 @@ package session
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -260,5 +262,181 @@ func TestValid_TicketPathError(t *testing.T) {
 
 	if Valid("hash", 5*time.Minute) {
 		t.Error("expected false when ticketPath fails")
+	}
+}
+
+func TestValid_TouchedTicketRejected(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	path, _ := ticketPath()
+
+	// Backdate the ticket past its TTL, then "touch" it back to now. A
+	// ticket whose mtime no longer matches its issue time must not validate.
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Fatal("expected backdated ticket to be expired")
+	}
+
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	now := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(path, now, now); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Error("expected touched ticket to be rejected")
+	}
+}
+
+func TestValid_FutureMtimeRejected(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	path, err := ticketPath()
+	if err != nil {
+		t.Fatalf("ticketPath: %v", err)
+	}
+
+	// A correctly signed ticket whose issue time is in the future would
+	// otherwise never expire.
+	future := time.Now().Add(24 * time.Hour).Truncate(time.Second)
+	if err := writeTicket(path, "hash", future); err != nil {
+		t.Fatalf("writeTicket: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Error("expected ticket with future mtime to be rejected")
+	}
+}
+
+func TestValid_SymlinkRejected(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	path, _ := ticketPath()
+
+	target := filepath.Join(home, "elsewhere")
+	if err := os.Rename(path, target); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Error("expected symlinked ticket to be rejected")
+	}
+}
+
+func TestValid_GroupReadableRejected(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits not meaningful on Windows")
+	}
+	t.Setenv("HOME", t.TempDir())
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	path, _ := ticketPath()
+	if err := os.Chmod(path, 0640); err != nil {
+		t.Fatalf("Chmod: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Error("expected group-readable ticket to be rejected")
+	}
+}
+
+func TestValid_ExpiredTicketDeleted(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	path, _ := ticketPath()
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(path, old, old); err != nil {
+		t.Fatalf("Chtimes: %v", err)
+	}
+	if Valid("hash", 5*time.Minute) {
+		t.Fatal("expected expired ticket to be invalid")
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Errorf("expected expired ticket to be removed, Lstat err = %v", err)
+	}
+}
+
+func TestCreate_DoesNotFollowSymlink(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	path, err := ticketPath()
+	if err != nil {
+		t.Fatalf("ticketPath: %v", err)
+	}
+	target := filepath.Join(home, "victim")
+	if err := os.WriteFile(target, []byte("original"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	got, _ := os.ReadFile(target)
+	if string(got) != "original" {
+		t.Errorf("Create wrote through symlink: target now %q", got)
+	}
+	if !Valid("hash", 5*time.Minute) {
+		t.Error("expected fresh ticket to replace the symlink and validate")
+	}
+}
+
+func TestCreate_TightensExistingPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits not meaningful on Windows")
+	}
+	t.Setenv("HOME", t.TempDir())
+	path, _ := ticketPath()
+	if err := os.WriteFile(path, []byte("stale"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("Lstat: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0600 {
+		t.Errorf("ticket perms = %o, want 0600", perm)
+	}
+}
+
+func TestClear_RemovesLeftoverTempFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	path, err := ticketPath()
+	if err != nil {
+		t.Fatalf("ticketPath: %v", err)
+	}
+	// A crash between CreateTemp and Rename in writeTicket leaves one behind.
+	leftover := path + ".123456"
+	if err := os.WriteFile(leftover, []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Create("hash"); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	if err := Clear(); err != nil {
+		t.Fatalf("Clear: %v", err)
+	}
+	if _, err := os.Lstat(leftover); !os.IsNotExist(err) {
+		t.Errorf("expected leftover temp ticket to be removed, Lstat err = %v", err)
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Errorf("expected ticket to be removed, Lstat err = %v", err)
 	}
 }
