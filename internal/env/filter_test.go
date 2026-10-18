@@ -133,3 +133,11 @@ func TestParseCommaSeparated(t *testing.T) {
 		}
 	}
 }
+
+// FilterNames serves the MCP tools, whose parameters are not CLI flags.
+func TestFilterNames_BothOnlyAndExcept_NeutralWording(t *testing.T) {
+	_, err := FilterNames(nil, "A", "B")
+	if err == nil || strings.Contains(err.Error(), "--") {
+		t.Errorf("error should not name CLI flags, got: %v", err)
+	}
+}

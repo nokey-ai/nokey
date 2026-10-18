@@ -642,7 +642,13 @@ Run nokey as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/)
 
 ### Setup
 
-Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`):
+Register nokey with Claude Code:
+
+```bash
+claude mcp add nokey -- nokey mcp serve
+```
+
+This adds it for you in the current project. Add `--scope user` to make it available in every project, or `--scope project` to write it to the project's `.mcp.json` so everyone working in the repository gets it:
 
 ```json
 {
@@ -654,6 +660,8 @@ Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`
   }
 }
 ```
+
+Other MCP clients take the same command and arguments in their own MCP configuration. Approval prompts use MCP elicitation; with a client that doesn't support it, any access that needs approval is denied.
 
 ### Available MCP Tools
 
@@ -675,6 +683,14 @@ Add nokey to your Claude Code configuration (`~/.claude/claude_code_config.json`
 | `github_get_file` | Get a file from a GitHub repository |
 
 All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
+
+The `github_*` tools read the `GITHUB_TOKEN` secret and are checked against `policies.yaml` as the command `nokey:integration:github` (not `gh`). Once a policy file exists, they are denied unless a rule allows that name:
+
+```yaml
+rules:
+  - commands: ["nokey:integration:github"]
+    secrets: ["GITHUB_TOKEN"]
+```
 
 ### Session Tokens
 
@@ -779,6 +795,9 @@ rules:
     secrets: ["GITHUB_TOKEN"]
     approval: always          # Always prompt
     token_required: true      # Require a session token (no per-call approval fallback)
+
+  - commands: ["nokey:integration:github"]  # The MCP github_* tools
+    secrets: ["GITHUB_TOKEN"]
 
   - commands: ["*"]
     secrets: ["*"]

@@ -19,8 +19,10 @@ var mcpCmd = &cobra.Command{
 can execute commands with secrets injected as environment variables.
 
 Secrets never appear in tool output — all output is automatically redacted.
-Each secret access is gated by the OS keyring ACL — on macOS, Keychain
-prompts the user to approve every read.
+Each secret access is checked against policies.yaml, may ask the user to
+approve it through an MCP elicitation prompt or require an access token
+from mint_token, and is still subject to the OS keyring ACL (on macOS,
+Keychain can prompt the user to approve a read).
 
 Subcommands:
   serve  - Start the MCP stdio server`,
@@ -33,7 +35,10 @@ var mcpServeCmd = &cobra.Command{
 
 AI tools connect by launching this process and communicating over stdin/stdout.
 
-Example Claude Code configuration (~/.claude/claude_code_config.json):
+Add it to Claude Code:
+  claude mcp add nokey -- nokey mcp serve
+
+or share it with a project through .mcp.json:
   {
     "mcpServers": {
       "nokey": {
@@ -69,11 +74,29 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		GetConfigDir: getConfigDir,
 	})
 
-	s := server.NewMCPServer("nokey", version.Version,
-		server.WithToolCapabilities(false),
-		server.WithElicitation(),
-	)
+	s := newMCPServer()
 	h.RegisterTools(s)
 
 	return server.ServeStdio(s)
+}
+
+// mcpInstructions is sent to clients at initialize, for the model to read
+// before it picks a tool.
+const mcpInstructions = `nokey runs commands with secrets from the OS keyring without revealing their values. All output is redacted: secret values appear as [REDACTED:NAME].
+
+Call list_secrets first to see which secret names exist.
+
+Prefer exec_with_secrets: put ${{NOKEY:NAME}} placeholders in args (for example a header value). Only the referenced secrets are read, and they never enter the environment. Use exec when a program reads its credentials from environment variables; narrow what it receives with only/except.
+
+The user may be asked to approve access through an elicitation prompt. policies.yaml can deny a command or require a token: mint_token creates a short-lived lease (it needs approval once) that you pass as the token parameter. The github_* tools use the GITHUB_TOKEN secret and are checked by policy as the command nokey:integration:github.`
+
+// newMCPServer builds the MCP server with nokey's options.
+func newMCPServer() *server.MCPServer {
+	return server.NewMCPServer("nokey", version.Version,
+		server.WithToolCapabilities(false),
+		server.WithElicitation(),
+		server.WithInstructions(mcpInstructions),
+		// A panic in one tool call must not take down the server.
+		server.WithRecovery(),
+	)
 }

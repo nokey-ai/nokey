@@ -136,12 +136,14 @@ func TestFormatArgs(t *testing.T) {
 	if got != want {
 		t.Errorf("FormatArgs = %q, want %q", got, want)
 	}
-	long := FormatArgs([]string{strings.Repeat("a", 2000)})
-	if len(long) > maxDetailArgsBytes+len(" …(truncated)") {
+	// Capped output must say how much is hidden: args past the cut are
+	// still run, so the user needs to know they exist.
+	long := FormatArgs([]string{strings.Repeat("a", 600), "--hidden", "x"})
+	if len(long) > maxDetailArgsBytes+64 {
 		t.Errorf("FormatArgs not capped: %d bytes", len(long))
 	}
-	if !strings.HasSuffix(long, "…(truncated)") {
-		t.Errorf("capped args should say so, got tail %q", long[len(long)-20:])
+	if !strings.HasSuffix(long, "… (+111 more bytes; 3 args in all)") {
+		t.Errorf("capped args should say what was cut, got tail %q", long[len(long)-40:])
 	}
 }
 
@@ -155,5 +157,18 @@ func TestQuote(t *testing.T) {
 	}
 	if !utf8.ValidString(long) {
 		t.Error("Quote split a rune")
+	}
+}
+
+func TestFormatEnvAndStdin(t *testing.T) {
+	if FormatEnv(nil) != "" || FormatStdin("") != "" {
+		t.Error("empty env and stdin should render as nothing")
+	}
+	if got := FormatEnv(map[string]string{"B": "2", "A": "x\ny"}); got != `env: A="x\ny" B="2"` {
+		t.Errorf("FormatEnv = %q", got)
+	}
+	got := FormatStdin("echo hi\n" + strings.Repeat("z", 200))
+	if !strings.HasPrefix(got, `stdin: 208 bytes, starting "echo hi\n`) || strings.Contains(got, strings.Repeat("z", 100)) {
+		t.Errorf("FormatStdin = %q, want the size and a short preview", got)
 	}
 }

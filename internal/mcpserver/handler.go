@@ -11,6 +11,9 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -125,15 +128,19 @@ func New(deps Deps) *Handler {
 // RegisterTools adds all MCP tool handlers to the server.
 func (h *Handler) RegisterTools(s *server.MCPServer) {
 	h.mcpSrv = s
-	readOnly := true
+
+	// Annotations: mcp-go's NewTool defaults every tool to destructive and
+	// open-world, so each tool states the hints that differ.
 
 	// list_secrets — read-only, AI needs to know available secret names
 	s.AddTool(
 		mcp.NewTool("list_secrets",
 			mcp.WithDescription("List all stored secret key names (not values)"),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
-				ReadOnlyHint: &readOnly,
-			}),
+			mcp.WithTitleAnnotation("List secret names"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleListSecrets,
 	)
@@ -142,6 +149,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("exec",
 			mcp.WithDescription("Execute a command with secrets injected as environment variables. Output is automatically redacted — secret values are replaced with [REDACTED:KEY_NAME]."),
+			mcp.WithTitleAnnotation("Run command with secrets in env"),
 			mcp.WithString("command",
 				mcp.Required(),
 				mcp.Description("Command to run"),
@@ -158,9 +166,23 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			mcp.WithNumber("timeout_seconds",
 				mcp.Description(fmt.Sprintf("Command timeout in seconds (default: %d, max: %d)", DefaultTimeoutSecs, MaxTimeoutSecs)),
 			),
+			mcp.WithString("cwd",
+				mcp.Description("Absolute path of an existing directory to run in (default: the server's working directory). The command must then be a bare name or an absolute path."),
+			),
+			mcp.WithString("stdin",
+				mcp.Description("Text written to the command's standard input (default: none)"),
+			),
+			mcp.WithObject("env",
+				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, ...)."),
+				mcp.AdditionalProperties(map[string]any{"type": "string"}),
+			),
+			mcp.WithBoolean("separate_stderr",
+				mcp.Description("Return stderr after stdout, under a [stderr] line, instead of interleaved (default: false)"),
+			),
 			mcp.WithString("token",
 				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
 			),
+			mcp.WithOutputSchema[execOutput](),
 		),
 		h.HandleExec,
 	)
@@ -174,6 +196,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"Only referenced secrets are fetched. Secrets are never placed in "+
 					"environment variables. Output is automatically redacted.",
 			),
+			mcp.WithTitleAnnotation("Run command with secret placeholders"),
 			mcp.WithString("command",
 				mcp.Required(),
 				mcp.Description("Command to run (must not contain placeholders)"),
@@ -188,9 +211,23 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			mcp.WithNumber("timeout_seconds",
 				mcp.Description(fmt.Sprintf("Command timeout in seconds (default: %d, max: %d)", DefaultTimeoutSecs, MaxTimeoutSecs)),
 			),
+			mcp.WithString("cwd",
+				mcp.Description("Absolute path of an existing directory to run in (default: the server's working directory). The command must then be a bare name or an absolute path."),
+			),
+			mcp.WithString("stdin",
+				mcp.Description("Text written to the command's standard input (default: none)"),
+			),
+			mcp.WithObject("env",
+				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, ...)."),
+				mcp.AdditionalProperties(map[string]any{"type": "string"}),
+			),
+			mcp.WithBoolean("separate_stderr",
+				mcp.Description("Return stderr after stdout, under a [stderr] line, instead of interleaved (default: false)"),
+			),
 			mcp.WithString("token",
 				mcp.Description("Access lease token ID. If valid, skips the approval prompt."),
 			),
+			mcp.WithOutputSchema[execOutput](),
 		),
 		h.HandleExecWithSecrets,
 	)
@@ -203,6 +240,9 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"The token can be passed to exec or exec_with_secrets to skip per-call approval. "+
 					"Always requires user approval at mint time. Max TTL: 3600 seconds.",
 			),
+			mcp.WithTitleAnnotation("Mint access token"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithArray("secrets",
 				mcp.Required(),
 				mcp.WithStringItems(),
@@ -226,6 +266,9 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("revoke_token",
 			mcp.WithDescription("Revoke an access lease token by ID."),
+			mcp.WithTitleAnnotation("Revoke access token"),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("token_id",
 				mcp.Required(),
 				mcp.Description("The token ID to revoke"),
@@ -238,9 +281,11 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("list_tokens",
 			mcp.WithDescription("List all active access lease tokens."),
-			mcp.WithToolAnnotation(mcp.ToolAnnotation{
-				ReadOnlyHint: &readOnly,
-			}),
+			mcp.WithTitleAnnotation("List access tokens"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleListTokens,
 	)
@@ -253,6 +298,11 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 					"based on proxy rules in policies.yaml. Returns the proxy address. "+
 					"Set http_proxy and https_proxy to route requests through it.",
 			),
+			// Idempotent: a second call returns the running proxy's address.
+			mcp.WithTitleAnnotation("Start secret-injecting proxy"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("addr",
 				mcp.Description("Loopback address to listen on (default: 127.0.0.1:0 for random port). "+
 					"Non-loopback addresses are rejected."),
@@ -265,6 +315,10 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 	s.AddTool(
 		mcp.NewTool("stop_proxy",
 			mcp.WithDescription("Stop the running local HTTP/HTTPS proxy."),
+			mcp.WithTitleAnnotation("Stop proxy"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleStopProxy,
 	)
@@ -416,6 +470,10 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	opts, err := execOptionsParam(request, command)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	only := request.GetString("only", "")
 	except := request.GetString("except", "")
 
@@ -438,6 +496,9 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		h.recordAudit("mcp:exec", command, "all", false, err.Error())
 		return mcp.NewToolResultError(fmt.Sprintf("failed to list secrets: %s", err)), nil
 	}
+	if err := checkEnvNotSecret(opts.env, allNames); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	// Filter names by only/except before touching the keyring for values.
 	secretNames, err := env.FilterNames(allNames, only, except)
@@ -449,12 +510,12 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	// Enforce scoped policy before reading any secret values.
 	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
-		return mcp.NewToolResultError(err.Error()), nil
+		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
 
 	// Token or approval gateway
 	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, approval.FormatArgs(args)); err != nil {
+	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
 		h.recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -474,9 +535,10 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 	res := runRedacted(ctx, runSpec{
 		command: command,
 		args:    args,
-		env:     env.MergeEnvironment(os.Environ(), secrets),
+		env:     env.MergeEnvironment(env.MergeEnvironment(os.Environ(), opts.env), secrets),
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
+		opts:    opts,
 	})
 	return h.execOutcome("mcp:exec", command, secretNames, timeoutSecs, clamped, res), nil
 }
@@ -499,6 +561,10 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	opts, err := execOptionsParam(request, command)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	timeoutSecs, clamped := timeoutParam(request)
 
@@ -508,7 +574,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	// Enforce scoped policy before touching the keyring
 	if err := h.getPolicy().Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
-		return mcp.NewToolResultError(err.Error()), nil
+		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
 
 	store, err := h.getStore()
@@ -521,11 +587,20 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
+	if len(opts.env) > 0 {
+		stored, err := store.List()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to list secrets: %s", err)), nil
+		}
+		if err := checkEnvNotSecret(opts.env, stored); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+	}
 
 	// Token or approval gateway. The prompt shows args with placeholders
 	// unresolved, so the user sees where each secret is going.
 	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, approval.FormatArgs(args)); err != nil {
+	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
 		h.recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -553,9 +628,10 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	res := runRedacted(ctx, runSpec{
 		command: command,
 		args:    resolvedArgs,
-		env:     os.Environ(),
+		env:     env.MergeEnvironment(os.Environ(), opts.env),
 		secrets: secrets,
 		timeout: time.Duration(timeoutSecs) * time.Second,
+		opts:    opts,
 	})
 	return h.execOutcome("mcp:exec_with_secrets", command, secretNames, timeoutSecs, clamped, res), nil
 }
@@ -691,7 +767,9 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	// consistent view even if the file is rewritten mid-request.
 	pol := h.getPolicy()
 	if pol.RequiresToken(command, secretNames) {
-		return fmt.Errorf("token required by policy — use mint_token to create an access lease")
+		names, _ := json.Marshal(secretNames)
+		base := filepath.Base(command)
+		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", base, names, base)
 	}
 
 	// Auto-mint: one approval covers the rest of the session.
@@ -857,6 +935,137 @@ func timeoutParam(request mcp.CallToolRequest) (secs int, clamped bool) {
 	return secs, false
 }
 
+// execOptions are the optional parameters both exec tools accept. The
+// zero value runs as before they existed.
+type execOptions struct {
+	dir            string
+	stdin          string
+	env            map[string]string // non-secret extras
+	separateStderr bool
+}
+
+// envNameRe is a portable environment variable name.
+var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// Environment variables that make a program load, run or look up other
+// code. Approving a command means approving that program, so the caller
+// may not set these. Matched case-insensitively, since Windows names are.
+var (
+	reservedEnvNames = []string{
+		"PATH", "BASH_ENV", "ENV", "IFS", "NODE_OPTIONS", "NODE_PATH",
+		"GIT_EXEC_PATH", "GIT_ASKPASS", "GIT_PROXY_COMMAND", "GIT_PAGER",
+		"SHELLOPTS", "BASHOPTS", "PS4", "PROMPT_COMMAND",
+		"PAGER", "EDITOR", "VISUAL", "SSH_ASKPASS", "LESSOPEN", "LESSCLOSE",
+		"GOFLAGS", "CLASSPATH", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
+	}
+	reservedEnvPrefixes = []string{
+		"LD_", "DYLD_", "PYTHON", "PERL5", "RUBY", "GIT_SSH", "GIT_CONFIG",
+		"DOTNET_", "NPM_CONFIG_",
+	}
+)
+
+// reservedEnvName reports whether name is one the caller may not set.
+func reservedEnvName(name string) bool {
+	upper := strings.ToUpper(name)
+	if slices.Contains(reservedEnvNames, upper) {
+		return true
+	}
+	for _, prefix := range reservedEnvPrefixes {
+		if strings.HasPrefix(upper, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// execOptionsParam reads and validates cwd, stdin, env and separate_stderr.
+// command is the command being run, which cwd must not change the meaning
+// of.
+func execOptionsParam(request mcp.CallToolRequest, command string) (execOptions, error) {
+	opts := execOptions{
+		dir:            request.GetString("cwd", ""),
+		stdin:          request.GetString("stdin", ""),
+		separateStderr: request.GetBool("separate_stderr", false),
+	}
+
+	if opts.dir != "" {
+		if !filepath.IsAbs(opts.dir) {
+			return opts, fmt.Errorf("parameter 'cwd' must be an absolute path")
+		}
+		if slices.Contains(strings.Split(filepath.ToSlash(opts.dir), "/"), "..") {
+			return opts, fmt.Errorf("parameter 'cwd' must not contain '..' (path traversal)")
+		}
+		if info, err := os.Stat(opts.dir); err != nil || !info.IsDir() {
+			return opts, fmt.Errorf("parameter 'cwd' must be an existing directory")
+		}
+		// A relative path would resolve inside the directory the caller
+		// just chose: cwd=/tmp/x with ./gh still matches a "gh" rule.
+		if !filepath.IsAbs(command) && strings.ContainsAny(command, `/\`) {
+			return opts, fmt.Errorf("parameter 'cwd' cannot be used with a relative command path; use a bare name or an absolute path")
+		}
+	}
+
+	if raw := request.GetArguments()["env"]; raw != nil {
+		vars, ok := raw.(map[string]any)
+		if !ok {
+			return opts, fmt.Errorf("parameter 'env' must be an object of string values")
+		}
+		opts.env = make(map[string]string, len(vars))
+		for name, v := range vars {
+			if !envNameRe.MatchString(name) {
+				return opts, fmt.Errorf("parameter 'env' has an invalid variable name %q", name)
+			}
+			if reservedEnvName(name) {
+				return opts, fmt.Errorf("parameter 'env' must not set %q: it changes which code the command loads or runs", name)
+			}
+			value, ok := v.(string)
+			if !ok {
+				return opts, fmt.Errorf("parameter 'env' value for %q must be a string", name)
+			}
+			opts.env[name] = value
+		}
+	}
+
+	return opts, nil
+}
+
+// execDetail is the approval-prompt detail for an exec call: everything
+// besides the command and secrets that decides what will run.
+func execDetail(args []string, opts execOptions) string {
+	var lines []string
+	if a := approval.FormatArgs(args); a != "" {
+		lines = append(lines, a)
+	}
+	if opts.dir != "" {
+		lines = append(lines, "cwd: "+approval.Quote(opts.dir))
+	}
+	if e := approval.FormatEnv(opts.env); e != "" {
+		lines = append(lines, e)
+	}
+	if in := approval.FormatStdin(opts.stdin); in != "" {
+		lines = append(lines, in)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// envNamesFoldCase is whether environment names are case-insensitive, as
+// they are on Windows. A var so tests can exercise both.
+var envNamesFoldCase = runtime.GOOS == "windows"
+
+// checkEnvNotSecret rejects extra env entries named after a stored secret.
+// They would shadow or impersonate the real secret, and their values,
+// unlike secrets, are not redacted.
+func checkEnvNotSecret(extra map[string]string, stored []string) error {
+	for _, name := range stored {
+		for key := range extra {
+			if key == name || (envNamesFoldCase && strings.EqualFold(key, name)) {
+				return fmt.Errorf("parameter 'env' must not set %q: that is the name of a stored secret", key)
+			}
+		}
+	}
+	return nil
+}
+
 // runSpec describes a command for runRedacted.
 type runSpec struct {
 	command string
@@ -864,29 +1073,50 @@ type runSpec struct {
 	env     []string
 	secrets map[string]string // values redacted from the output
 	timeout time.Duration
+	opts    execOptions
 }
 
-// runResult is what runRedacted observed. output is already redacted and
-// truncated, so it is safe to return to the model.
+// runResult is what runRedacted observed. output and stderr are already
+// redacted and truncated, so they are safe to return to the model. stderr
+// is set only when it was captured separately.
 type runResult struct {
-	output   []byte
-	err      error
-	timedOut bool
+	output        []byte
+	stderr        []byte
+	err           error
+	timedOut      bool
+	truncated     bool  // some output was cut
+	originalBytes int64 // everything the command wrote, both streams
+}
+
+// text renders the output for the tool result.
+func (res runResult) text() string {
+	out := string(res.output)
+	if len(res.stderr) > 0 {
+		if out != "" && !strings.HasSuffix(out, "\n") {
+			out += "\n"
+		}
+		out += "[stderr]\n" + string(res.stderr)
+	}
+	return out
 }
 
 // killWaitDelay bounds how long a run may outlive its timeout while
 // something still holds the output pipe open.
 const killWaitDelay = 2 * time.Second
 
-// runRedacted runs spec non-interactively (stdin is the MCP JSON-RPC
-// transport, so the child gets none) and returns its redacted output.
+// runRedacted runs spec and returns its redacted output. The child gets no
+// stdin unless the caller supplied some: the server's own stdin is the MCP
+// JSON-RPC transport.
 func runRedacted(ctx context.Context, spec runSpec) runResult {
 	execCtx, cancel := context.WithTimeout(ctx, spec.timeout)
 	defer cancel()
 
 	cmd := osexec.CommandContext(execCtx, spec.command, spec.args...)
 	cmd.Env = spec.env
-	cmd.Stdin = nil
+	cmd.Dir = spec.opts.dir
+	if spec.opts.stdin != "" {
+		cmd.Stdin = strings.NewReader(spec.opts.stdin)
+	}
 	// On timeout kill the whole process tree, not just the direct child:
 	// a background grandchild would otherwise keep the pipe open and the
 	// read blocked. WaitDelay is the backstop where that isn't possible.
@@ -896,9 +1126,20 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 	// Keep only what can reach the result instead of buffering everything
 	// the command prints. The same writer for both streams preserves
 	// CombinedOutput's interleaving.
-	buf := &cappedBuffer{limit: MaxOutputBytes + redactSlack(spec.secrets)}
+	// Split streams share the output budget, half each, so the result is
+	// no larger than when they are interleaved.
+	budget := MaxOutputBytes
+	if spec.opts.separateStderr {
+		budget /= 2
+	}
+	buf := newCappedBuffer(budget, spec.secrets)
 	cmd.Stdout = buf
 	cmd.Stderr = buf
+	var errBuf *cappedBuffer
+	if spec.opts.separateStderr {
+		errBuf = newCappedBuffer(budget, spec.secrets)
+		cmd.Stderr = errBuf
+	}
 	err := cmd.Run()
 	// ErrWaitDelay means the command exited 0 but something it started
 	// still held the output open (a daemonised child, say). The run itself
@@ -907,16 +1148,29 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 		err = nil
 	}
 
-	// Always redact output. Clone before zeroing the raw buffer: with
-	// nothing to replace, redaction and truncation return it as is.
-	output := bytes.Clone(capOutput(buf, spec.secrets))
-	sensitive.ClearBytes(buf.buf)
-
-	return runResult{
-		output:   output,
-		err:      err,
-		timedOut: errors.Is(execCtx.Err(), context.DeadlineExceeded),
+	res := runResult{
+		err:           err,
+		timedOut:      errors.Is(execCtx.Err(), context.DeadlineExceeded),
+		originalBytes: buf.total,
 	}
+	res.output, res.truncated = redactCaptured(buf, spec.secrets)
+	if errBuf != nil {
+		var cut bool
+		res.stderr, cut = redactCaptured(errBuf, spec.secrets)
+		res.truncated = res.truncated || cut
+		res.originalBytes += errBuf.total
+	}
+	return res
+}
+
+// redactCaptured returns the redacted, truncated contents of b and zeroes
+// the raw bytes. It clones first: with nothing to replace, redaction and
+// truncation return the raw buffer itself.
+func redactCaptured(b *cappedBuffer, secrets map[string]string) (out []byte, truncated bool) {
+	out, truncated = capOutput(b, secrets)
+	out = bytes.Clone(out)
+	sensitive.ClearBytes(b.buf)
+	return out, truncated
 }
 
 // cappedBuffer is an io.Writer that keeps the first limit bytes written and
@@ -924,8 +1178,14 @@ func runRedacted(ctx context.Context, spec runSpec) runResult {
 // SIGPIPE or a short write when its output runs long.
 type cappedBuffer struct {
 	buf   []byte
-	limit int
+	max   int // output size after redaction and truncation
+	limit int // bytes kept: max plus redactSlack
 	total int64
+}
+
+// newCappedBuffer returns a cappedBuffer whose redacted output fits in size.
+func newCappedBuffer(size int, secrets map[string]string) *cappedBuffer {
+	return &cappedBuffer{max: size, limit: size + redactSlack(secrets)}
 }
 
 func (b *cappedBuffer) Write(p []byte) (int, error) {
@@ -954,12 +1214,13 @@ func redactSlack(secrets map[string]string) int {
 	return 6*longest + 4
 }
 
-// capOutput redacts and truncates what a cappedBuffer kept. Output that fit
-// is treated exactly as before the cap existed.
-func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
+// capOutput redacts and truncates what a cappedBuffer kept, reporting
+// whether anything was cut. Output that fit is treated exactly as before
+// the cap existed.
+func capOutput(b *cappedBuffer, secrets map[string]string) ([]byte, bool) {
 	out := redact.RedactBytes(b.buf, secrets)
 	if !b.overflowed() {
-		return truncateOutput(out, MaxOutputBytes)
+		return truncateOutput(out, b.max), len(out) > b.max
 	}
 	// The cap may have cut a secret, or an encoding of one, leaving a
 	// prefix that redaction can't recognise. That fragment is unchanged by
@@ -967,7 +1228,7 @@ func capOutput(b *cappedBuffer, secrets map[string]string) []byte {
 	// Redaction can also shrink the output below MaxOutputBytes, so the
 	// truncation notice is added explicitly rather than by length.
 	drop := min(redactSlack(secrets)-1, len(out))
-	return withTruncationNotice(out[:len(out)-drop], MaxOutputBytes)
+	return withTruncationNotice(out[:len(out)-drop], b.max), true
 }
 
 // exitCode returns the exit status carried by err, if it has one.
@@ -979,6 +1240,18 @@ func exitCode(err error) (int, bool) {
 	return 0, false
 }
 
+// execOutput is the structured result of the exec tools, sent alongside
+// the same text content they have always returned.
+type execOutput struct {
+	Output          string   `json:"output" jsonschema_description:"Redacted output; stdout only when separate_stderr is set"`
+	Stderr          string   `json:"stderr,omitempty" jsonschema_description:"Redacted stderr, when separate_stderr is set"`
+	ExitCode        int      `json:"exit_code"`
+	TimedOut        bool     `json:"timed_out"`
+	Truncated       bool     `json:"truncated" jsonschema_description:"Output was cut to fit the size limit"`
+	OriginalBytes   int64    `json:"original_bytes" jsonschema_description:"Bytes the command wrote before redaction and truncation"`
+	SecretsInjected []string `json:"secrets_injected" jsonschema_description:"Names of the secrets the command was given"`
+}
+
 // execOutcome records the audit entry for a finished run and builds the
 // tool result.
 func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutSecs int, clamped bool, res runResult) *mcp.CallToolResult {
@@ -987,22 +1260,29 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutS
 	if clamped {
 		note = fmt.Sprintf("[timeout_seconds clamped to %d]\n", MaxTimeoutSecs)
 	}
+	code, exited := exitCode(res.err)
+	structured := execOutput{
+		Output:          string(res.output),
+		Stderr:          string(res.stderr),
+		ExitCode:        code,
+		TimedOut:        res.timedOut,
+		Truncated:       res.truncated,
+		OriginalBytes:   res.originalBytes,
+		SecretsInjected: append([]string{}, secretNames...),
+	}
 
 	// Check the deadline first: a child killed by it reports an ExitError
 	// ("signal: killed"), which would otherwise read as an ordinary exit.
 	if res.timedOut {
 		h.recordAudit(op, command, target, false, "timeout")
-		return mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.output))
+		result := mcp.NewToolResultError(fmt.Sprintf("command timed out after %d seconds\n%s%s", timeoutSecs, note, res.text()))
+		result.StructuredContent = structured
+		return result
 	}
 
-	code := 0
-	if res.err != nil {
-		if c, ok := exitCode(res.err); ok {
-			code = c
-		} else {
-			h.recordAudit(op, command, target, false, res.err.Error())
-			return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
-		}
+	if res.err != nil && !exited {
+		h.recordAudit(op, command, target, false, res.err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to execute command: %s", res.err))
 	}
 
 	errMsg := ""
@@ -1011,11 +1291,27 @@ func (h *Handler) execOutcome(op, command string, secretNames []string, timeoutS
 	}
 	h.recordAudit(op, command, target, res.err == nil, errMsg)
 
-	resultText := string(res.output)
+	resultText := res.text()
 	if code != 0 {
 		resultText = fmt.Sprintf("[exit code: %d]\n%s", code, resultText)
 	}
-	return mcp.NewToolResultText(note + resultText)
+	return mcp.NewToolResultStructured(structured, note+resultText)
+}
+
+// policyDenialText is err's message, followed for a policy denial by how
+// the user can allow the call.
+func (h *Handler) policyDenialText(err error) string {
+	var denial *policy.Denial
+	if !errors.As(err, &denial) {
+		return err.Error()
+	}
+	path := ""
+	if h.getConfigDir != nil {
+		if dir, dirErr := h.getConfigDir(); dirErr == nil {
+			path = filepath.Join(dir, "policies.yaml")
+		}
+	}
+	return err.Error() + "\n\n" + denial.Hint(path)
 }
 
 // requireSecretsExist returns an error naming any of names that isn't stored.

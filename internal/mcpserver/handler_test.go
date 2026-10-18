@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -2715,9 +2716,9 @@ func TestCapOutput_ShrinkingRedaction(t *testing.T) {
 	// The cap lands 40 bytes into a final copy of the secret.
 	body := strings.Repeat(secret, (MaxOutputBytes+slack)/len(secret)+1)
 	raw := []byte(body[:MaxOutputBytes+slack-40] + secret[:40])
-	b := &cappedBuffer{limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
+	b := &cappedBuffer{max: MaxOutputBytes, limit: MaxOutputBytes + slack, buf: raw, total: int64(len(raw)) + 1000}
 
-	out := capOutput(b, secrets)
+	out, _ := capOutput(b, secrets)
 	if !bytes.HasSuffix(out, []byte("\n\n[output truncated]")) {
 		t.Errorf("output does not report truncation: tail %q", out[max(0, len(out)-40):])
 	}
@@ -2749,5 +2750,392 @@ func TestHandleExec_FailedRunAuditsSecretNames(t *testing.T) {
 	}
 	if len(targets) == 0 || targets[len(targets)-1] != "A" {
 		t.Errorf("audit targets = %q, want the failed run audited as %q", targets, "A")
+	}
+}
+
+// --- tool metadata ---
+
+// wantHints are the annotation hints a tool must advertise. mcp-go's
+// NewTool defaults to destructive and open-world, so a tool that sets
+// nothing is presented to clients as dangerous.
+type wantHints struct {
+	readOnly, destructive, idempotent, openWorld bool
+}
+
+func checkAnnotations(t *testing.T, tools map[string]*server.ServerTool, want map[string]wantHints) {
+	t.Helper()
+	for name, w := range want {
+		st, ok := tools[name]
+		if !ok {
+			t.Errorf("tool %s not registered", name)
+			continue
+		}
+		a := st.Tool.Annotations
+		if a.Title == "" {
+			t.Errorf("%s: no title", name)
+		}
+		got := func(p *bool) bool { return p != nil && *p }
+		if got(a.ReadOnlyHint) != w.readOnly || got(a.DestructiveHint) != w.destructive ||
+			got(a.IdempotentHint) != w.idempotent || got(a.OpenWorldHint) != w.openWorld {
+			t.Errorf("%s: hints readOnly=%v destructive=%v idempotent=%v openWorld=%v, want %+v",
+				name, got(a.ReadOnlyHint), got(a.DestructiveHint), got(a.IdempotentHint), got(a.OpenWorldHint), w)
+		}
+	}
+}
+
+func TestRegisterTools_Annotations(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	s := server.NewMCPServer("nokey-test", "0")
+	h.RegisterTools(s)
+
+	checkAnnotations(t, s.ListTools(), map[string]wantHints{
+		"list_secrets":      {readOnly: true, idempotent: true},
+		"list_tokens":       {readOnly: true, idempotent: true},
+		"exec":              {destructive: true, openWorld: true},
+		"exec_with_secrets": {destructive: true, openWorld: true},
+		"mint_token":        {},
+		"revoke_token":      {destructive: true, idempotent: true},
+		"start_proxy":       {idempotent: true},
+		"stop_proxy":        {idempotent: true},
+	})
+}
+
+// --- optional exec parameters ---
+
+// execBoth runs args through both exec tools and returns their results.
+func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.CallToolResult {
+	t.Helper()
+	out := map[string]*mcp.CallToolResult{}
+	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+		"exec":              h.HandleExec,
+		"exec_with_secrets": h.HandleExecWithSecrets,
+	} {
+		result, err := fn(context.Background(), makeCallToolRequest(args))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		out[name] = result
+	}
+	return out
+}
+
+func TestExecTools_Cwd(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for name, result := range execBoth(t, h, map[string]any{"command": "pwd", "cwd": dir}) {
+		if got := getResultText(t, result); got != dir+"\n" {
+			t.Errorf("%s: pwd = %q, want %q", name, got, dir+"\n")
+		}
+	}
+}
+
+func TestExecTools_CwdRejected(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	file := filepath.Join(t.TempDir(), "f")
+	os.WriteFile(file, nil, 0600)
+
+	for _, cwd := range []string{"relative/dir", filepath.Join(t.TempDir(), "missing"), file, t.TempDir() + "/../x"} {
+		for name, result := range execBoth(t, h, map[string]any{"command": "echo", "cwd": cwd}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "cwd") {
+				t.Errorf("%s: cwd %q accepted: %q", name, cwd, getResultText(t, result))
+			}
+		}
+	}
+}
+
+func TestExecTools_Stdin(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	for name, result := range execBoth(t, h, map[string]any{"command": "cat", "stdin": "piped in"}) {
+		if got := getResultText(t, result); got != "piped in" {
+			t.Errorf("%s: output = %q, want %q", name, got, "piped in")
+		}
+	}
+}
+
+func TestExecTools_Env(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	args := map[string]any{
+		"command": "sh",
+		"args":    []any{"-c", "echo $NOKEY_TEST_VAR"},
+		"env":     map[string]any{"NOKEY_TEST_VAR": "plain value"},
+	}
+	for name, result := range execBoth(t, h, args) {
+		if got := getResultText(t, result); got != "plain value\n" {
+			t.Errorf("%s: output = %q, want %q", name, got, "plain value\n")
+		}
+	}
+}
+
+func TestExecTools_EnvRejected(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"API_KEY": "v"}}, nil, nil)
+	for _, env := range []map[string]any{
+		{"API_KEY": "spoofed"}, // shadows a stored secret
+		{"A=B": "x"},
+		{"": "x"},
+		{"N": 42},
+	} {
+		for name, result := range execBoth(t, h, map[string]any{"command": "echo", "env": env}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "env") {
+				t.Errorf("%s: env %v accepted: %q", name, env, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// Windows environment names are case-insensitive, so there "token"
+// shadows a stored TOKEN.
+func TestCheckEnvNotSecret_CaseInsensitiveOnWindows(t *testing.T) {
+	old := envNamesFoldCase
+	t.Cleanup(func() { envNamesFoldCase = old })
+
+	envNamesFoldCase = true
+	if err := checkEnvNotSecret(map[string]string{"token": "x"}, []string{"TOKEN"}); err == nil {
+		t.Error("case-insensitive: \"token\" accepted alongside the TOKEN secret")
+	}
+	envNamesFoldCase = false
+	if err := checkEnvNotSecret(map[string]string{"token": "x"}, []string{"TOKEN"}); err != nil {
+		t.Errorf("case-sensitive: %v", err)
+	}
+}
+
+// Variables that make an approved program load or run other code.
+func TestExecTools_EnvRejectsLoaderAndHookNames(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	for _, name := range []string{
+		"PATH", "Path", "LD_PRELOAD", "ld_library_path", "DYLD_INSERT_LIBRARIES",
+		"BASH_ENV", "ENV", "IFS", "NODE_OPTIONS", "PYTHONPATH", "PYTHONSTARTUP",
+		"PERL5OPT", "RUBYOPT", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_EXEC_PATH",
+		"GIT_ASKPASS", "GIT_PROXY_COMMAND", "git_pager", "PAGER", "EDITOR", "Visual",
+		"SSH_ASKPASS", "LESSOPEN", "LESSCLOSE", "GOFLAGS", "CLASSPATH",
+		"JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "DOTNET_STARTUP_HOOKS", "npm_config_script_shell",
+		"1BAD", "A B",
+	} {
+		args := map[string]any{"command": "echo", "env": map[string]any{name: "x"}}
+		for tool, result := range execBoth(t, h, args) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "env") {
+				t.Errorf("%s: env name %q accepted: %q", tool, name, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// With cwd set, a relative path command would resolve inside the
+// caller-chosen directory: cwd=/tmp/evil, command=./gh passes a "gh" rule.
+func TestExecTools_CwdRejectsRelativePathCommand(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	dir := t.TempDir()
+
+	for _, command := range []string{"./gh", "bin/gh"} {
+		for tool, result := range execBoth(t, h, map[string]any{"command": command, "cwd": dir}) {
+			if !result.IsError || !strings.Contains(getResultText(t, result), "cwd") {
+				t.Errorf("%s: command %q with cwd accepted: %q", tool, command, getResultText(t, result))
+			}
+		}
+	}
+	for _, command := range []string{"echo", "/bin/echo"} {
+		for tool, result := range execBoth(t, h, map[string]any{"command": command, "cwd": dir}) {
+			if result.IsError {
+				t.Errorf("%s: command %q with cwd rejected: %q", tool, command, getResultText(t, result))
+			}
+		}
+	}
+}
+
+// cwd, env and stdin change what an approved command does, so the prompt
+// has to show them.
+func TestExecTools_ApprovalShowsCwdEnvStdin(t *testing.T) {
+	pol := &policy.Policy{Rules: []policy.Rule{{
+		Commands: []string{"*"}, Secrets: []string{"*"}, Approval: policy.ApprovalAlways,
+	}}}
+	dir := t.TempDir()
+	for _, tool := range []string{"exec", "exec_with_secrets"} {
+		rec := &recordingApproval{}
+		h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "v"}}, pol, rec.fn)
+		args := map[string]any{
+			"command": "cat",
+			"cwd":     dir,
+			"env":     map[string]any{"MODE": "a\nb"},
+			"stdin":   "rm -rf ~\n" + strings.Repeat("x", 500),
+		}
+		if tool == "exec" {
+			h.HandleExec(context.Background(), makeCallToolRequest(args))
+		} else {
+			args["args"] = []any{"${{NOKEY:K}}"}
+			h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(args))
+		}
+		if len(rec.calls) != 1 {
+			t.Fatalf("%s: approval calls = %d, want 1", tool, len(rec.calls))
+		}
+		d := rec.calls[0].detail
+		for _, want := range []string{
+			"cwd: " + fmt.Sprintf("%q", dir),
+			`MODE="a\nb"`,
+			"stdin: 509 bytes",
+			`"rm -rf ~\n`,
+		} {
+			if !strings.Contains(d, want) {
+				t.Errorf("%s: detail %q lacks %q", tool, d, want)
+			}
+		}
+		if strings.Contains(d, strings.Repeat("x", 300)) {
+			t.Errorf("%s: detail shows all of stdin; it should be a short preview", tool)
+		}
+	}
+}
+
+func TestExecTools_SeparateStderr(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+	args := map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "echo out; echo err secret-value >&2"},
+		"separate_stderr": true,
+	}
+	for name, result := range execBoth(t, h, args) {
+		want := "out\n[stderr]\nerr [REDACTED:K]\n"
+		if name == "exec_with_secrets" {
+			// No placeholder, so K is not fetched and not redacted.
+			want = "out\n[stderr]\nerr secret-value\n"
+		}
+		if got := getResultText(t, result); got != want {
+			t.Errorf("%s: output = %q, want %q", name, got, want)
+		}
+	}
+}
+
+// --- structured output ---
+
+func structured(t *testing.T, result *mcp.CallToolResult) execOutput {
+	t.Helper()
+	out, ok := result.StructuredContent.(execOutput)
+	if !ok {
+		t.Fatalf("StructuredContent = %#v, want an execOutput", result.StructuredContent)
+	}
+	return out
+}
+
+func TestExecTools_StructuredOutput(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo $K; exit 3"},
+	}))
+	if text := getResultText(t, result); text != "[exit code: 3]\n[REDACTED:K]\n" {
+		t.Errorf("text = %q; the text content must not change", text)
+	}
+	got := structured(t, result)
+	want := execOutput{Output: "[REDACTED:K]\n", ExitCode: 3, OriginalBytes: 13, SecretsInjected: []string{"K"}}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("structured = %+v, want %+v", got, want)
+	}
+
+	result, _ = h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo out; echo err >&2"}, "separate_stderr": true,
+	}))
+	got = structured(t, result)
+	if got.Output != "out\n" || got.Stderr != "err\n" || got.SecretsInjected == nil || len(got.SecretsInjected) != 0 {
+		t.Errorf("structured = %+v, want split streams and an empty secrets list", got)
+	}
+}
+
+func TestExecTools_StructuredTimeoutAndTruncation(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "echo partial; sleep 30"}, "timeout_seconds": 1,
+	}))
+	if got := structured(t, result); !got.TimedOut || got.Output != "partial\n" {
+		t.Errorf("structured = %+v, want timed_out with the partial output", got)
+	}
+
+	result, _ = h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", "head -c 2000000 /dev/zero"},
+	}))
+	if got := structured(t, result); !got.Truncated || got.OriginalBytes != 2000000 {
+		t.Errorf("truncated = %v, original_bytes = %d; want true, 2000000", got.Truncated, got.OriginalBytes)
+	}
+}
+
+// Split streams share the one output budget: each half of it, so the text
+// stays within MaxOutputBytes as it does when they are interleaved.
+func TestExecTools_SeparateStderrSharesOutputCap(t *testing.T) {
+	skipOnWindows(t)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command":         "sh",
+		"args":            []any{"-c", "head -c 2000000 /dev/zero; head -c 2000000 /dev/zero >&2"},
+		"separate_stderr": true,
+	}))
+	text := getResultText(t, result)
+	if len(text) > MaxOutputBytes+len("\n[stderr]\n") {
+		t.Errorf("text is %d bytes, want at most about %d", len(text), MaxOutputBytes)
+	}
+	got := structured(t, result)
+	if !got.Truncated || len(got.Output) == 0 || len(got.Stderr) == 0 {
+		t.Errorf("want both streams kept, truncated: %v, %d, %d bytes", got.Truncated, len(got.Output), len(got.Stderr))
+	}
+}
+
+func TestExecTools_DeclareOutputSchema(t *testing.T) {
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	s := server.NewMCPServer("nokey-test", "0")
+	h.RegisterTools(s)
+	for _, name := range []string{"exec", "exec_with_secrets"} {
+		props := s.GetTool(name).Tool.OutputSchema.Properties
+		for _, field := range []string{"output", "exit_code", "timed_out", "truncated", "original_bytes", "secrets_injected"} {
+			if _, ok := props[field]; !ok {
+				t.Errorf("%s output schema lacks %q", name, field)
+			}
+		}
+	}
+}
+
+// --- actionable errors ---
+
+func TestHandleExec_PolicyDenialSaysHowToAllow(t *testing.T) {
+	configDir := t.TempDir()
+	store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"curl"}, Secrets: []string{"*"}}}}
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(pol),
+		Config:       config.DefaultConfig(),
+		GetConfigDir: func() (string, error) { return configDir, nil },
+	})
+
+	result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{"command": "echo"}))
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	for _, want := range []string{"policy denied", filepath.Join(configDir, "policies.yaml"), `commands: ["echo"]`, `secrets: ["KEY"]`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("result = %q, want it to contain %q", text, want)
+		}
+	}
+}
+
+func TestCheckTokenOrApproval_TokenRequiredSaysWhatToMint(t *testing.T) {
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"*"}, Secrets: []string{"*"}, TokenRequired: true}}}
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, pol, nil)
+
+	err := h.checkTokenOrApproval(context.Background(), "", "/usr/bin/gh", []string{"A", "B"}, "")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	for _, want := range []string{"token required", "mint_token", `["A","B"]`, `"gh"`, "token"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to contain %q", err, want)
+		}
 	}
 }

@@ -27,6 +27,13 @@ rules:
       - "GITHUB_TOKEN"
     approval: never
 
+  # Allow nokey's MCP GitHub tools (github_api, github_create_pr, ...).
+  # They are checked as this command name, not as "gh".
+  # - commands:
+  #     - "nokey:integration:github"
+  #   secrets:
+  #     - "GITHUB_TOKEN"
+
   # Allow Python scripts to access database credentials
   # - commands:
   #     - "python*"
