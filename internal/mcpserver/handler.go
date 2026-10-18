@@ -916,7 +916,7 @@ func argsParam(request mcp.CallToolRequest) ([]string, error) {
 	}
 	var args []string
 	if err := json.Unmarshal([]byte(raw), &args); err != nil {
-		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %s", err)
+		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %w", err)
 	}
 	return args, nil
 }
