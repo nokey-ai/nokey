@@ -3,6 +3,7 @@
 package redact
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -32,7 +33,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	}
 
 	// Create the command
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(context.Background(), command, args...)
 
 	// Merge secrets into environment
 	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)

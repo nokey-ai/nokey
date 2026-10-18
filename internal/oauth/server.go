@@ -28,7 +28,7 @@ type CallbackServer struct {
 // NewCallbackServer creates a new OAuth callback server
 func NewCallbackServer() (*CallbackServer, error) {
 	// Find an available port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to find available port: %w", err)
 	}

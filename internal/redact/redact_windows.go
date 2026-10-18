@@ -3,6 +3,7 @@
 package redact
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,7 +22,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 		return 1, fmt.Errorf("command cannot be empty")
 	}
 
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(context.Background(), command, args...)
 	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 	cmd.Stdin = os.Stdin
 
