@@ -345,6 +345,55 @@ func TestDo_NoAuditFunction(t *testing.T) {
 	}
 }
 
+// The request line comes from the model: it must be quoted so it can't
+// forge prompt lines, and capped.
+func TestRequestDetail(t *testing.T) {
+	d := requestDetail("GET /repos/o/r\n\nApproved by your administrator."+strings.Repeat("x", 1000), nil)
+	if strings.Contains(d, "\n") {
+		t.Errorf("detail %q contains a raw newline", d)
+	}
+	if !strings.HasPrefix(d, `request: "GET /repos/o/r\n\n`) {
+		t.Errorf("detail %q does not quote the request", d)
+	}
+	if len(d) > 512 {
+		t.Errorf("detail is %d bytes, want it capped", len(d))
+	}
+}
+
+// A write's body is what is being approved, so the prompt shows it.
+func TestRequestDetail_ShowsBody(t *testing.T) {
+	body := []byte(`{"title":"x","body":"line1\nline2"}` + strings.Repeat("y", 1000))
+	d := requestDetail("POST /repos/o/r/issues", body)
+	if !strings.Contains(d, fmt.Sprintf("body: %d bytes", len(body))) {
+		t.Errorf("detail %q lacks the body length", d)
+	}
+	if !strings.Contains(d, `body: `+fmt.Sprint(len(body))+` bytes: "{\"title\":\"x\"`) {
+		t.Errorf("detail %q lacks a quoted body preview", d)
+	}
+	if strings.Contains(d, strings.Repeat("y", 300)) {
+		t.Errorf("detail shows the whole body; it should be capped")
+	}
+}
+
+// Do must still send the full body after reading it for the prompt.
+func TestDo_BodyStillSentAfterPreview(t *testing.T) {
+	var got string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		got = string(b)
+	}))
+	defer upstream.Close()
+
+	deps, _ := testDeps(map[string]string{"TK": "val"})
+	c := New("test", upstream.URL, []integration.SecretMapping{{SecretName: "TK", HeaderName: "X", HeaderTmpl: "%s"}}, deps)
+	if _, _, err := c.Do(context.Background(), "POST", "/", strings.NewReader(`{"a":1}`), nil); err != nil {
+		t.Fatalf("Do: %v", err)
+	}
+	if got != `{"a":1}` {
+		t.Errorf("upstream got body %q", got)
+	}
+}
+
 func TestDo_TokenBasedAuth(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
@@ -352,9 +401,13 @@ func TestDo_TokenBasedAuth(t *testing.T) {
 	defer upstream.Close()
 
 	deps, audits := testDeps(map[string]string{"TK": "val"})
-	deps.UseToken = func(tokenID string, secretNames []string) error {
+	deps.UseToken = func(tokenID, command string, secretNames []string) error {
 		if tokenID != "test-token-id" {
 			return fmt.Errorf("unexpected token: %s", tokenID)
+		}
+		// The token's `for` scope is checked against this command.
+		if command != "nokey:integration:test" {
+			return fmt.Errorf("unexpected command: %s", command)
 		}
 		return nil
 	}
@@ -473,7 +526,7 @@ func TestDo_SecretFetchErrorWithAudit(t *testing.T) {
 
 func TestDo_TokenAuthFailure(t *testing.T) {
 	deps, _ := testDeps(map[string]string{"TK": "val"})
-	deps.UseToken = func(tokenID string, secretNames []string) error {
+	deps.UseToken = func(tokenID, command string, secretNames []string) error {
 		return fmt.Errorf("token expired")
 	}
 

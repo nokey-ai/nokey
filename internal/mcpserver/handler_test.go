@@ -95,7 +95,7 @@ func staticPolicy(p *policy.Policy) func() *policy.Policy {
 func newTestHandler(t *testing.T, store SecretStore, pol *policy.Policy, approvalFn ApprovalFunc) *Handler {
 	t.Helper()
 	if approvalFn == nil {
-		approvalFn = func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error {
+		approvalFn = func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
 			return nil // auto-approve
 		}
 	}
@@ -835,7 +835,7 @@ func TestHandleStartProxy_RejectsNonLoopbackAddr(t *testing.T) {
 				},
 				GetPolicy:    staticPolicy(pol),
 				Config:       c,
-				ApprovalFn:   func(context.Context, approval.Requester, string, []string) error { return nil },
+				ApprovalFn:   func(context.Context, approval.Requester, string, []string, string) error { return nil },
 				AuditFn:      func(string, string, string, bool, string) {},
 				GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 			})
@@ -947,10 +947,12 @@ func TestHandleExec_WithAudit(t *testing.T) {
 
 	var audited bool
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(nil),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1024,10 +1026,12 @@ func TestHandleStartProxy_FullFlow(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(loadedPol),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(loadedPol),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return configDir, nil },
 	})
@@ -1076,10 +1080,12 @@ func TestHandleStartProxy_SecretNotFound(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(loadedPol),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(loadedPol),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return configDir, nil },
 	})
@@ -1105,10 +1111,12 @@ func TestHandleListSecrets_WithAudit(t *testing.T) {
 
 	var audited bool
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(nil),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1140,7 +1148,7 @@ func TestCheckTokenOrApproval_ValidToken(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	err = h.checkTokenOrApproval(context.Background(), tok.ID, "test-cmd", []string{"MY_SECRET"})
+	err = h.checkTokenOrApproval(context.Background(), tok.ID, "test-cmd", []string{"MY_SECRET"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -1150,7 +1158,7 @@ func TestCheckTokenOrApproval_InvalidToken(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	h := newTestHandler(t, store, nil, nil)
 
-	err := h.checkTokenOrApproval(context.Background(), "bad-token", "test-cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "bad-token", "test-cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token invalid") {
 		t.Errorf("expected 'token invalid' error, got: %v", err)
 	}
@@ -1160,7 +1168,7 @@ func TestCheckTokenOrApproval_NoTokenNilPolicy(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	h := newTestHandler(t, store, nil, nil) // nil policy = no requirements
 
-	err := h.checkTokenOrApproval(context.Background(), "", "test-cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "", "test-cmd", []string{"SEC"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -1177,7 +1185,7 @@ func TestCheckTokenOrApproval_PolicyRequiresToken(t *testing.T) {
 	}
 	h := newTestHandler(t, store, pol, nil)
 
-	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token required") {
 		t.Errorf("expected 'token required' error, got: %v", err)
 	}
@@ -1195,7 +1203,7 @@ func TestCheckTokenOrApproval_WrongSecret(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	err = h.checkTokenOrApproval(context.Background(), tok.ID, "cmd", []string{"DISALLOWED"})
+	err = h.checkTokenOrApproval(context.Background(), tok.ID, "cmd", []string{"DISALLOWED"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token invalid") {
 		t.Errorf("expected 'token invalid' error, got: %v", err)
 	}
@@ -1205,10 +1213,12 @@ func TestCheckTokenOrApproval_WrongSecret(t *testing.T) {
 
 func TestHandleListSecrets_GetKeyringError(t *testing.T) {
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		GetPolicy:    staticPolicy(nil),
-		Config:       config.DefaultConfig(),
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
+		GetPolicy: staticPolicy(nil),
+		Config:    config.DefaultConfig(),
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1240,8 +1250,8 @@ func TestHandleListSecrets_ListError(t *testing.T) {
 // --- HandleMintToken full flow ---
 
 func TestHandleMintToken_ApprovalAccepted(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	store := &mapStore{secrets: map[string]string{"SECRET_A": "a", "SECRET_B": "b"}}
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return nil
 	})
 
@@ -1271,8 +1281,8 @@ func TestHandleMintToken_ApprovalAccepted(t *testing.T) {
 }
 
 func TestHandleMintToken_ApprovalDeclined(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	store := &mapStore{secrets: map[string]string{"SECRET_A": "a"}}
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return fmt.Errorf("user declined secret access for \"mint_token\"")
 	})
 
@@ -1291,8 +1301,8 @@ func TestHandleMintToken_ApprovalDeclined(t *testing.T) {
 }
 
 func TestHandleMintToken_UnlimitedUses(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return nil
 	})
 
@@ -1312,17 +1322,19 @@ func TestHandleMintToken_UnlimitedUses(t *testing.T) {
 }
 
 func TestHandleMintToken_WithAudit(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: map[string]string{"AUDIT_SEC": "v"}}
 
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
 
 	var audited bool
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(nil),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(op, cmd, target string, ok bool, errMsg string) { audited = true },
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1345,8 +1357,8 @@ func TestHandleMintToken_WithAudit(t *testing.T) {
 }
 
 func TestHandleMintToken_DefaultFor(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return nil
 	})
 
@@ -1377,11 +1389,11 @@ func TestCheckTokenOrApproval_RequiresApproval_Accepted(t *testing.T) {
 			Approval: "always",
 		}},
 	}
-	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return nil
 	})
 
-	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -1397,11 +1409,11 @@ func TestCheckTokenOrApproval_RequiresApproval_Declined(t *testing.T) {
 			Approval: "always",
 		}},
 	}
-	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return fmt.Errorf("user declined")
 	})
 
-	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Errorf("expected 'declined' error, got: %v", err)
 	}
@@ -1423,7 +1435,7 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			approvalCount++
 			return nil
 		},
@@ -1432,7 +1444,7 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 	})
 
 	// First call: triggers auto-mint approval.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd1", []string{"SECRET_A"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd1", []string{"SECRET_A"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1443,7 +1455,7 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 	}
 
 	// Second call: should use cached session token, no new approval.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd2", []string{"SECRET_A"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd2", []string{"SECRET_A"}, ""); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1464,7 +1476,7 @@ func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			return fmt.Errorf("user declined")
 		},
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1472,7 +1484,7 @@ func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
 	})
 
 	// Auto-mint declined -> falls through. With nil policy, no further approval needed.
-	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"})
+	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
 	if err != nil {
 		t.Errorf("expected nil (fallthrough with nil policy), got: %v", err)
 	}
@@ -1485,13 +1497,13 @@ func TestCheckTokenOrApproval_AutoMint_Disabled(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	// Default config has AutoMintToken = false
 	approvalCount := 0
-	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		approvalCount++
 		return nil
 	})
 
 	// With nil policy, no approval required; auto-mint disabled -> no prompt at all.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if approvalCount != 0 {
@@ -1516,7 +1528,7 @@ func TestCheckTokenOrApproval_AutoMint_Expired(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			approvalCount++
 			return nil
 		},
@@ -1535,7 +1547,7 @@ func TestCheckTokenOrApproval_AutoMint_Expired(t *testing.T) {
 	h.tokenStore.Revoke(tok.ID) // simulate expiry
 
 	// Next call should detect invalid session token, clear it, then auto-mint again.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1561,7 +1573,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			approvalCount++
 			return nil
 		},
@@ -1570,7 +1582,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 	})
 
 	// First call: auto-mint with SEC_A.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_A"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_A"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1582,7 +1594,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 	store.secrets["SEC_B"] = "b"
 
 	// Session token only covers SEC_A, not SEC_B -> should clear and re-mint.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_B"}); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_B"}, ""); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if approvalCount != 2 {
@@ -1597,10 +1609,12 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 
 func TestHandleExec_GetKeyringError(t *testing.T) {
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		GetPolicy:    staticPolicy(nil),
-		Config:       config.DefaultConfig(),
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
+		GetPolicy: staticPolicy(nil),
+		Config:    config.DefaultConfig(),
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1642,10 +1656,12 @@ func TestHandleExec_GetSecretsError(t *testing.T) {
 
 func TestHandleExecWithSecrets_GetKeyringError(t *testing.T) {
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
-		GetPolicy:    staticPolicy(nil),
-		Config:       config.DefaultConfig(),
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return nil, fmt.Errorf("keyring locked") },
+		GetPolicy: staticPolicy(nil),
+		Config:    config.DefaultConfig(),
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
@@ -1667,7 +1683,7 @@ func TestHandleExecWithSecrets_GetKeyringError(t *testing.T) {
 // --- HandleExecWithSecrets approval denied ---
 
 func TestHandleExecWithSecrets_ApprovalDenied(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: map[string]string{"MY_SECRET": "v"}}
 	pol := &policy.Policy{
 		Approval: "always",
 		Rules: []policy.Rule{{
@@ -1676,7 +1692,7 @@ func TestHandleExecWithSecrets_ApprovalDenied(t *testing.T) {
 			Approval: "always",
 		}},
 	}
-	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return fmt.Errorf("user denied")
 	})
 
@@ -1708,7 +1724,7 @@ func TestHandleExec_ApprovalDenied(t *testing.T) {
 			Approval: "always",
 		}},
 	}
-	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := newTestHandler(t, store, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		return fmt.Errorf("approval denied")
 	})
 
@@ -1753,10 +1769,12 @@ func TestHandleStartProxy_GetKeyringError(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return nil, fmt.Errorf("keyring error") },
-		GetPolicy:    staticPolicy(polObj),
-		Config:       c,
-		ApprovalFn:   func(ctx context.Context, req approval.Requester, cmd string, secrets []string) error { return nil },
+		GetStore:  func() (SecretStore, error) { return nil, fmt.Errorf("keyring error") },
+		GetPolicy: staticPolicy(polObj),
+		Config:    c,
+		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
+			return nil
+		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return configDir, nil },
 	})
@@ -1840,7 +1858,7 @@ func TestHandleExec_ReloadsPolicyWhenFileChanges(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: polStore.Current,
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			return nil
 		},
 		AuditFn:      func(string, string, string, bool, string) {},
@@ -1934,7 +1952,7 @@ func TestCheckTokenOrApproval_AutoMint_Concurrent(t *testing.T) {
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 			approvals.Add(1)
 			time.Sleep(20 * time.Millisecond) // the user takes a moment to click
 			return nil
@@ -1946,7 +1964,7 @@ func TestCheckTokenOrApproval_AutoMint_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
-			if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}); err != nil {
+			if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
 				t.Errorf("checkTokenOrApproval: %v", err)
 			}
 		})
@@ -2053,7 +2071,7 @@ func autoMintHandler(t *testing.T, approvalFn ApprovalFunc) *Handler {
 // every other call queued on it.
 func TestCheckTokenOrApproval_AutoMint_PendingPromptDoesNotWedge(t *testing.T) {
 	prompted := make(chan struct{}, 1)
-	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		prompted <- struct{}{}
 		<-ctx.Done() // the user walked away
 		return ctx.Err()
@@ -2061,13 +2079,13 @@ func TestCheckTokenOrApproval_AutoMint_PendingPromptDoesNotWedge(t *testing.T) {
 
 	stuckCtx, release := context.WithCancel(context.Background())
 	defer release()
-	go h.checkTokenOrApproval(stuckCtx, "", "cmd", []string{"SEC"})
+	go h.checkTokenOrApproval(stuckCtx, "", "cmd", []string{"SEC"}, "")
 	<-prompted
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}) }()
+	go func() { done <- h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}, "") }()
 
 	select {
 	case <-done:
@@ -2078,18 +2096,44 @@ func TestCheckTokenOrApproval_AutoMint_PendingPromptDoesNotWedge(t *testing.T) {
 	}
 }
 
+// A panic during the prompt is recovered by the server, so the in-flight
+// mint must still be cleared or every later auto-mint would wait on it.
+func TestCheckTokenOrApproval_AutoMint_PanicDoesNotWedge(t *testing.T) {
+	var calls atomic.Int32
+	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+		if calls.Add(1) == 1 {
+			panic("prompt blew up")
+		}
+		return nil
+	})
+
+	func() {
+		defer func() { _ = recover() }()
+		h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}, ""); err != nil {
+		t.Fatalf("checkTokenOrApproval: %v", err)
+	}
+	if calls.Load() != 2 || !h.useSessionToken([]string{"SEC"}) {
+		t.Errorf("prompts = %d and token minted = %v; want a fresh prompt and a token", calls.Load(), h.useSessionToken([]string{"SEC"}))
+	}
+}
+
 func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
 	old := autoMintPromptTimeout
 	autoMintPromptTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { autoMintPromptTimeout = old })
 
-	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		<-ctx.Done()
 		return ctx.Err()
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}) }()
+	go func() { done <- h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "") }()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -2104,7 +2148,7 @@ func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
 // included, rather than each raising a prompt of its own.
 func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
 	var approvals atomic.Int32
-	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, _ string, _ []string) error {
+	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
 		approvals.Add(1)
 		time.Sleep(50 * time.Millisecond)
 		return fmt.Errorf("user declined")
@@ -2112,10 +2156,279 @@ func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 6 {
-		wg.Go(func() { h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}) })
+		wg.Go(func() { h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "") })
 	}
 	wg.Wait()
 	if n := approvals.Load(); n != 1 {
 		t.Errorf("approvals = %d, want 1 shared prompt", n)
+	}
+}
+
+// --- token scope ---
+
+// --- token scope and approval detail ---
+
+// recordingApproval captures every approval prompt the handler raises.
+type recordingApproval struct {
+	mu    sync.Mutex
+	calls []approvalCall
+}
+
+type approvalCall struct {
+	command string
+	secrets []string
+	detail  string
+}
+
+func (r *recordingApproval) fn(_ context.Context, _ approval.Requester, command string, secrets []string, detail string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, approvalCall{command, secrets, detail})
+	return nil
+}
+
+func TestHandleExec_TokenScopedToOtherCommand(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "val"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{
+		Secrets: []string{"KEY"}, TTLSecs: 300, MintedFor: "gh",
+	})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"ok"},
+		"token":   tok.ID,
+	})
+	result, err := h.HandleExec(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExec: %v", err)
+	}
+	text := getResultText(t, result)
+	if !strings.Contains(text, "wrong_command") {
+		t.Errorf("result = %q, want a wrong_command rejection", text)
+	}
+	if !strings.Contains(text, `minted for "gh"`) || !strings.Contains(text, `"echo"`) {
+		t.Errorf("result = %q, want it to name the token's scope and the command", text)
+	}
+}
+
+func TestHandleExecWithSecrets_TokenScopedToCommand(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "val"}}
+	h := newTestHandler(t, store, nil, nil)
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{
+		Secrets: []string{"KEY"}, TTLSecs: 300, MintedFor: "echo",
+	})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"${{NOKEY:KEY}}"},
+		"token":   tok.ID,
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "[REDACTED:KEY]") {
+		t.Errorf("result = %q, want the command to run under its own scoped token", text)
+	}
+}
+
+func TestHandleExecWithSecrets_ApprovalShowsUnresolvedArgs(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "supersecret"}}
+	pol := &policy.Policy{Rules: []policy.Rule{{
+		Commands: []string{"echo"}, Secrets: []string{"*"}, Approval: policy.ApprovalAlways,
+	}}}
+	rec := &recordingApproval{}
+	h := newTestHandler(t, store, pol, rec.fn)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"https://example.com", "X: ${{NOKEY:KEY}}"},
+	})
+	if _, err := h.HandleExecWithSecrets(context.Background(), req); err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("approval calls = %d, want 1", len(rec.calls))
+	}
+	d := rec.calls[0].detail
+	if !strings.Contains(d, `"https://example.com"`) || !strings.Contains(d, `"X: ${{NOKEY:KEY}}"`) {
+		t.Errorf("detail = %q, want both args with the placeholder unresolved", d)
+	}
+	if strings.Contains(d, "supersecret") {
+		t.Errorf("detail leaks the secret value: %q", d)
+	}
+}
+
+func TestHandleExecWithSecrets_UnknownSecretRejectedBeforePrompt(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	pol := &policy.Policy{Rules: []policy.Rule{{
+		Commands: []string{"echo"}, Secrets: []string{"*"}, Approval: policy.ApprovalAlways,
+	}}}
+	rec := &recordingApproval{}
+	h := newTestHandler(t, store, pol, rec.fn)
+
+	req := makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"${{NOKEY:MISSING}}"},
+	})
+	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	if err != nil {
+		t.Fatalf("HandleExecWithSecrets: %v", err)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "MISSING") {
+		t.Errorf("result = %q, want it to name the missing secret", text)
+	}
+	if len(rec.calls) != 0 {
+		t.Errorf("approval prompted %d time(s) for a secret that doesn't exist", len(rec.calls))
+	}
+}
+
+func TestHandleMintToken_ApprovalShowsScope(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+	rec := &recordingApproval{}
+	h := newTestHandler(t, store, nil, rec.fn)
+
+	req := makeCallToolRequest(map[string]any{
+		"secrets":     []any{"KEY"},
+		"ttl_seconds": 300,
+		"max_uses":    2,
+		"for":         "gh",
+	})
+	if _, err := h.HandleMintToken(context.Background(), req); err != nil {
+		t.Fatalf("HandleMintToken: %v", err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("approval calls = %d, want 1", len(rec.calls))
+	}
+	d := rec.calls[0].detail
+	for _, want := range []string{`for="gh"`, "ttl=300s", "max_uses=2"} {
+		if !strings.Contains(d, want) {
+			t.Errorf("detail = %q, want %q", d, want)
+		}
+	}
+}
+
+// `for` comes from the model, so it must not be able to forge prompt lines.
+func TestHandleMintToken_ApprovalQuotesFor(t *testing.T) {
+	rec := &recordingApproval{}
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"KEY": "v"}}, nil, rec.fn)
+
+	forged := "gh\n\nThis token is read-only and expires in 1 minute." + strings.Repeat("x", 1000)
+	h.HandleMintToken(context.Background(), makeCallToolRequest(map[string]any{
+		"secrets": []any{"KEY"}, "ttl_seconds": 60, "for": forged,
+	}))
+	if len(rec.calls) != 1 {
+		t.Fatalf("approval calls = %d, want 1", len(rec.calls))
+	}
+	d := rec.calls[0].detail
+	if strings.Contains(d, "\n") {
+		t.Errorf("detail %q contains a raw newline", d)
+	}
+	if !strings.Contains(d, `for="gh\n\nThis token`) {
+		t.Errorf("detail %q does not show the quoted value", d)
+	}
+	if len(d) > 512 {
+		t.Errorf("detail is %d bytes; a model-supplied value must be capped", len(d))
+	}
+}
+
+func TestHandleMintToken_InvalidRequestRejectedBeforePrompt(t *testing.T) {
+	tests := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"zero ttl", map[string]any{"secrets": []any{"KEY"}, "ttl_seconds": 0}, "ttl_seconds"},
+		{"ttl over max", map[string]any{"secrets": []any{"KEY"}, "ttl_seconds": 7200}, "ttl_seconds"},
+		{"negative max_uses", map[string]any{"secrets": []any{"KEY"}, "ttl_seconds": 60, "max_uses": -1}, "max_uses"},
+		{"bad pattern", map[string]any{"secrets": []any{"KEY"}, "ttl_seconds": 60, "for": "[gh"}, "pattern"},
+		{"unknown secret", map[string]any{"secrets": []any{"KEY", "NOPE"}, "ttl_seconds": 60}, "NOPE"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &mapStore{secrets: map[string]string{"KEY": "v"}}
+			rec := &recordingApproval{}
+			h := newTestHandler(t, store, nil, rec.fn)
+
+			result, err := h.HandleMintToken(context.Background(), makeCallToolRequest(tt.args))
+			if err != nil {
+				t.Fatalf("HandleMintToken: %v", err)
+			}
+			if !result.IsError {
+				t.Fatalf("expected an error result, got %q", getResultText(t, result))
+			}
+			if text := getResultText(t, result); !strings.Contains(text, tt.want) {
+				t.Errorf("result = %q, want it to mention %q", text, tt.want)
+			}
+			if len(rec.calls) != 0 {
+				t.Errorf("approval prompted for a request that can't be minted")
+			}
+		})
+	}
+}
+
+func TestCheckTokenOrApproval_AutoMint_ApprovalShowsScope(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "v"}}
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	c.Audit.Enabled = false
+	rec := &recordingApproval{}
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       c,
+		ApprovalFn:   rec.fn,
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+		t.Fatalf("checkTokenOrApproval: %v", err)
+	}
+	if len(rec.calls) != 1 {
+		t.Fatalf("approval calls = %d, want 1", len(rec.calls))
+	}
+	if d := rec.calls[0].detail; !strings.Contains(d, "unlimited uses, 1h, any command") {
+		t.Errorf("detail = %q, want the session token's scope spelled out", d)
+	}
+}
+
+func TestHandleRevokeToken_AuditsHashedID(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{}}
+	var targets []string
+	c := config.DefaultConfig()
+	h := New(Deps{
+		GetStore:     func() (SecretStore, error) { return store, nil },
+		GetPolicy:    staticPolicy(nil),
+		Config:       c,
+		AuditFn:      func(_, _, target string, _ bool, _ string) { targets = append(targets, target) },
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+
+	tok, err := h.tokenStore.Mint(token.MintRequest{Secrets: []string{"A"}, TTLSecs: 300})
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+	h.HandleRevokeToken(context.Background(), makeCallToolRequest(map[string]any{"token_id": tok.ID}))
+	h.HandleRevokeToken(context.Background(), makeCallToolRequest(map[string]any{"token_id": "guess"}))
+
+	if len(targets) != 2 {
+		t.Fatalf("audit entries = %d, want 2", len(targets))
+	}
+	for _, target := range targets {
+		if strings.Contains(target, tok.ID) || strings.Contains(target, "guess") {
+			t.Errorf("audit target %q contains a raw token ID", target)
+		}
+		if !strings.HasPrefix(target, "sha256:") {
+			t.Errorf("audit target %q, want a sha256: prefix", target)
+		}
 	}
 }

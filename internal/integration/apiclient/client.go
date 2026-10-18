@@ -1,6 +1,7 @@
 package apiclient
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -64,6 +65,16 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	command := "nokey:integration:" + c.integrationName
 	target := method + " " + path
 
+	// Read the body up front so the approval prompt can show it; it is
+	// sent from the buffer below.
+	var bodyBytes []byte
+	if body != nil {
+		if bodyBytes, err = io.ReadAll(body); err != nil {
+			return "", 0, fmt.Errorf("failed to read request body: %w", err)
+		}
+		body = bytes.NewReader(bodyBytes)
+	}
+
 	// Collect secret names from mappings.
 	secretNames := make([]string, len(c.mappings))
 	for i, m := range c.mappings {
@@ -87,7 +98,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	// 2. Token or approval gateway.
 	tokenUsed := false
 	if tokenID, ok := token.TokenIDFromContext(ctx); ok && c.deps.UseToken != nil {
-		if err := c.deps.UseToken(tokenID, secretNames); err != nil {
+		if err := c.deps.UseToken(tokenID, command, secretNames); err != nil {
 			c.audit(target, secretNames, false, err.Error())
 			return "", 0, fmt.Errorf("token invalid: %w", err)
 		}
@@ -95,7 +106,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body io.Reader,
 	}
 	if !tokenUsed {
 		if pol.RequiresApproval(command, secretNames) {
-			if err := approval.Request(ctx, c.deps.Requester, command, secretNames); err != nil {
+			if err := approval.RequestWithDetail(ctx, c.deps.Requester, command, secretNames, requestDetail(target, bodyBytes)); err != nil {
 				c.audit(target, secretNames, false, err.Error())
 				return "", 0, err
 			}
@@ -214,4 +225,14 @@ func (c *Client) audit(target string, secretNames []string, ok bool, errMsg stri
 			errMsg,
 		)
 	}
+}
+
+// requestDetail describes a request for an approval prompt. The method,
+// path and body come from the model, so they are quoted and capped.
+func requestDetail(target string, body []byte) string {
+	d := "request: " + approval.Quote(target)
+	if len(body) > 0 {
+		d += fmt.Sprintf("\nbody: %d bytes: %s", len(body), approval.Quote(string(body)))
+	}
+	return d
 }

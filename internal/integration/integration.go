@@ -21,7 +21,7 @@ type Deps struct {
 	GetPolicy func() *policy.Policy
 	Requester *server.MCPServer
 	AuditFn   func(op, target, secrets string, ok bool, errMsg string)
-	UseToken  func(id string, secrets []string) error // nil = no token support
+	UseToken  func(id, command string, secrets []string) error // nil = no token support
 }
 
 // Integration is the interface that each service integration implements.

