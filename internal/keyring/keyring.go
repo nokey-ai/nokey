@@ -232,7 +232,12 @@ func (s *Store) GetAll() (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	return s.GetMany(keys)
+}
 
+// GetMany retrieves only the given secrets, so callers that need a subset
+// don't read (and trigger access prompts for) every stored value.
+func (s *Store) GetMany(keys []string) (map[string]string, error) {
 	secrets := make(map[string]string, len(keys))
 	for _, key := range keys {
 		value, err := s.Get(key)
@@ -335,24 +340,42 @@ var setBackoffStoreFn = func(s *Store) { auth.SetBackoffStore(s) }
 // This provides zero-trust security: even if Claude runs this command,
 // it cannot access secrets without a human entering the PIN
 func (s *Store) AuthenticatedGetAll() (map[string]string, error) {
+	if err := s.authenticate(); err != nil {
+		return nil, err
+	}
+
+	// PIN verified, return secrets
+	return s.GetAll()
+}
+
+// AuthenticatedGetMany is AuthenticatedGetAll restricted to the given keys.
+func (s *Store) AuthenticatedGetMany(keys []string) (map[string]string, error) {
+	if err := s.authenticate(); err != nil {
+		return nil, err
+	}
+
+	// PIN verified, return the requested secrets
+	return s.GetMany(keys)
+}
+
+// authenticate requires the human to enter the PIN before secrets are read.
+func (s *Store) authenticate() error {
 	// Get the stored PIN hash
 	storedHash, err := s.GetPINHash()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Require human to enter PIN
 	if err := authenticateFn(storedHash); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Warn if using legacy SHA-256 hash — can't auto-migrate without the raw PIN
 	if auth.IsLegacyHash(storedHash) {
 		fmt.Fprintf(os.Stderr, "⚠️  Your PIN uses legacy hashing. Run 'nokey auth change' to upgrade to Argon2id.\n")
 	}
-
-	// PIN verified, return secrets
-	return s.GetAll()
+	return nil
 }
 
 // AllKeys returns all stored keys, including internal __nokey_* keys.
