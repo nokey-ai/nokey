@@ -14,8 +14,14 @@ permissions:
   contents: read
 
 jobs:
+  # The same gate as CI, so a tag cut from a commit CI never saw is still
+  # race-checked on Linux and macOS and scanned for reachable vulnerabilities.
   test:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
@@ -25,13 +31,35 @@ jobs:
           go-version: "1.26.9"
 
       - name: Test
-        run: go test ./...
+        run: go test ./... -race
 
       - name: Vet
         run: go vet ./...
 
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: "1.26.9"
+
+      - name: Install govulncheck
+        run: |
+          for attempt in 1 2 3; do
+            go install golang.org/x/vuln/cmd/govulncheck@v1.7.0 && exit 0
+            echo "attempt $attempt failed, retrying in 15s"
+            sleep 15
+          done
+          exit 1
+
+      - name: govulncheck
+        run: govulncheck ./...
+
   release:
-    needs: test
+    needs: [test, vulncheck]
     runs-on: macos-latest
     # Only this job publishes: GoReleaser creates the GitHub release and
     # uploads its assets.
