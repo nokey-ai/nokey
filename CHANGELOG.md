@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-18
+
+Security fixes, MCP exec correctness fixes, and additive MCP and CLI
+features. No configuration changes are needed to upgrade, but two
+changes are visible:
+
+- PIN session tickets issued by an older version no longer validate,
+  so expect one PIN prompt after upgrading.
+- A token's `for` scope is now enforced. Tokens minted with the default
+  `*`, including auto-minted session tokens, are unaffected; a token
+  minted `for: gh` no longer works with the `github_*` MCP tools — mint
+  it `for: nokey:integration:github` or `*` instead.
+
 ### Security
 - PIN session tickets can no longer be revived by changing their mod
   time. Expiry came only from the ticket file's mtime and the HMAC
