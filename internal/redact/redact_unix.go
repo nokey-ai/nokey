@@ -88,11 +88,14 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	redactor := newRedactor(secrets)
 	defer redactor.Clear()
 
-	// Copy stdin to PTY. The goroutine unblocks when stdin reaches EOF
-	// or when ptmx is closed below.
-	wg.Add(1)
+	// Copy stdin to PTY. This goroutine is deliberately not in wg: it
+	// blocks in stdin.Read, which closing ptmx does not interrupt, so on an
+	// idle terminal it would hold Run open until the next keystroke. It
+	// exits on stdin EOF or on its first write after ptmx is closed. This
+	// leaves it running after Run returns, which is only acceptable because
+	// Run is meant for the CLI, where the process exits right after; a
+	// long-lived caller would leak one stdin reader per call.
 	go func() {
-		defer wg.Done()
 		_, _ = io.Copy(ptmx, stdin)
 	}()
 
@@ -108,10 +111,11 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 	// Wait for command to complete
 	err = cmd.Wait()
 
-	// Tear down: close ptmx so the stdin-copy goroutine unblocks, then
-	// stop and close the signal channels so the signal goroutines exit.
-	// Wait for all spawned goroutines to finish before returning so the
-	// caller can safely mutate any state the goroutines were reading.
+	// Tear down: close ptmx so the stdin-copy goroutine fails its next
+	// write, then stop and close the signal channels so the signal
+	// goroutines exit. Wait for those goroutines to finish before
+	// returning so the caller can safely mutate any state they were
+	// reading.
 	_ = ptmx.Close()
 	signal.Stop(winchCh)
 	close(winchCh)

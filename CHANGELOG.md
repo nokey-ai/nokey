@@ -35,6 +35,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Proxy variables are advisory, so a client that ignores them is still
   not filtered.
 
+### Fixed
+- `nokey proxy` and `--isolate` shutdown can no longer hang. A client
+  that sent `CONNECT` and then never started the TLS handshake left
+  `Stop` waiting forever, because the tunnel was only registered for
+  force-close after the handshake, and a request stuck on a silent
+  upstream held it the same way. Tunnels are now registered as soon as
+  they are hijacked, the handshake must finish within 10s, idle tunnels
+  close after 120s, and `Stop` cancels upstream requests still in
+  flight.
+- Cached per-host certificates are regenerated when they are within an
+  hour of their 24h expiry; a long-running proxy used to keep serving
+  them after they expired. The cache is also capped at 1024 hosts.
+- The proxy CA is only generated when neither `ca/ca-cert.pem` nor
+  `ca/ca-key.pem` exists. A read error or a single missing file used to
+  silently replace the CA, invalidating a cert you may have trusted;
+  it is now reported with instructions instead. The exception is a key
+  with no cert, left by a crash mid-creation: no cert was ever written,
+  so nothing can trust it, and it is replaced once it is a few seconds
+  old. New CA files are written atomically (or, on filesystems without
+  hard links, with an exclusive create), concurrent first runs agree on
+  one CA, a key that does not match the cert or a non-CA cert is
+  rejected, and a CA key readable by other users triggers a warning.
+- `nokey exec` now wipes the secrets map and stops the `--isolate`
+  proxy before exiting with the child's exit code. Both were left to
+  deferred calls, which `os.Exit` skips.
+- `nokey exec --redact` no longer hangs after the child exits on an
+  interactive terminal. The stdin forwarder was waited on during
+  teardown, but it sits blocked reading the terminal, so `nokey` only
+  returned after the next keystroke.
+
 ## [0.5.3] - 2026-08-31
 
 Security release. Every item below closes a hole that was reachable in

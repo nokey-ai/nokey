@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 )
 
 // withMockPTY replaces ptyStartFn and ptyInheritSizeFn with pipe-based
@@ -199,5 +200,39 @@ printf ' end\n'`
 	}
 	if !strings.Contains(output, "start ") || !strings.Contains(output, " end") {
 		t.Errorf("surrounding output should survive, got: %q", output)
+	}
+}
+
+// TestRun_ReturnsWhileStdinStaysOpen verifies that Run returns once the
+// child exits even if stdin never reaches EOF, as with an interactive
+// terminal nobody is typing into. The stdin copier blocks in Read, which
+// closing the PTY does not interrupt, so Run must not wait for it.
+func TestRun_ReturnsWhileStdinStaysOpen(t *testing.T) {
+	withMockPTY(t)
+
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer stdinW.Close()
+	defer stdinR.Close()
+
+	oldStdin := os.Stdin
+	os.Stdin = stdinR
+	defer func() { os.Stdin = oldStdin }()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := Run("true", nil, nil)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after the child exited while stdin stayed open")
 	}
 }

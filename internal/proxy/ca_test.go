@@ -1,11 +1,17 @@
 package proxy
 
 import (
+	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestLoadOrCreateCA_NewCA(t *testing.T) {
@@ -205,15 +211,232 @@ func TestLoadOrCreateCA_CertOnlyNoKey(t *testing.T) {
 	if err := os.MkdirAll(caDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	// Write only the cert file, no key file — should trigger new CA generation.
-	if err := os.WriteFile(filepath.Join(caDir, "ca-cert.pem"), []byte("whatever"), 0600); err != nil {
+	// Only the cert exists. Regenerating would overwrite a cert the user may
+	// have installed in a trust store, so this must be an error instead.
+	certPath := filepath.Join(caDir, "ca-cert.pem")
+	if err := os.WriteFile(certPath, []byte("whatever"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	ca, err := LoadOrCreateCA(dir)
-	if err != nil {
+	if _, err := LoadOrCreateCA(dir); err == nil {
+		t.Fatal("expected error when only the CA cert exists")
+	}
+	got, _ := os.ReadFile(certPath)
+	if string(got) != "whatever" {
+		t.Errorf("CA cert was overwritten: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(caDir, "ca-key.pem")); !os.IsNotExist(err) {
+		t.Errorf("expected no key to be written, Stat err = %v", err)
+	}
+}
+
+func TestLoadOrCreateCA_UnreadableCertNotOverwritten(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0000 does not block reads on Windows")
+	}
+	dir := t.TempDir()
+	if _, err := LoadOrCreateCA(dir); err != nil {
 		t.Fatalf("LoadOrCreateCA: %v", err)
 	}
+	certPath := filepath.Join(dir, "ca", "ca-cert.pem")
+	keyPath := filepath.Join(dir, "ca", "ca-key.pem")
+	origKey, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(certPath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(certPath, 0600) })
+
+	if _, err := LoadOrCreateCA(dir); err == nil {
+		t.Fatal("expected error when the CA cert cannot be read")
+	}
+	gotKey, _ := os.ReadFile(keyPath)
+	if string(gotKey) != string(origKey) {
+		t.Error("CA key was regenerated after a cert read error")
+	}
+}
+
+func TestLoadOrCreateCA_Concurrent(t *testing.T) {
+	dir := t.TempDir()
+	const n = 8
+	cas := make([]*CA, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cas[i], errs[i] = LoadOrCreateCA(dir)
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("LoadOrCreateCA[%d]: %v", i, errs[i])
+		}
+		if !cas[i].Cert.Equal(cas[0].Cert) {
+			t.Fatalf("LoadOrCreateCA[%d] returned a different CA", i)
+		}
+	}
+	// What is on disk must be the same, self-consistent CA.
+	disk, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !disk.Cert.Equal(cas[0].Cert) {
+		t.Error("on-disk CA differs from the one returned to callers")
+	}
+}
+
+func TestParseCA_KeyMismatch(t *testing.T) {
+	a, err := LoadOrCreateCA(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	bDir := t.TempDir()
+	if _, err := LoadOrCreateCA(bDir); err != nil {
+		t.Fatal(err)
+	}
+	bKey, err := os.ReadFile(filepath.Join(bDir, "ca", "ca-key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := parseCA(a.CertPEM, bKey); err == nil {
+		t.Error("expected error when the key does not match the cert")
+	}
+}
+
+func TestParseCA_NotCA(t *testing.T) {
+	ca := newTestCA(t)
+	leaf, err := ca.GenerateHostCert("example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf.Certificate[0]})
+	keyDER, err := x509.MarshalECPrivateKey(leaf.PrivateKey.(*ecdsa.PrivateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
+	if _, err := parseCA(certPEM, keyPEM); err == nil {
+		t.Error("expected error for a non-CA certificate")
+	}
+}
+
+// withoutHardLinks makes linkFn fail the way it does on filesystems
+// without hard link support (FAT/exFAT, some SMB and FUSE mounts).
+func withoutHardLinks(t *testing.T) {
+	t.Helper()
+	old := linkFn
+	t.Cleanup(func() { linkFn = old })
+	linkFn = func(oldname, newname string) error {
+		return &os.LinkError{Op: "link", Old: oldname, New: newname, Err: errors.ErrUnsupported}
+	}
+}
+
+func TestLoadOrCreateCA_NoHardLinks(t *testing.T) {
+	withoutHardLinks(t)
+	dir := t.TempDir()
+
+	ca, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA without hard links: %v", err)
+	}
+	keyInfo, err := os.Stat(filepath.Join(dir, "ca", "ca-key.pem"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" && keyInfo.Mode().Perm() != 0600 {
+		t.Errorf("key perms = %o, want 0600", keyInfo.Mode().Perm())
+	}
+	again, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if !again.Cert.Equal(ca.Cert) {
+		t.Error("reload returned a different CA")
+	}
+}
+
+func TestLoadOrCreateCA_ConcurrentNoHardLinks(t *testing.T) {
+	withoutHardLinks(t)
+	dir := t.TempDir()
+	const n = 8
+	cas := make([]*CA, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			cas[i], errs[i] = LoadOrCreateCA(dir)
+		}(i)
+	}
+	wg.Wait()
+	for i := 0; i < n; i++ {
+		if errs[i] != nil {
+			t.Fatalf("LoadOrCreateCA[%d]: %v", i, errs[i])
+		}
+		if !cas[i].Cert.Equal(cas[0].Cert) {
+			t.Fatalf("LoadOrCreateCA[%d] returned a different CA", i)
+		}
+	}
+}
+
+func TestLoadOrCreateCA_StaleKeyOnlyRegenerates(t *testing.T) {
+	dir := t.TempDir()
+	caDir := filepath.Join(dir, "ca")
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// A crash between writing the key and the cert leaves only the key.
+	// No cert was ever written, so nothing can trust it: safe to replace.
+	keyPath := filepath.Join(caDir, "ca-key.pem")
+	if err := os.WriteFile(keyPath, []byte("orphaned key"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-time.Minute)
+	if err := os.Chtimes(keyPath, old, old); err != nil {
+		t.Fatal(err)
+	}
+
+	ca, err := LoadOrCreateCA(dir)
+	if err != nil {
+		t.Fatalf("LoadOrCreateCA with stale key-only dir: %v", err)
+	}
 	if ca.Cert == nil {
-		t.Error("expected valid CA even with partial files")
+		t.Fatal("expected a regenerated CA")
+	}
+	if _, err := LoadOrCreateCA(dir); err != nil {
+		t.Errorf("reload after regeneration: %v", err)
+	}
+}
+
+func TestLoadOrCreateCA_StaleCorruptCAFailsFast(t *testing.T) {
+	dir := t.TempDir()
+	caDir := filepath.Join(dir, "ca")
+	if err := os.MkdirAll(caDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// Corrupt files this old cannot be a concurrent creator mid-write, so
+	// there is nothing to wait for.
+	old := time.Now().Add(-time.Minute)
+	for _, name := range []string{"ca-cert.pem", "ca-key.pem"} {
+		p := filepath.Join(caDir, name)
+		if err := os.WriteFile(p, []byte("corrupt"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	start := time.Now()
+	if _, err := LoadOrCreateCA(dir); err == nil {
+		t.Fatal("expected error for a corrupt CA")
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Errorf("LoadOrCreateCA took %v on a stale corrupt CA, want it to fail fast", elapsed)
 	}
 }
