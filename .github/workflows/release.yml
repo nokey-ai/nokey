@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -33,6 +33,10 @@ jobs:
   release:
     needs: test
     runs-on: macos-latest
+    # Only this job publishes: GoReleaser creates the GitHub release and
+    # uploads its assets.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
