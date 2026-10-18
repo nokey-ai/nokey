@@ -2,7 +2,7 @@ module github.com/nokey-ai/nokey
 
 go 1.26
 
-toolchain go1.26.7
+toolchain go1.26.9
 
 require (
 	github.com/byteness/keyring v1.9.0

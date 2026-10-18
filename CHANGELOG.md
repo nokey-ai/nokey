@@ -58,6 +58,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   secrets also overlap each other can the labels chosen there differ.
   With several overlapping periodic secrets, fragments shorter than a
   secret can still be left unredacted there, as they could before.
+- Build with Go 1.26.9. Go 1.26.7 has known vulnerabilities in
+  `net/http`, `net/textproto`, `crypto/tls` and `html/template`
+  (GO-2026-6599 through GO-2026-6617), and govulncheck finds them
+  reachable from the proxy, OAuth and 1Password Connect code paths.
 
 ### Fixed
 - `nokey proxy` and `--isolate` shutdown can no longer hang. A client
