@@ -85,6 +85,14 @@ homebrew_casks:
       owner: nokey-ai
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    # The tap only accepts signed commits. With a GitHub App token, leaving
+    # the committer out lets GitHub sign the commit as the App; the default
+    # goreleaserbot committer was rejected, which stopped the v0.6.0 cask
+    # update.
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+      use_github_app_token: true
     directory: Casks
     binaries:
       - nokey
