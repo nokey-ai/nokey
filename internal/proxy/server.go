@@ -218,10 +218,15 @@ func (s *Server) Stop(ctx context.Context) error {
 	}
 	s.running = false
 	srv := s.server
+	ln := s.listener
 	s.mu.Unlock()
 
 	s.cancel()
 	shutdownErr := srv.Shutdown(ctx)
+	// Shutdown only closes listeners Serve has registered. If Stop runs
+	// before the Serve goroutine starts, the socket would stay open until
+	// that goroutine gets scheduled, so close it here.
+	_ = ln.Close()
 
 	// Force-close hijacked TLS conns so blocked ReadRequest calls
 	// inside handleConnect return immediately; otherwise idle clients
