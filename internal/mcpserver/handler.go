@@ -405,6 +405,7 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 
 	srv := proxy.NewServer(ca, rules, secrets, pol, h.recordAudit)
 
+	//nolint:contextcheck // proxy lifetime is the MCP session, not this request
 	actualAddr, err := srv.Start(addr)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to start proxy: %s", err)), nil
@@ -419,7 +420,7 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 	)), nil
 }
 
-func (h *Handler) HandleStopProxy(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (h *Handler) HandleStopProxy(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	h.proxyMu.Lock()
 	defer h.proxyMu.Unlock()
 
@@ -427,7 +428,9 @@ func (h *Handler) HandleStopProxy(_ context.Context, _ mcp.CallToolRequest) (*mc
 		return mcp.NewToolResultText("No proxy running."), nil
 	}
 
-	if err := h.proxyServer.Stop(context.Background()); err != nil {
+	// WithoutCancel: a client cancelling the call must not cut the graceful
+	// shutdown short.
+	if err := h.proxyServer.Stop(context.WithoutCancel(ctx)); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to stop proxy: %s", err)), nil
 	}
 
@@ -916,7 +919,7 @@ func argsParam(request mcp.CallToolRequest) ([]string, error) {
 	}
 	var args []string
 	if err := json.Unmarshal([]byte(raw), &args); err != nil {
-		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %s", err)
+		return nil, fmt.Errorf("parameter 'args' must be a JSON array of strings: %w", err)
 	}
 	return args, nil
 }

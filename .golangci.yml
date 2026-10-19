@@ -7,6 +7,17 @@ linters:
     - staticcheck
     - unused
     - gosec
+    - errorlint
+    - noctx
+    - bodyclose
+    - contextcheck
+    - misspell
+    - nolintlint
+    - copyloopvar
+    - unconvert
+  settings:
+    nolintlint:
+      require-specific: true
   exclusions:
     rules:
       # Allow unchecked errors on fmt.Fprint* (informational output to stderr)
@@ -22,6 +33,16 @@ linters:
         linters:
           - errcheck
           - gosec
+      # Tests talk to loopback servers and helper processes that the test
+      # itself bounds; threading a context through each call adds noise only.
+      - path: _test\.go
+        linters:
+          - noctx
+      # syscall.Stdin is an int on Unix but a syscall.Handle on Windows, so
+      # the int() that term.ReadPassword needs is only redundant on Unix.
+      - linters:
+          - unconvert
+        source: "int\\(syscall\\.Stdin\\)"
       # G204: this is a CLI exec tool — subprocess with variable args is by design
       - linters:
           - gosec
@@ -44,3 +65,8 @@ linters:
           - gosec
         text: "G117:"
         path: internal/oauth/
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

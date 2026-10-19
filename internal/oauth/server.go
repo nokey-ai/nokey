@@ -28,7 +28,7 @@ type CallbackServer struct {
 // NewCallbackServer creates a new OAuth callback server
 func NewCallbackServer() (*CallbackServer, error) {
 	// Find an available port
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, fmt.Errorf("failed to find available port: %w", err)
 	}
@@ -119,7 +119,7 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 	// The flow is decided either way now; close the port once this response
 	// has been written rather than waiting for the caller to shut down, which
 	// happens only after the token exchange and keyring writes are done.
-	defer cs.closeSoon()
+	defer cs.closeSoon() //nolint:contextcheck // Shutdown must outlive the request it waits on
 
 	// Check for error from OAuth provider
 	if errMsg := r.URL.Query().Get("error"); errMsg != "" {

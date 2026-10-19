@@ -4,6 +4,7 @@ package keyring
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os/exec"
 )
@@ -21,7 +22,7 @@ import (
 // Stderr from the security tool is captured into the returned error so
 // callers can see why the command failed (e.g. missing keychain path).
 func ApplyKeychainSettings(keychainPath string) error {
-	cmd := exec.Command("/usr/bin/security", "set-keychain-settings", "-l", "-u", "-t", "300", keychainPath)
+	cmd := exec.CommandContext(context.Background(), "/usr/bin/security", "set-keychain-settings", "-l", "-u", "-t", "300", keychainPath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

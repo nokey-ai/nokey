@@ -3,6 +3,8 @@
 package redact
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,7 +22,7 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 		return 1, fmt.Errorf("command cannot be empty")
 	}
 
-	cmd := exec.Command(command, args...)
+	cmd := exec.CommandContext(context.Background(), command, args...)
 	cmd.Env = append(env.MergeEnvironment(os.Environ(), secrets), extraEnv...)
 	cmd.Stdin = os.Stdin
 
@@ -72,7 +74,8 @@ func Run(command string, args []string, secrets map[string]string, extraEnv ...s
 
 	exitCode := 0
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) {
 			exitCode = exitError.ExitCode()
 		} else {
 			return 1, fmt.Errorf("command execution failed: %w", err)

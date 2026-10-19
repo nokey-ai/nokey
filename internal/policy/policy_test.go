@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,8 +267,8 @@ func TestCheck(t *testing.T) {
 				if err == nil {
 					t.Fatal("expected error, got nil")
 				}
-				denial, ok := err.(*Denial)
-				if !ok {
+				var denial *Denial
+				if !errors.As(err, &denial) {
 					t.Fatalf("expected *Denial, got %T", err)
 				}
 				if denial.Secret != tt.wantSecret {

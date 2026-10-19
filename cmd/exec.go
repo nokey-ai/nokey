@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
@@ -129,20 +130,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 	switch authMethodConfig {
 	case "pin":
 		// PIN authentication only — with session caching
-		storedHash, hashErr := store.GetPINHash()
-		if hashErr != nil {
-			return fmt.Errorf("PIN authentication failed: %w", hashErr)
-		}
-		if session.Valid(storedHash, sessionTTL) {
-			allSecrets, err = store.GetAll()
-		} else {
-			allSecrets, err = store.AuthenticatedGetAll()
-			if err == nil {
-				_ = session.Create(storedHash)
-			}
-		}
+		allSecrets, err = getSecretsWithPIN(store, sessionTTL)
 		if err != nil {
-			return fmt.Errorf("PIN authentication failed: %w", err)
+			return err
 		}
 		authMethodUsed = "pin"
 
@@ -164,20 +154,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("OAuth authentication failed: %w", err)
 		}
 		// Then require PIN — with session caching
-		storedHash, hashErr := store.GetPINHash()
-		if hashErr != nil {
-			return fmt.Errorf("PIN authentication failed: %w", hashErr)
-		}
-		if session.Valid(storedHash, sessionTTL) {
-			allSecrets, err = store.GetAll()
-		} else {
-			allSecrets, err = store.AuthenticatedGetAll()
-			if err == nil {
-				_ = session.Create(storedHash)
-			}
-		}
+		allSecrets, err = getSecretsWithPIN(store, sessionTTL)
 		if err != nil {
-			return fmt.Errorf("PIN authentication failed: %w", err)
+			return err
 		}
 		authMethodUsed = "both"
 
@@ -397,6 +376,30 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 	}
 
 	return envVars, cleanup, nil
+}
+
+// getSecretsWithPIN returns all secrets after PIN authentication, skipping
+// the prompt while a session created by an earlier successful entry of the
+// same PIN is still valid. A fresh successful entry starts a new session.
+func getSecretsWithPIN(store *keyring.Store, sessionTTL time.Duration) (map[string]string, error) {
+	storedHash, err := store.GetPINHash()
+	if err != nil {
+		return nil, fmt.Errorf("PIN authentication failed: %w", err)
+	}
+
+	var secrets map[string]string
+	if session.Valid(storedHash, sessionTTL) {
+		secrets, err = store.GetAll()
+	} else {
+		secrets, err = store.AuthenticatedGetAll()
+		if err == nil {
+			_ = session.Create(storedHash)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("PIN authentication failed: %w", err)
+	}
+	return secrets, nil
 }
 
 // validateOAuthToken validates that a valid OAuth token exists for the configured provider

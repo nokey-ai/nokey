@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -132,7 +133,7 @@ func TestRedactingReader_BasicRedaction(t *testing.T) {
 
 	buf := make([]byte, 256)
 	n, err := reader.Read(buf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("Read: %v", err)
 	}
 	got := string(buf[:n])
@@ -156,7 +157,7 @@ func TestRedactingReader_BufferOverflow(t *testing.T) {
 	// Read with a tiny buffer
 	small := make([]byte, 5)
 	n, err := reader.Read(small)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("Read: %v", err)
 	}
 	part1 := string(small[:n])
@@ -181,7 +182,7 @@ func TestRedactingReader_NoSecrets(t *testing.T) {
 
 	buf := make([]byte, 256)
 	n, err := reader.Read(buf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("Read: %v", err)
 	}
 	if string(buf[:n]) != "plain text" {
@@ -201,7 +202,7 @@ func TestRedactingReader_EOF(t *testing.T) {
 	if n != 0 {
 		t.Errorf("expected 0 bytes, got %d", n)
 	}
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Errorf("expected EOF, got %v", err)
 	}
 }
@@ -564,7 +565,7 @@ func TestRedactingReader_DoesNotWithholdOrdinaryOutput(t *testing.T) {
 
 	buf := make([]byte, 256)
 	n, err := reader.Read(buf)
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		t.Fatalf("Read: %v", err)
 	}
 	if string(buf[:n]) != prompt {
@@ -636,7 +637,7 @@ func TestRedactingReader_PeriodicSecretBoundedHoldback(t *testing.T) {
 			if len(reader.hold) > limit {
 				t.Fatalf("holdback is %d bytes after %d bytes of output, want at most %d", len(reader.hold), len(got), limit)
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {

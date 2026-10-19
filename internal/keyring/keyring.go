@@ -448,7 +448,7 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 			// Retry once — the item was just removed, a transient failure
 			// here would lose data if we don't try again.
 			if retryErr := s.ring.Set(e.item); retryErr != nil {
-				return 0, fmt.Errorf("failed to re-create key %q during migration (data may need manual recovery): retry: %w (original: %v)", e.key, retryErr, err)
+				return 0, fmt.Errorf("failed to re-create key %q during migration (data may need manual recovery): retry: %w (original: %w)", e.key, retryErr, err)
 			}
 		}
 		// Cache a deep copy — the deferred zeroing will zero entries' backing arrays

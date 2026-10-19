@@ -116,7 +116,7 @@ func (s *Server) Start(addr string) (string, error) {
 		return "", err
 	}
 
-	ln, err := net.Listen("tcp", addr)
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", addr)
 	if err != nil {
 		return "", fmt.Errorf("failed to listen: %w", err)
 	}
@@ -374,7 +374,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		NextProtos:   []string{"http/1.1"}, // Force HTTP/1.1
 		MinVersion:   tls.VersionTLS12,
 	})
-	if err := tlsConn.Handshake(); err != nil {
+	if err := tlsConn.HandshakeContext(r.Context()); err != nil {
 		return
 	}
 	defer tlsConn.Close()
@@ -413,15 +413,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		// injected if both rules matched.
 		if !strings.EqualFold(stripPort(req.Host), host) {
 			s.audit("proxy:https:blocked", host, nil, false, fmt.Sprintf("inner Host %q does not match CONNECT host %q", req.Host, host))
-			resp := &http.Response{
-				StatusCode: http.StatusMisdirectedRequest,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader("nokey proxy: inner Host header does not match CONNECT host")),
-			}
-			resp.Header.Set("Content-Type", "text/plain")
-			_ = resp.Write(tlsConn)
+			writeTextResponse(tlsConn, http.StatusMisdirectedRequest, "nokey proxy: inner Host header does not match CONNECT host")
 			return
 		}
 
@@ -438,15 +430,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		// Approval check.
 		if len(matched) > 0 && s.pol.ProxyRequiresApproval(host, secretNames) {
 			s.audit("proxy:https", host, secretNames, false, "approval required — set approval: never on this proxy rule")
-			resp := &http.Response{
-				StatusCode: http.StatusForbidden,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader("nokey proxy: approval required for this host — set approval: never on the proxy rule")),
-			}
-			resp.Header.Set("Content-Type", "text/plain")
-			_ = resp.Write(tlsConn)
+			writeTextResponse(tlsConn, http.StatusForbidden, "nokey proxy: approval required for this host — set approval: never on the proxy rule")
 			continue
 		}
 
@@ -458,15 +442,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			headers, err := ResolveHeaders(rule, s.secrets)
 			if err != nil {
 				s.audit("proxy:https", host, secretNames, false, err.Error())
-				resp := &http.Response{
-					StatusCode: http.StatusBadGateway,
-					ProtoMajor: 1,
-					ProtoMinor: 1,
-					Header:     make(http.Header),
-					Body:       io.NopCloser(strings.NewReader(fmt.Sprintf("nokey proxy: %s", err))),
-				}
-				resp.Header.Set("Content-Type", "text/plain")
-				_ = resp.Write(tlsConn)
+				writeTextResponse(tlsConn, http.StatusBadGateway, fmt.Sprintf("nokey proxy: %s", err))
 				headerErr = true
 				break
 			}
@@ -482,15 +458,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		resp, err := s.forwardTransport().RoundTrip(req)
 		if err != nil {
 			s.audit("proxy:https", host, secretNames, false, err.Error())
-			errResp := &http.Response{
-				StatusCode: http.StatusBadGateway,
-				ProtoMajor: 1,
-				ProtoMinor: 1,
-				Header:     make(http.Header),
-				Body:       io.NopCloser(strings.NewReader(fmt.Sprintf("nokey proxy: upstream error: %s", err))),
-			}
-			errResp.Header.Set("Content-Type", "text/plain")
-			_ = errResp.Write(tlsConn)
+			writeTextResponse(tlsConn, http.StatusBadGateway, fmt.Sprintf("nokey proxy: upstream error: %s", err))
 			continue
 		}
 
@@ -498,6 +466,20 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		_ = resp.Write(tlsConn)
 		_ = resp.Body.Close()
 	}
+}
+
+// writeTextResponse writes a plain-text HTTP/1.1 response straight to a
+// tunnelled connection, where there is no http.ResponseWriter to use.
+func writeTextResponse(w io.Writer, status int, body string) {
+	resp := &http.Response{
+		StatusCode: status,
+		ProtoMajor: 1,
+		ProtoMinor: 1,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+	resp.Header.Set("Content-Type", "text/plain")
+	_ = resp.Write(w)
 }
 
 func (s *Server) getOrCreateCert(host string) (*tls.Certificate, error) {
