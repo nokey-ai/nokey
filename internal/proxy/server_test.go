@@ -1002,6 +1002,27 @@ type auditEntry struct {
 // CONNECT and then never starts the TLS handshake cannot hang Stop. The
 // hijacked conn used to be registered only after the handshake, so Stop
 // had nothing to close and inflight.Wait blocked forever.
+// TestStopClosesListener checks the listening socket is closed by the time
+// Stop returns, even when Stop runs before the Serve goroutine has started;
+// exec relies on that to stop the isolation proxy before os.Exit.
+func TestStopClosesListener(t *testing.T) {
+	ca := newTestCA(t)
+	for i := 0; i < 200; i++ {
+		srv := NewServer(ca, nil, map[string]string{}, nil, nil)
+		addr, err := srv.Start("127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("Start: %v", err)
+		}
+		if err := srv.Stop(context.Background()); err != nil {
+			t.Fatalf("Stop: %v", err)
+		}
+		if conn, err := net.DialTimeout("tcp", addr, time.Second); err == nil {
+			_ = conn.Close()
+			t.Fatalf("iteration %d: proxy still accepting connections after Stop", i)
+		}
+	}
+}
+
 func TestStopWithSilentCONNECTClient(t *testing.T) {
 	ca := newTestCA(t)
 	srv := NewServer(ca, nil, nil, nil, nil)

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The proxy's listening socket is closed by the time `Stop` returns.
+  `Stop` relied on the HTTP server to close it, which only happens once
+  the server's goroutine has started, so a `nokey exec --isolate` whose
+  command exited immediately could leave the isolation proxy accepting
+  connections for a moment after shutdown. It also made a CI test flaky
+  on macOS.
+
 ## [0.6.0] - 2026-10-18
 
 Security fixes, MCP exec correctness fixes, and additive MCP and CLI
