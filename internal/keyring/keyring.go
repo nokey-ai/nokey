@@ -98,7 +98,7 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 		FileDir:                  fileDir,
 		FilePasswordFunc:         filePasswordPrompt,
 		UseBiometrics:            useBiometrics,
-		TouchIDAccount:           "com.nokey.biometrics",
+		TouchIDAccount:           TouchIDAccount,
 		TouchIDService:           serviceName,
 	}
 
