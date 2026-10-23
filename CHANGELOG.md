@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- macOS release binaries are signed with a stable certificate instead of
+  ad-hoc, so the login keychain keeps trusting nokey across upgrades. An
+  ad-hoc signature identifies the binary by its hash, so every upgrade
+  lost keychain access and macOS asked for the login password on each
+  secret read until it was allowed again. Expect those prompts one last
+  time after the first signed release. The code-signing identifier is
+  now `com.nokey-ai.nokey`.
+
 ### Fixed
 - `nokey keychain to-dedicated` checks for a leftover Touch ID item from
   another dedicated keychain before it starts, and prints the command to

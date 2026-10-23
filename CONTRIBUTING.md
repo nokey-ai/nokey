@@ -49,6 +49,37 @@ make lint
 - Documentation improvements
 - Bug fixes and performance improvements
 
+## Release Signing (maintainers)
+
+The release workflow signs the macOS binaries with the certificate in the
+`MACOS_SIGN_P12` secret, so the keychain keeps trusting nokey across
+upgrades. A self-signed certificate is enough; what matters is using the
+same one for every release. Replacing it makes every user's keychain
+prompt once more. To create one:
+
+```bash
+cat > sign.cnf <<'CNF'
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = nokey release signing
+[ext]
+basicConstraints = critical,CA:false
+keyUsage = critical,digitalSignature
+extendedKeyUsage = critical,codeSigning
+CNF
+openssl req -x509 -newkey rsa:3072 -nodes -days 3650 \
+  -keyout sign.key -out sign.crt -config sign.cnf -extensions ext
+# -legacy: macOS `security import` can't read OpenSSL 3's default PKCS#12 encryption.
+openssl pkcs12 -export -legacy -inkey sign.key -in sign.crt -out sign.p12
+base64 -i sign.p12 | gh secret set MACOS_SIGN_P12 -R nokey-ai/nokey
+gh secret set MACOS_SIGN_P12_PASSWORD -R nokey-ai/nokey
+```
+
+Keep `sign.p12` and its password somewhere safe offline, then delete the
+working files. Without the secret, releases fall back to ad-hoc signing.
+
 ## Reporting Bugs
 
 Use the [bug report template](https://github.com/nokey-ai/nokey/issues/new?template=bug_report.md) to file issues.
