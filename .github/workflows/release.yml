@@ -91,6 +91,41 @@ jobs:
           brew trust messense/macos-cross-toolchains
           brew install x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu
 
+      # A stable signing identity keeps the keychain trusting nokey across
+      # upgrades (see the darwin build hook in .goreleaser.yaml). The
+      # certificate can be self-signed: codesign doesn't need it trusted,
+      # only the same certificate every release. Without the secret the
+      # build falls back to ad-hoc signing.
+      - name: Import code-signing certificate
+        env:
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+        run: |
+          if [ -z "$MACOS_SIGN_P12" ]; then
+            echo "::warning::MACOS_SIGN_P12 is not set; darwin binaries will be ad-hoc signed"
+            exit 0
+          fi
+          kc="$RUNNER_TEMP/signing.keychain-db"
+          kcpw=$(openssl rand -hex 16)
+          p12="$RUNNER_TEMP/signing.p12"
+          printf '%s' "$MACOS_SIGN_P12" | base64 --decode > "$p12"
+          security create-keychain -p "$kcpw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$kcpw" "$kc"
+          security import "$p12" -k "$kc" -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign
+          rm -f "$p12"
+          # Let codesign use the key without a GUI prompt.
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" >/dev/null
+          # codesign only finds identities in the search list.
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          identity=$(security find-identity -p codesigning "$kc" | awk '$1 == "1)" { print $2; exit }')
+          if [ -z "$identity" ]; then
+            echo "::error::no code-signing identity found in MACOS_SIGN_P12"
+            exit 1
+          fi
+          echo "Signing darwin binaries with $identity"
+          echo "NOKEY_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
+
       - name: Generate tap token
         id: tap-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0

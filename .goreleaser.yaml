@@ -22,9 +22,15 @@ builds:
       - -X github.com/nokey-ai/nokey/internal/version.Version={{.Version}}
       - -X github.com/nokey-ai/nokey/internal/version.Commit={{.ShortCommit}}
       - -X github.com/nokey-ai/nokey/internal/version.Date={{.Date}}
+    # The keychain trusts nokey by its designated requirement. An ad-hoc
+    # signature's requirement is the binary's hash, so every release lost
+    # keychain access and prompted for the login password. Signing with the
+    # certificate the release workflow imports (NOKEY_CODESIGN_IDENTITY)
+    # makes the requirement the identifier plus that certificate, which
+    # stays the same across releases. Without it, fall back to ad-hoc.
     hooks:
       post:
-        - cmd: sh -c 'case "{{ .Target }}" in darwin_*) command -v codesign >/dev/null && codesign -s - "{{ .Path }}" && echo "Signed {{ .Target }} for Touch ID" || echo "codesign not available, skipping {{ .Target }}" ;; esac'
+        - cmd: sh -c 'case "{{ .Target }}" in darwin_*) command -v codesign >/dev/null && codesign -f -s "${NOKEY_CODESIGN_IDENTITY:--}" --identifier com.nokey-ai.nokey "{{ .Path }}" && echo "Signed {{ .Target }} with ${NOKEY_CODESIGN_IDENTITY:-ad-hoc}" || echo "codesign not available, skipping {{ .Target }}" ;; esac'
           output: true
 
   - id: linux-amd64
