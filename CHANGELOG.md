@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Build with Go 1.26.10. Go 1.26.9's `crypto/x509` still trusts
+  compromised intermediate certificates (GO-2026-6809), and govulncheck
+  finds it reachable from the proxy's TLS handshake.
+
 ## [0.6.1] - 2026-10-19
 
 ### Fixed
