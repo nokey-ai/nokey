@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-23
+
 ### Security
 - Build with Go 1.26.10. Go 1.26.9's `crypto/x509` still trusts
   compromised intermediate certificates (GO-2026-6809), and govulncheck
