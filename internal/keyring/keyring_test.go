@@ -1229,3 +1229,28 @@ func TestAuthenticatedGetMany(t *testing.T) {
 		}
 	}
 }
+
+func TestParseSecurityLabel(t *testing.T) {
+	tests := []struct {
+		name, out, want string
+	}{
+		{"raw attribute", "attributes:\n    0x00000007 <blob>=\"Passphrase for nokey-v050-test.keychain\"\n    \"acct\"<blob>=\"com.nokey.biometrics\"\n", "Passphrase for nokey-v050-test.keychain"},
+		{"labl attribute", "    \"labl\"<blob>=\"Passphrase for nokey.keychain\"\n", "Passphrase for nokey.keychain"},
+		{"null label", "    0x00000007 <blob>=<NULL>\n", ""},
+		{"no label", "    \"acct\"<blob>=\"com.nokey.biometrics\"\n", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := parseSecurityLabel(tt.out); got != tt.want {
+				t.Errorf("parseSecurityLabel() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTouchIDLabelMatchesLibrary(t *testing.T) {
+	// byteness/keyring labels the item "Passphrase for <KeychainName>.keychain".
+	if got, want := touchIDLabel("nokey"), "Passphrase for nokey.keychain"; got != want {
+		t.Errorf("touchIDLabel(nokey) = %q, want %q", got, want)
+	}
+}

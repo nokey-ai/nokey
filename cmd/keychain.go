@@ -100,6 +100,10 @@ var openKeyringForFn = func(dedicated bool) (*nkeyring.Store, error) {
 // Wrapped so tests can no-op it without a real keychain on disk.
 var applyKeychainSettingsFn = nkeyring.ApplyKeychainSettings
 
+// findStaleTouchIDItemFn looks for a leftover Touch ID item from another
+// dedicated keychain. Wrapped so tests don't shell out to `security`.
+var findStaleTouchIDItemFn = nkeyring.FindStaleTouchIDItem
+
 // loadAllSecretsFn loads every secret from the store, gating on PIN if one
 // is configured. Wrapped in a variable so tests can bypass the TTY prompt.
 var loadAllSecretsFn = func(store *nkeyring.Store) (map[string]string, error) {
@@ -511,6 +515,24 @@ Add this to %s and re-run:
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 			fmt.Println("Aborted.")
 			return nil
+		}
+	}
+
+	// Touch ID setup stores the dedicated keychain's passphrase in the login
+	// keychain under a fixed account. A leftover item from another dedicated
+	// keychain blocks that write and would fail the migration on its first
+	// secret, after the backup, so catch it before anything happens.
+	if cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics {
+		stale, err := findStaleTouchIDItemFn(cfg.ServiceName, effectiveKeychainName())
+		if err != nil {
+			return fmt.Errorf("check login keychain for Touch ID item: %w", err)
+		}
+		if stale != nil {
+			return fmt.Errorf(`your login keychain already has a Touch ID item for another dedicated keychain (label %q).
+Touch ID setup can't replace it, so the migration would fail.
+
+If you no longer use that keychain, delete the item and re-run:
+  %s`, stale.Label, stale.DeleteCommand())
 		}
 	}
 

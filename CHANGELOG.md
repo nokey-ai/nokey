@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `nokey keychain to-dedicated` checks for a leftover Touch ID item from
+  another dedicated keychain before it starts, and prints the command to
+  delete it. Touch ID setup stores the keychain passphrase in the login
+  keychain under a fixed account, and the keyring library can neither
+  find nor replace an item written for a different keychain, so the
+  migration used to fail on its first secret with `The specified item
+  already exists in the keychain. (-25299)`, after already writing the
+  backup.
+
 ## [0.6.2] - 2026-10-23
 
 ### Security

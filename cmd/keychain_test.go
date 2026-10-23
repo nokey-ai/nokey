@@ -25,6 +25,7 @@ func withTestBackupGlobals(t *testing.T) {
 	oldNoBak, oldYes := toDedicatedNoBackup, toDedicatedYes
 	oldOpen := openKeyringForFn
 	oldApply := applyKeychainSettingsFn
+	oldStale := findStaleTouchIDItemFn
 	t.Cleanup(func() {
 		backupOut, backupPasswordIn = oldOut, oldBPin
 		restoreIn, restorePasswordIn, restoreDryRun = oldIn, oldRPin, oldDry
@@ -34,6 +35,7 @@ func withTestBackupGlobals(t *testing.T) {
 		toDedicatedNoBackup, toDedicatedYes = oldNoBak, oldYes
 		openKeyringForFn = oldOpen
 		applyKeychainSettingsFn = oldApply
+		findStaleTouchIDItemFn = oldStale
 	})
 	backupOut, backupPasswordIn = "", false
 	restoreIn, restorePasswordIn, restoreDryRun = "", false, false
@@ -44,6 +46,7 @@ func withTestBackupGlobals(t *testing.T) {
 	readPasswordStdinFn = func() (string, error) { return "test-pw", nil }
 	// Default to a no-op so tests don't shell out to `security`.
 	applyKeychainSettingsFn = func(string) error { return nil }
+	findStaleTouchIDItemFn = func(string, string) (*nkeyring.StaleTouchIDItem, error) { return nil, nil }
 }
 
 // withTwoStoreOpener installs openKeyringForFn so that dedicated=false
@@ -517,6 +520,44 @@ func TestKeychainToDedicated_RefusesOnConflict(t *testing.T) {
 	}
 	if string(dstRing.items["CONFLICT"].Data) != "dest-value" {
 		t.Errorf("CONFLICT changed to %q", dstRing.items["CONFLICT"].Data)
+	}
+}
+
+func TestKeychainToDedicated_RefusesOnStaleTouchIDItem(t *testing.T) {
+	src, _ := newTestStore()
+	dst, dstRing := newTestStore()
+	src.Set("A", "1")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+	var gotName string
+	findStaleTouchIDItemFn = func(service, keychainName string) (*nkeyring.StaleTouchIDItem, error) {
+		gotName = keychainName
+		return &nkeyring.StaleTouchIDItem{Service: service, Label: "Passphrase for old-test.keychain"}, nil
+	}
+
+	toDedicatedYes = true
+	rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes"})
+	err := rootCmd.Execute()
+	if err == nil {
+		t.Fatal("expected error on stale Touch ID item")
+	}
+	if gotName != "nokey" {
+		t.Errorf("checked keychain %q, want nokey", gotName)
+	}
+	for _, want := range []string{"old-test.keychain", "security delete-generic-password -s nokey -a com.nokey.biometrics"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should contain %q, got: %v", want, err)
+		}
+	}
+	if len(dstRing.items) != 0 {
+		t.Errorf("dst has %d items, want none", len(dstRing.items))
+	}
+	cd, _ := config.ConfigDir()
+	if entries, _ := os.ReadDir(filepath.Join(cd, "backups")); len(entries) != 0 {
+		t.Errorf("backup written before the check: %d file(s)", len(entries))
 	}
 }
 
