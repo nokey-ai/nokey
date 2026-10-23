@@ -12,6 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   compromised intermediate certificates (GO-2026-6809), and govulncheck
   finds it reachable from the proxy's TLS handshake.
 
+### Changed
+- The Homebrew cask strips the macOS quarantine flag with
+  `postflight_steps` instead of a `postflight` block, which Homebrew 7
+  deprecated and warns about on every install and upgrade.
+
 ## [0.6.1] - 2026-10-19
 
 ### Fixed

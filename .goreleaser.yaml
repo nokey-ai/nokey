@@ -99,12 +99,15 @@ homebrew_casks:
     homepage: https://github.com/nokey-ai/nokey
     description: "Zero-trust secret management for AI coding assistants"
     license: MIT
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/nokey"]
-          end
+    # Homebrew 7 deprecates postflight blocks in favour of postflight_steps,
+    # which GoReleaser's hooks can't emit yet. The braces are escaped because
+    # custom_block is a template; Homebrew expands {{staged_path}} itself.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/nokey"]
+        end
+      end
 
 changelog:
   sort: asc
