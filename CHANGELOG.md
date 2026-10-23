@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-23
+
 ### Changed
 - macOS release binaries are signed with a stable certificate instead of
   ad-hoc, so the login keychain keeps trusting nokey across upgrades. An
