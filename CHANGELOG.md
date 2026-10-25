@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-10-25
+
 ### Fixed
 - The one-time move of legacy file-backend secrets into `keyring/` no
   longer moves `audit.lock` with them. On any install without a
