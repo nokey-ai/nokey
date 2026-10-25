@@ -72,6 +72,7 @@ func TestMigrateFileBackendDir_MovesCandidatesPreservesReserved(t *testing.T) {
 	writeFile(t, filepath.Join(old, "config.yaml"), "redact_by_default: false\n")
 	writeFile(t, filepath.Join(old, "policies.yaml"), "approval: never\n")
 	writeFile(t, filepath.Join(old, "audit.log"), "<log>\n")
+	writeFile(t, filepath.Join(old, "audit.lock"), "")
 	writeFile(t, filepath.Join(old, "chain_head.json"), "{}\n")
 	writeFile(t, filepath.Join(old, "session_ticket"), "ticket-bytes")
 	writeFile(t, filepath.Join(old, ".dotfile"), "ignored")
@@ -95,7 +96,7 @@ func TestMigrateFileBackendDir_MovesCandidatesPreservesReserved(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"config.yaml", "policies.yaml", "audit.log", "chain_head.json", "session_ticket", ".dotfile", "subdir"} {
+	for _, name := range []string{"config.yaml", "policies.yaml", "audit.log", "audit.lock", "chain_head.json", "session_ticket", ".dotfile", "subdir"} {
 		if _, err := os.Stat(filepath.Join(old, name)); err != nil {
 			t.Errorf("%s should remain in old dir: %v", name, err)
 		}
@@ -116,6 +117,7 @@ func TestMigrateFileBackendDir_NoCandidatesSkipsCreate(t *testing.T) {
 	newDir := filepath.Join(tmp, "keyring")
 	writeFile(t, filepath.Join(old, "config.yaml"), "x")
 	writeFile(t, filepath.Join(old, "audit.log"), "y")
+	writeFile(t, filepath.Join(old, "audit.lock"), "")
 
 	if err := migrateFileBackendDir(old, newDir); err != nil {
 		t.Fatalf("migrate: %v", err)

@@ -16,6 +16,7 @@ var reservedConfigFiles = map[string]struct{}{
 	"config.yaml":     {},
 	"policies.yaml":   {},
 	"audit.log":       {},
+	"audit.lock":      {},
 	"chain_head.json": {},
 	"session_ticket":  {},
 }

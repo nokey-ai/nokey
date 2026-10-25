@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The one-time move of legacy file-backend secrets into `keyring/` no
+  longer moves `audit.lock` with them. On any install without a
+  `keyring/` directory, which is most macOS and Windows installs, the
+  first run after an audit write moved the lock file, so two nokey
+  processes could briefly lock different files, and file-backend users
+  would see `audit.lock` treated as a secret.
+
 ## [0.6.3] - 2026-10-23
 
 ### Changed
