@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Upgrading nokey no longer makes macOS ask for the dedicated keychain's
+  password once for every secret. Each keychain item lists the exact
+  builds allowed to read it, and a binary signed with nokey's own
+  certificate is identified by its code hash, which changes every
+  release. When a new build first reads a secret, nokey now adds itself
+  to each item's list using the passphrase stored for Touch ID unlock.
+  Expect one login-keychain prompt per upgrade (for that passphrase)
+  instead of one per secret. Only the build list changes: reading still
+  requires a binary signed with nokey's certificate. Without Touch ID set
+  up, nothing changes.
+
 ## [0.6.4] - 2026-10-25
 
 ### Fixed

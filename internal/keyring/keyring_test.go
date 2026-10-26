@@ -81,6 +81,32 @@ func TestStore_SetGet(t *testing.T) {
 	}
 }
 
+func TestStore_TrustBuildRunsOnceBeforeFirstRead(t *testing.T) {
+	s := newTestStore()
+	for _, k := range []string{"A", "B"} {
+		if err := s.ring.Set(keyring.Item{Key: k, Data: []byte("v")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	calls := 0
+	s.trustBuild = func() { calls++ }
+
+	if _, err := s.List(); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 0 {
+		t.Fatalf("trustBuild ran on List, which reads no secret values")
+	}
+	for _, k := range []string{"A", "B", "A"} {
+		if _, err := s.Get(k); err != nil {
+			t.Fatalf("Get %s: %v", k, err)
+		}
+	}
+	if calls != 1 {
+		t.Errorf("trustBuild ran %d times, want once", calls)
+	}
+}
+
 func TestStore_Get_NotFound(t *testing.T) {
 	s := newTestStore()
 	_, err := s.Get("NONEXISTENT")
