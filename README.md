@@ -450,6 +450,14 @@ auth:
   # macOS; ignored on other platforms. Set false to disable.
   # use_biometrics: true
 
+  # Only ask for Touch ID when the dedicated keychain is locked. By
+  # default every new nokey process asks, even when the keychain is
+  # already unlocked. With this on, any process that can run nokey reads
+  # secrets without Touch ID while the keychain stays unlocked: until the
+  # Mac sleeps, or 5 minutes after the last access. PIN auth and MCP
+  # approvals still apply.
+  # biometrics_only_when_locked: false
+
   # Enforce policies.yaml rules on `nokey exec` invocations. Defaults to
   # true. Set false to bypass policy for the local CLI while still
   # enforcing it for MCP and the proxy.

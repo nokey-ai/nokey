@@ -55,6 +55,9 @@ type AuthConfig struct {
 	SkipConfirm   bool   `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
 	AutoMintToken bool   `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
 	UseBiometrics *bool  `yaml:"use_biometrics,omitempty"`  // use Touch ID on macOS (default: true on macOS)
+	// BiometricsOnlyWhenLocked skips Touch ID while the dedicated keychain
+	// is already unlocked, so Touch ID is only asked for to unlock it.
+	BiometricsOnlyWhenLocked bool `yaml:"biometrics_only_when_locked,omitempty"`
 	// CLIEnforcePolicy controls whether policies.yaml rules are applied to
 	// `nokey exec` invocations. Defaults to true. Set false to bypass policy
 	// for the local CLI while still enforcing it for MCP and the proxy.

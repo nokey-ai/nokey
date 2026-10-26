@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nokey-ai/nokey/internal/config"
+	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 )
 
 func TestInitConfig_Defaults(t *testing.T) {
@@ -108,5 +109,41 @@ func TestInitConfig_LoadError(t *testing.T) {
 	// Should print a warning
 	if !strings.Contains(stderr, "Warning") {
 		t.Errorf("stderr = %q, want warning about config load", stderr)
+	}
+}
+
+func TestUseBiometrics(t *testing.T) {
+	old := keychainUnlockedFn
+	t.Cleanup(func() { keychainUnlockedFn = old })
+	off := false
+
+	tests := []struct {
+		name      string
+		auth      config.AuthConfig
+		dedicated bool
+		unlocked  bool
+		want      bool
+	}{
+		{"default asks", config.AuthConfig{}, true, true, true},
+		{"disabled", config.AuthConfig{UseBiometrics: &off}, true, false, false},
+		{"only when locked, unlocked", config.AuthConfig{BiometricsOnlyWhenLocked: true}, true, true, false},
+		{"only when locked, locked", config.AuthConfig{BiometricsOnlyWhenLocked: true}, true, false, true},
+		{"only when locked, login keychain", config.AuthConfig{BiometricsOnlyWhenLocked: true}, false, true, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPath string
+			keychainUnlockedFn = func(path string) bool {
+				gotPath = path
+				return tt.unlocked
+			}
+			c := &config.Config{Auth: tt.auth}
+			if got := useBiometrics(c, tt.dedicated, "nokey"); got != tt.want {
+				t.Errorf("useBiometrics = %v, want %v", got, tt.want)
+			}
+			if gotPath != "" && gotPath != nkeyring.DedicatedKeychainPath("nokey") {
+				t.Errorf("checked lock state of %q, want the dedicated keychain", gotPath)
+			}
+		})
 	}
 }
