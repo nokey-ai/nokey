@@ -5,6 +5,7 @@ go 1.26
 toolchain go1.26.10
 
 require (
+	github.com/byteness/go-keychain v0.0.0-20191008050251-8e49817e8af4
 	github.com/byteness/keyring v1.9.0
 	github.com/creack/pty v1.1.24
 	github.com/mark3labs/mcp-go v0.44.0
@@ -22,7 +23,6 @@ require (
 	github.com/1password/onepassword-sdk-go v0.4.1-beta.1 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.2 // indirect
-	github.com/byteness/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
 	github.com/byteness/go-libsecret v0.0.0-20260108215642-107379d3dee0 // indirect
 	github.com/byteness/percent v0.2.2 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect

@@ -46,6 +46,11 @@ type Store struct {
 	serviceName string
 	mu          sync.RWMutex // guards cache
 	cache       map[string]keyring.Item
+
+	// trustBuild, when set, runs once before the first secret is read so
+	// the running build can read the dedicated keychain without prompts.
+	trustBuild     func()
+	trustBuildOnce sync.Once
 }
 
 // NewWithRing creates a Store backed by an existing keyring.Keyring implementation.
@@ -124,6 +129,17 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 		serviceName: serviceName,
 		cache:       make(map[string]keyring.Item),
 	}
+	if path := DedicatedKeychainPath(keychainName); dedicated && path != "" {
+		s.trustBuild = func() {
+			keys, err := ring.Keys()
+			if err == nil {
+				_, err = trustRunningBuild(path, serviceName, keys)
+			}
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "nokey: warning: could not let this build read the keychain without prompts: %v\n", err)
+			}
+		}
+	}
 	setBackoffStoreFn(s)
 	return s, nil
 }
@@ -171,6 +187,9 @@ func (s *Store) Get(key string) (string, error) {
 	}
 	s.mu.RUnlock()
 
+	if s.trustBuild != nil {
+		s.trustBuildOnce.Do(s.trustBuild)
+	}
 	item, err := s.ring.Get(key)
 	if err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
