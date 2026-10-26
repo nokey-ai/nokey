@@ -93,7 +93,6 @@ func initConfig() {
 // getKeyring returns a keyring store using the current configuration.
 // It is a variable so tests can override it.
 var getKeyring = func() (*keyring.Store, error) {
-	bio := cfg.Auth.UseBiometrics == nil || *cfg.Auth.UseBiometrics
 	dedicated := cfg.Keyring.Dedicated != nil && *cfg.Keyring.Dedicated
 	// When the user opts in to a dedicated keychain, default the file name
 	// to "nokey" so config.yaml needs only a single boolean toggle.
@@ -101,5 +100,20 @@ var getKeyring = func() (*keyring.Store, error) {
 	if dedicated && keychainName == "" {
 		keychainName = "nokey"
 	}
+	bio := useBiometrics(cfg, dedicated, keychainName)
 	return keyring.New(cfg.DefaultBackend, cfg.ServiceName, bio, dedicated, keychainName)
+}
+
+// keychainUnlockedFn is a variable so tests can stub the keychain's state.
+var keychainUnlockedFn = keyring.KeychainUnlocked
+
+// useBiometrics reports whether this process should ask for Touch ID.
+// With auth.biometrics_only_when_locked, a dedicated keychain that is
+// already unlocked is opened without it.
+func useBiometrics(c *config.Config, dedicated bool, keychainName string) bool {
+	bio := c.Auth.UseBiometrics == nil || *c.Auth.UseBiometrics
+	if bio && dedicated && c.Auth.BiometricsOnlyWhenLocked && keychainUnlockedFn(keyring.DedicatedKeychainPath(keychainName)) {
+		return false
+	}
+	return bio
 }

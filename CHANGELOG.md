@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `auth.biometrics_only_when_locked` (off by default) skips Touch ID
+  while the dedicated keychain is already unlocked, so Touch ID is only
+  asked for to unlock it rather than by every nokey process. While the
+  keychain stays unlocked (until sleep, or 5 minutes after the last
+  access), anything that can run nokey reads secrets without Touch ID.
+
 ### Fixed
 - Upgrading nokey no longer makes macOS ask for the dedicated keychain's
   password once for every secret. Each keychain item lists the exact
