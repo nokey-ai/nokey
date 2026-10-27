@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-10-26
+
 ### Added
 - `nokey update` installs the latest release. It downloads the archive
   for the current platform from GitHub, verifies it against the
