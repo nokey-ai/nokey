@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `nokey update` installs the latest release. It downloads the archive
+  for the current platform from GitHub, verifies it against the
+  release's `checksums.txt`, and replaces the running binary; Homebrew
+  installs are handed to `brew upgrade --cask nokey-ai/tap/nokey`.
+  `--check` only reports whether a newer release exists. Development
+  builds are not replaced unless `--force` is given.
+
 ## [0.6.5] - 2026-10-26
 
 ### Added
