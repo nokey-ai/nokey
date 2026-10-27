@@ -51,6 +51,19 @@ sudo mv nokey /usr/local/bin/
 brew install nokey-ai/tap/nokey
 ```
 
+### Updating
+
+```bash
+nokey update          # install the latest release
+nokey update --check  # only report whether one is available
+```
+
+`nokey update` downloads the release archive for your platform from GitHub,
+checks it against the release's `checksums.txt`, and replaces the running
+binary. A Homebrew install is upgraded with `brew upgrade --cask
+nokey-ai/tap/nokey` instead. Development builds (`go install`, `make build`)
+are left alone unless you pass `--force`.
+
 ---
 
 ## Quick Start
@@ -920,6 +933,20 @@ nokey v0.2.0
   platform: darwin/arm64
 ```
 
+### `nokey update`
+
+```bash
+$ nokey update --check
+nokey 0.7.0 is available (installed: 0.6.5).
+
+$ nokey update
+nokey 0.7.0 is available (installed: 0.6.5).
+Downloading nokey 0.7.0 for darwin/arm64...
+Updated /usr/local/bin/nokey to nokey 0.7.0.
+```
+
+See [Updating](#updating).
+
 ### `nokey config validate`
 
 Validate config and policy files without side effects. Detects unknown YAML keys (typos):
@@ -1241,6 +1268,7 @@ nokey/
 │   ├── mcp.go                # MCP server and tool handlers
 │   ├── proxy.go              # HTTP/HTTPS proxy commands
 │   ├── status.go             # Health check (status) and doctor commands
+│   ├── update.go             # Self-update command
 │   └── config_cmd.go         # Config validation command
 ├── internal/
 │   ├── auth/
@@ -1263,6 +1291,7 @@ nokey/
 │   ├── mcpserver/            # MCP tool handlers (served by cmd/mcp.go)
 │   ├── integration/          # MCP integration tools (GitHub, generic API client)
 │   ├── placeholder/          # ${{NOKEY:...}} resolution
+│   ├── update/               # Release download, checksum check, binary swap
 │   └── oauth/
 │       ├── oauth.go          # OAuth interface, token management
 │       ├── github.go         # GitHub OAuth provider
