@@ -722,7 +722,7 @@ auth:
   auto_mint_token: true  # Auto-mint a session token on first MCP approval
 ```
 
-When `auto_mint_token` is enabled, the first time an AI tool requests secret access, the user approves once. A session token (TTL: 1 hour) is minted and subsequent requests use it without re-prompting.
+When `auto_mint_token` is enabled, the first time an AI tool requests secret access, the user approves once. A session token (TTL: 1 hour) is minted and subsequent requests use it without re-prompting. Rules that resolve to `approval: never` raise no prompt at all, not even the session prompt. Declining the session token is never treated as approval: each request is then prompted for on its own.
 
 Manual token management is also available via the `mint_token`, `revoke_token`, and `list_tokens` tools. Tokens support TTL (max 3600s) and max-use limits.
 
@@ -763,8 +763,10 @@ proxy:
     - hosts: ["api.github.com"]
       headers:
         Authorization: "token $GITHUB_TOKEN"
-      approval: never  # skip per-request approval
+      approval: never  # optional: proxy rules never prompt
 ```
+
+Proxy rules never prompt. `approval: always` is rejected when the policy loads, both on the `proxy:` section and on its rules, and the top-level `approval` setting does not apply to proxy rules. Blocked and forwarded requests are recorded in the audit log.
 
 ### Using the Proxy
 
@@ -785,7 +787,7 @@ Route a command's HTTP(S) traffic through a proxy that refuses hosts without a p
 nokey exec --isolate -- python script.py
 ```
 
-This starts a local proxy that rejects connections to any host not covered by a proxy rule, and points the command at it via the `http_proxy`/`https_proxy`/`all_proxy` environment variables (and their uppercase forms). It is not a sandbox: clients that ignore those variables, or open raw sockets, are not blocked.
+This starts a local proxy that rejects connections to any host not covered by a proxy rule, and points the command at it via the `http_proxy`/`https_proxy`/`all_proxy` environment variables (and their uppercase forms). It is not a sandbox: clients that ignore those variables, or open raw sockets, are not blocked. Blocked and forwarded requests are recorded in the audit log, as with `nokey proxy start`.
 
 ---
 
@@ -814,7 +816,7 @@ rules:
   - commands: ["gh"]
     secrets: ["GITHUB_TOKEN"]
     approval: always          # Always prompt
-    token_required: true      # Require a session token (no per-call approval fallback)
+    token_required: true      # Require a session token; CLI exec refuses too (tokens exist only in the MCP server)
 
   - commands: ["*"]
     secrets: ["*"]
