@@ -104,13 +104,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
 	}
 
-	// Determine which authentication method to use
-	var allSecrets map[string]string
-	var authMethodUsed string
-
 	// Get auth method: the flag may strengthen the configured method but
 	// never weaken it
-	authMethodConfig, err := resolveAuthMethod(store, authMethod)
+	authMethodUsed, err := resolveAuthMethod(store, authMethod)
 	if err != nil {
 		return err
 	}
@@ -121,49 +117,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("config error: %w", err)
 	}
 
-	switch authMethodConfig {
-	case "pin":
-		// PIN authentication only — with session caching
-		allSecrets, err = getSecretsWithPIN(store, sessionTTL)
-		if err != nil {
-			return err
-		}
-		authMethodUsed = "pin"
-
-	case "oauth":
-		// OAuth authentication only
-		if err := validateOAuthToken(store); err != nil {
-			return fmt.Errorf("OAuth authentication failed: %w", err)
-		}
-		allSecrets, err = store.GetAll()
-		if err != nil {
-			return fmt.Errorf("failed to retrieve secrets: %w", err)
-		}
-		authMethodUsed = "oauth"
-
-	case "both":
-		// Both PIN and OAuth required
-		// First check OAuth
-		if err := validateOAuthToken(store); err != nil {
-			return fmt.Errorf("OAuth authentication failed: %w", err)
-		}
-		// Then require PIN — with session caching
-		allSecrets, err = getSecretsWithPIN(store, sessionTTL)
-		if err != nil {
-			return err
-		}
-		authMethodUsed = "both"
-
-	case "none":
-		// No authentication required
-		allSecrets, err = store.GetAll()
-		if err != nil {
-			return fmt.Errorf("failed to retrieve secrets: %w", err)
-		}
-		authMethodUsed = "none"
-
-	default:
-		return fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", authMethodConfig)
+	allSecrets, err := getSecretsForMethod(store, authMethodUsed, sessionTTL, nil)
+	if err != nil {
+		return err
 	}
 
 	defer sensitive.ClearMap(allSecrets)
@@ -415,10 +371,61 @@ func resolveAuthMethod(store *keyring.Store, override string) (string, error) {
 	return override, nil
 }
 
-// getSecretsWithPIN returns all secrets after PIN authentication, skipping
-// the prompt while a session created by an earlier successful entry of the
-// same PIN is still valid. A fresh successful entry starts a new session.
-func getSecretsWithPIN(store *keyring.Store, sessionTTL time.Duration) (map[string]string, error) {
+// getSecretsForMethod authenticates with the given auth method (as
+// returned by resolveAuthMethod) and returns the named secrets, or every
+// secret when names is nil. Only the requested values are read.
+func getSecretsForMethod(store *keyring.Store, method string, sessionTTL time.Duration, names []string) (map[string]string, error) {
+	switch method {
+	case "pin":
+		// PIN authentication only — with session caching
+		return getSecretsWithPIN(store, sessionTTL, names)
+
+	case "oauth":
+		// OAuth authentication only
+		if err := validateOAuthToken(store); err != nil {
+			return nil, fmt.Errorf("OAuth authentication failed: %w", err)
+		}
+		return readSecrets(store, names)
+
+	case "both":
+		// Both PIN and OAuth required
+		// First check OAuth
+		if err := validateOAuthToken(store); err != nil {
+			return nil, fmt.Errorf("OAuth authentication failed: %w", err)
+		}
+		// Then require PIN — with session caching
+		return getSecretsWithPIN(store, sessionTTL, names)
+
+	case "none":
+		// No authentication required
+		return readSecrets(store, names)
+
+	default:
+		return nil, fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", method)
+	}
+}
+
+// readSecrets reads the named secrets, or every secret when names is nil,
+// without authenticating.
+func readSecrets(store *keyring.Store, names []string) (map[string]string, error) {
+	var secrets map[string]string
+	var err error
+	if names == nil {
+		secrets, err = store.GetAll()
+	} else {
+		secrets, err = store.GetMany(names)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve secrets: %w", err)
+	}
+	return secrets, nil
+}
+
+// getSecretsWithPIN returns the named secrets (every secret when names is
+// nil) after PIN authentication, skipping the prompt while a session
+// created by an earlier successful entry of the same PIN is still valid.
+// A fresh successful entry starts a new session.
+func getSecretsWithPIN(store *keyring.Store, sessionTTL time.Duration, names []string) (map[string]string, error) {
 	storedHash, err := store.GetPINHash()
 	if err != nil {
 		return nil, fmt.Errorf("PIN authentication failed: %w", err)
@@ -426,9 +433,17 @@ func getSecretsWithPIN(store *keyring.Store, sessionTTL time.Duration) (map[stri
 
 	var secrets map[string]string
 	if session.Valid(storedHash, sessionTTL) {
-		secrets, err = store.GetAll()
+		if names == nil {
+			secrets, err = store.GetAll()
+		} else {
+			secrets, err = store.GetMany(names)
+		}
 	} else {
-		secrets, err = store.AuthenticatedGetAll()
+		if names == nil {
+			secrets, err = store.AuthenticatedGetAll()
+		} else {
+			secrets, err = store.AuthenticatedGetMany(names)
+		}
 		if err == nil {
 			_ = session.Create(storedHash)
 		}

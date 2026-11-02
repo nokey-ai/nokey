@@ -8,6 +8,7 @@ import (
 
 	"github.com/nokey-ai/nokey/internal/env"
 	"github.com/nokey-ai/nokey/internal/sensitive"
+	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -28,7 +29,8 @@ var exportCmd = &cobra.Command{
 This is a "careful mode" feature that exposes secrets to the current shell session.
 Use with caution as the secrets will be visible in the shell's memory.
 
-If PIN authentication is configured, you will be prompted to enter your PIN.
+Authentication follows the configured method (auth.default_method), as for
+exec: you may be asked for your PIN and/or need a valid OAuth token.
 All exports are recorded in the audit log (if enabled).
 
 Usage:
@@ -50,6 +52,14 @@ func init() {
 }
 
 func runExport(cmd *cobra.Command, args []string) error {
+	// Reject an unsupported shell before touching the keyring or asking
+	// for a PIN.
+	switch strings.ToLower(shellType) {
+	case "bash", "zsh", "fish", "powershell", "pwsh":
+	default:
+		return fmt.Errorf("unsupported shell type: %s (supported: bash, zsh, fish, powershell)", shellType)
+	}
+
 	// Get all secrets
 	store, err := getKeyring()
 	if err != nil {
@@ -68,23 +78,22 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Check if authentication is required
-	var secrets map[string]string
-	var authMethod string
-	if cfg.RequireAuth || store.HasPIN() {
-		// Use authenticated access (requires PIN entry)
-		secrets, err = store.AuthenticatedGetMany(names)
-		if err != nil {
-			return fmt.Errorf("authentication failed: %w", err)
-		}
-		authMethod = "pin"
-	} else {
-		// Regular access (no PIN required)
-		secrets, err = store.GetMany(names)
-		if err != nil {
-			return fmt.Errorf("failed to retrieve secrets: %w", err)
-		}
-		authMethod = "none"
+	// Authenticate exactly as exec does with no --auth-method flag
+	authMethod, err := resolveAuthMethod(store, "")
+	if err != nil {
+		return err
+	}
+	sessionTTL, err := session.ParseTTL(cfg.Auth.SessionTTL)
+	if err != nil {
+		return fmt.Errorf("config error: %w", err)
+	}
+	if names == nil {
+		// nil would mean "every secret" to getSecretsForMethod
+		names = []string{}
+	}
+	secrets, err := getSecretsForMethod(store, authMethod, sessionTTL, names)
+	if err != nil {
+		return err
 	}
 
 	defer sensitive.ClearMap(secrets)

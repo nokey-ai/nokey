@@ -41,6 +41,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   method that includes every factor the configured method requires
   (e.g. `pin` → `both`); a downgrade is refused with an error. With no
   `default_method`, a stored PIN or `require_auth` counts as `pin`.
+- `nokey export` now authenticates with the configured method, exactly
+  as `exec` does. It previously checked only for a PIN, so with
+  `default_method: oauth` and no PIN it exported every secret without
+  authentication, and `both` skipped the OAuth check. PIN entry reuses
+  the session cache, and the audit entry records the method used. An
+  unsupported `--shell` is now rejected before the keyring is opened or
+  any prompt is shown.
 
 ## [0.7.0] - 2026-11-01
 
