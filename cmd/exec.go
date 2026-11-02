@@ -56,7 +56,8 @@ Security Options:
   --yes           Skip confirmation prompt (use with caution)
   --auth-method   Use a stronger authentication method (pin, oauth, both, none);
                   it cannot skip a factor the config requires
-  --isolate       Block network egress to hosts without a proxy rule
+  --isolate       Route HTTP(S) through the nokey proxy, which refuses hosts
+                  without a proxy rule (needs the client to honour proxy env vars)
 
 Examples:
   # Confirm before injecting (default - shows what will be injected)
@@ -94,7 +95,7 @@ func init() {
 	execCmd.Flags().StringVar(&exceptSecrets, "except", "", "Exclude these secrets (comma-separated)")
 	execCmd.Flags().BoolVar(&skipConfirm, "yes", false, "Skip confirmation prompt (inject all secrets without asking)")
 	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Authentication method (pin, oauth, both, none); can only add factors to the configured method")
-	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Block network egress to hosts without a proxy rule")
+	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Route HTTP(S) through the nokey proxy, which refuses hosts without a proxy rule (clients must honour proxy env vars)")
 }
 
 func runExec(cmd *cobra.Command, args []string) error {
