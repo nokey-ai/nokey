@@ -21,8 +21,8 @@ const minSecretLenForVariants = 8
 // minBase64MiddleLen is the shortest offset base64 form worth matching. Eight
 // characters carry 48 bits taken entirely from the secret, so unrelated base64
 // reproduces one by chance about once in 2^48 positions. With secrets of at
-// least minSecretLenForVariants bytes every middle is ten characters or more,
-// so this is a floor rather than a filter today.
+// least minSecretLenForVariants bytes every middle is ten characters or more;
+// TestEncodingVariants_Base64MiddlesAreLongEnough holds that invariant.
 const minBase64MiddleLen = 8
 
 // redactor handles the actual redaction logic
@@ -153,9 +153,6 @@ func encodingVariants(value string) []string {
 func base64Middle(enc *base64.Encoding, raw []byte, offset int) string {
 	start := (8*offset + 5) / 6
 	end := 8 * (offset + len(raw)) / 6
-	if end-start < minBase64MiddleLen {
-		return ""
-	}
 
 	// Zero bytes stand in for the unknown neighbours; two trailing ones keep
 	// the last whole character clear of padding.
