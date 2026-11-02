@@ -125,7 +125,9 @@ func runExec(cmd *cobra.Command, args []string) error {
 	defer sensitive.ClearMap(allSecrets)
 
 	// On macOS, hint about keychain migration if PIN auth was used and migration hasn't been done.
-	if !migrateWarned && runtime.GOOS == "darwin" && (authMethodUsed == "pin" || authMethodUsed == "both") && !store.IsKeychainMigrated() {
+	// Like the root hint, skip it in dedicated-keychain mode, where legacy migrate is the wrong advice.
+	if !migrateWarned && runtime.GOOS == "darwin" && (authMethodUsed == "pin" || authMethodUsed == "both") && !store.IsKeychainMigrated() &&
+		!dedicatedConfigEnabled() && !store.IsMigratedToDedicated() {
 		fmt.Fprintln(os.Stderr, "Tip: Run 'nokey keychain migrate' to eliminate macOS Keychain password prompts.")
 		migrateWarned = true
 	}

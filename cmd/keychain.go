@@ -264,7 +264,7 @@ func checkKeychainMigrationHint() {
 	if store.IsKeychainMigrated() || store.IsMigratedToDedicated() {
 		return
 	}
-	keys, err := store.AllKeys()
+	keys, err := store.List()
 	if err != nil || len(keys) == 0 {
 		return
 	}
@@ -541,7 +541,7 @@ If you no longer use that keychain, delete the item and re-run:
 		return fmt.Errorf("open login keychain: %w", err)
 	}
 
-	printDedicatedSetupBannerIfFresh(nkeyring.DedicatedKeychainPath(cfg.Keyring.Name), os.Stderr)
+	printDedicatedSetupBannerIfFresh(nkeyring.DedicatedKeychainPath(effectiveKeychainName()), os.Stderr)
 
 	dstStore, err := openKeyringForFn(true)
 	if err != nil {

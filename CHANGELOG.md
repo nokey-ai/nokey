@@ -30,6 +30,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name already taken, invalid name) are refused before any prompt.
   Audited as `mcp:rename_secret` and `mcp:rename_secret:approval`.
 
+### Fixed
+- `nokey auth oauth refresh --provider custom` and `logout --provider
+  custom` now find the token. `setup` accepted `custom` as an alias and
+  stored the token as `generic`, but the other subcommands looked it up
+  under `custom` and failed.
+- `audit.retention_days: 0` no longer deletes the whole audit log at the
+  next compaction; it now means no age limit (`max_entries` still
+  applies). The README now says that old entries are pruned when the log
+  is compacted (at twice `max_entries`), not continuously.
+- `nokey keychain to-dedicated` now prints its one-time note about the
+  "aws-vault" passphrase prompt with the default config. It was only
+  shown when `keyring.name` was set explicitly.
+- The `nokey keychain migrate` hint no longer counts internal entries
+  such as the PIN hash, so an install with a PIN and no secrets is not
+  told it has "1 existing secret(s)". The matching tip printed by
+  `nokey exec` is now also hidden in dedicated-keychain mode, where
+  legacy `migrate` is the wrong advice.
+
 ### Security
 - MCP approval prompts now honour the user's answer. Previously any
   "accept" response granted access, even one with `approve: false`.

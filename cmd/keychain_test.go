@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -619,6 +620,38 @@ func TestKeychainToDedicated_Success(t *testing.T) {
 	}
 }
 
+// With the default config (no keyring.name) the setup banner must still
+// print before the dedicated keychain is created for the first time.
+func TestKeychainToDedicated_DefaultNamePrintsSetupBanner(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("dedicated keychain path is only defined on macOS")
+	}
+	t.Setenv("HOME", t.TempDir())
+
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	src.Set("A", "1")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	var errOut string
+	_ = captureStdout(t, func() {
+		errOut = captureStderr(t, func() {
+			rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes"})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("to-dedicated: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(errOut, "nokey dedicated keychain") {
+		t.Errorf("expected setup banner on stderr, got: %q", errOut)
+	}
+}
+
 func TestKeychainToDedicated_NoBackup(t *testing.T) {
 	src, _ := newTestStore()
 	dst, _ := newTestStore()
@@ -750,6 +783,38 @@ func TestCheckKeychainMigrationHint(t *testing.T) {
 		got := run(t, func(t *testing.T) {})
 		if got != "" {
 			t.Errorf("expected no hint when dedicated sentinel set, got: %q", got)
+		}
+	})
+
+	t.Run("suppressed_when_only_internal_keys", func(t *testing.T) {
+		store, _ := newTestStore()
+		// A PIN-only install has an internal __nokey_ key but no secrets.
+		if err := store.SetPINHash("hash"); err != nil {
+			t.Fatal(err)
+		}
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if got != "" {
+			t.Errorf("expected no hint without user secrets, got: %q", got)
+		}
+	})
+
+	t.Run("counts_only_user_secrets", func(t *testing.T) {
+		store, _ := newTestStore()
+		store.Set("FOO", "bar")
+		if err := store.SetPINHash("hash"); err != nil {
+			t.Fatal(err)
+		}
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if !strings.Contains(got, "for 1 existing secret(s)") {
+			t.Errorf("expected hint to count 1 secret, got: %q", got)
 		}
 	})
 

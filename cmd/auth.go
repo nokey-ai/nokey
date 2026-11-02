@@ -305,7 +305,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 	var creds *oauth.ClientCredentials
 	var label string
 
-	switch oauthProvider {
+	switch canonicalOAuthProvider(oauthProvider) {
 	case "github":
 		providerName = "github"
 		label = "GitHub OAuth"
@@ -314,7 +314,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 			ClientSecret: oauthClientSecret,
 		}
 
-	case "custom", "generic":
+	case "generic":
 		if oauthAuthURL == "" || oauthTokenURL == "" {
 			return fmt.Errorf("--auth-url and --token-url are required for generic provider")
 		}
@@ -459,28 +459,29 @@ func runAuthOAuthRefresh(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	providerName := canonicalOAuthProvider(oauthProvider)
 
 	// Load existing token
-	token, err := oauth.LoadToken(store, oauthProvider)
+	token, err := oauth.LoadToken(store, providerName)
 	if err != nil {
-		return fmt.Errorf("no OAuth token found for provider %s: %w", oauthProvider, err)
+		return fmt.Errorf("no OAuth token found for provider %s: %w", providerName, err)
 	}
 
 	if token.RefreshToken == "" {
-		return fmt.Errorf("no refresh token available for provider %s (re-run: nokey auth oauth setup --provider %s)", oauthProvider, oauthProvider)
+		return fmt.Errorf("no refresh token available for provider %s (re-run: nokey auth oauth setup --provider %s)", providerName, providerName)
 	}
 
 	// Load client credentials
-	creds, err := oauth.LoadClientCredentials(store, oauthProvider)
+	creds, err := oauth.LoadClientCredentials(store, providerName)
 	if err != nil {
-		return fmt.Errorf("client credentials not found for provider %s (re-run: nokey auth oauth setup --provider %s): %w", oauthProvider, oauthProvider, err)
+		return fmt.Errorf("client credentials not found for provider %s (re-run: nokey auth oauth setup --provider %s): %w", providerName, providerName, err)
 	}
 
-	provider := newOAuthProviderFn(oauthProvider, creds, "http://localhost:0/callback")
+	provider := newOAuthProviderFn(providerName, creds, "http://localhost:0/callback")
 	ctx := context.Background()
 
 	// Refresh the token
-	fmt.Printf("Refreshing OAuth token for provider '%s'...\n", oauthProvider)
+	fmt.Printf("Refreshing OAuth token for provider '%s'...\n", providerName)
 	newToken, err := provider.RefreshToken(ctx, token.RefreshToken)
 	if err != nil {
 		return fmt.Errorf("failed to refresh token: %w", err)
@@ -492,7 +493,7 @@ func runAuthOAuthRefresh(cmd *cobra.Command, args []string) error {
 	}
 
 	// Save the refreshed token
-	if err := oauth.SaveToken(store, oauthProvider, newToken); err != nil {
+	if err := oauth.SaveToken(store, providerName, newToken); err != nil {
 		return fmt.Errorf("failed to save refreshed token: %w", err)
 	}
 
@@ -507,18 +508,28 @@ func runAuthOAuthLogout(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	providerName := canonicalOAuthProvider(oauthProvider)
 
 	// Delete token
-	if err := oauth.DeleteToken(store, oauthProvider); err != nil {
+	if err := oauth.DeleteToken(store, providerName); err != nil {
 		return fmt.Errorf("failed to remove OAuth token: %w", err)
 	}
 
 	// Delete client credentials
-	if err := oauth.DeleteClientCredentials(store, oauthProvider); err != nil {
+	if err := oauth.DeleteClientCredentials(store, providerName); err != nil {
 		// Don't fail if credentials not found - they might not have been saved
 		fmt.Fprintf(os.Stderr, "Warning: failed to remove client credentials: %v\n", err)
 	}
 
-	fmt.Printf("✅ OAuth token for provider '%s' has been removed\n", oauthProvider)
+	fmt.Printf("✅ OAuth token for provider '%s' has been removed\n", providerName)
 	return nil
+}
+
+// canonicalOAuthProvider maps provider aliases to the name tokens are stored
+// under, so every subcommand resolves "custom" to the same keyring entries.
+func canonicalOAuthProvider(name string) string {
+	if name == "custom" {
+		return "generic"
+	}
+	return name
 }

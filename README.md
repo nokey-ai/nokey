@@ -343,8 +343,10 @@ Edit `~/.config/nokey/config.yaml`:
 audit:
   enabled: true
   max_entries: 1000      # Maximum entries to keep
-  retention_days: 90     # Auto-delete entries older than this
+  retention_days: 90     # Drop entries older than this (0 = no age limit)
 ```
+
+The log is pruned when it is compacted, which happens once it reaches twice `max_entries`. Compaction keeps the newest `max_entries` entries that are within `retention_days`, so older entries can remain in the log until the next compaction.
 
 ### Audit Commands
 
