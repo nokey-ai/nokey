@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	kring "github.com/byteness/keyring"
+	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
@@ -1719,6 +1722,64 @@ func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	if !found {
 		t.Errorf("expected http_proxy in env vars, got: %v", envVars)
 	}
+}
+
+// The isolation proxy records blocked requests in the audit log, like
+// nokey proxy start does.
+func TestSetupIsolationProxy_AuditsBlockedRequests(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestAuditDir(t)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = true
+	withTestConfig(t, c)
+	withTestConfigDir(t, `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_KEY"
+`)
+
+	envVars, cleanup, err := setupIsolationProxy(map[string]string{"MY_KEY": "secret-val"})
+	if err != nil {
+		t.Fatalf("setupIsolationProxy: %v", err)
+	}
+	defer cleanup()
+
+	var proxyURL string
+	for _, ev := range envVars {
+		if strings.HasPrefix(ev, "http_proxy=") {
+			proxyURL = strings.TrimPrefix(ev, "http_proxy=")
+		}
+	}
+	if proxyURL == "" {
+		t.Fatalf("no http_proxy in %v", envVars)
+	}
+	pu, err := url.Parse(proxyURL)
+	if err != nil {
+		t.Fatalf("parse proxy url: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}}
+	resp, err := client.Get("http://blocked.example/")
+	if err != nil {
+		t.Fatalf("GET through proxy: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+
+	log, err := audit.Load(store)
+	if err != nil {
+		t.Fatalf("audit.Load: %v", err)
+	}
+	for _, e := range log.Entries {
+		if e.Operation == "proxy:http:blocked" {
+			return
+		}
+	}
+	t.Errorf("no proxy:http:blocked audit entry; entries: %+v", log.Entries)
 }
 
 func TestSetupIsolationProxy_OverridesProxyBypassVars(t *testing.T) {
