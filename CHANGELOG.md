@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-01
+
 ### Security
 - With no `policies.yaml`, the MCP server now asks the user to approve
   every secret access. It used to allow everything without a prompt
