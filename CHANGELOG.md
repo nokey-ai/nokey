@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-02
+
 ### Added
 - "Don't ask again this session" on MCP `exec` and `exec_with_secrets`
   approval prompts. Accepting with the box ticked approves that command
