@@ -74,31 +74,9 @@ func Load(configDir string) (*Policy, error) {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
 	}
 
-	// Validate global approval mode
-	if err := validateApproval(pol.Approval, "global"); err != nil {
+	if err := validatePolicy(&pol); err != nil {
 		return nil, err
 	}
-
-	// Validate rules
-	for i, rule := range pol.Rules {
-		if len(rule.Commands) == 0 {
-			return nil, fmt.Errorf("policy rule %d: commands must not be empty", i)
-		}
-		if len(rule.Secrets) == 0 {
-			return nil, fmt.Errorf("policy rule %d: secrets must not be empty", i)
-		}
-		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
-			return nil, err
-		}
-	}
-
-	// Validate proxy rules if present
-	if pol.Proxy != nil {
-		if err := ValidateProxyRules(pol.Proxy); err != nil {
-			return nil, err
-		}
-	}
-
 	return &pol, nil
 }
 
@@ -122,32 +100,38 @@ func LoadStrict(configDir string) (*Policy, error) {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
 	}
 
+	if err := validatePolicy(&pol); err != nil {
+		return nil, err
+	}
+	return &pol, nil
+}
+
+// validatePolicy checks the approval modes, rules and proxy rules of a
+// parsed policy.
+func validatePolicy(pol *Policy) error {
 	// Validate global approval mode
 	if err := validateApproval(pol.Approval, "global"); err != nil {
-		return nil, err
+		return err
 	}
 
 	// Validate rules
 	for i, rule := range pol.Rules {
 		if len(rule.Commands) == 0 {
-			return nil, fmt.Errorf("policy rule %d: commands must not be empty", i)
+			return fmt.Errorf("policy rule %d: commands must not be empty", i)
 		}
 		if len(rule.Secrets) == 0 {
-			return nil, fmt.Errorf("policy rule %d: secrets must not be empty", i)
+			return fmt.Errorf("policy rule %d: secrets must not be empty", i)
 		}
 		if err := validateApproval(rule.Approval, fmt.Sprintf("rule %d", i)); err != nil {
-			return nil, err
+			return err
 		}
 	}
 
 	// Validate proxy rules if present
 	if pol.Proxy != nil {
-		if err := ValidateProxyRules(pol.Proxy); err != nil {
-			return nil, err
-		}
+		return ValidateProxyRules(pol.Proxy)
 	}
-
-	return &pol, nil
+	return nil
 }
 
 func validateApproval(mode ApprovalMode, context string) error {

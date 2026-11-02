@@ -17,7 +17,7 @@ import (
 	"golang.org/x/term"
 )
 
-// PINHash is stored in the keyring under this special key
+// PINHashKey is the keyring key the PIN hash is stored under
 const PINHashKey = "__nokey_pin_hash__"
 
 // Argon2id parameters
@@ -70,7 +70,7 @@ func Authenticate(storedHash string) error {
 	fmt.Fprintf(stderrWriter, "\n🔐 Authentication Required\n")
 	fmt.Fprintf(stderrWriter, "Enter your nokey PIN to access secrets: ")
 
-	// Read PIN without echoing (even works when stdin is not redirected)
+	// Read PIN without echoing
 	pin, err := readPasswordFn(int(syscall.Stdin))
 	fmt.Fprintln(stderrWriter) // Newline after password input
 
@@ -203,7 +203,7 @@ func SetupPIN() (string, error) {
 	}
 
 	fmt.Fprintf(stderrWriter, "\n🔐 PIN Setup\n")
-	fmt.Fprintf(stderrWriter, "Create a PIN to protect your secrets (4+ characters recommended)\n\n")
+	fmt.Fprintf(stderrWriter, "Create a PIN to protect your secrets (at least 4 characters)\n\n")
 
 	// First entry
 	fmt.Fprintf(stderrWriter, "Enter new PIN: ")

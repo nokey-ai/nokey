@@ -839,19 +839,6 @@ func TestGetOrCreateCert_Cache(t *testing.T) {
 	}
 }
 
-func TestStartDefaultAddr(t *testing.T) {
-	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
-	addr, err := srv.Start("")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() { _ = srv.Stop(context.Background()) }()
-	if addr == "" {
-		t.Error("expected non-empty address")
-	}
-}
-
 func TestHTTPSConnectApprovalDenied(t *testing.T) {
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("request should not reach upstream")

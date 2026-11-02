@@ -333,7 +333,7 @@ nokey exec --redact -- sh -c 'echo "My key is: sk-123"'
 
 ## Audit Logging
 
-Track when secrets are accessed, by whom, and with what authentication method. All audit logs are encrypted and stored in your OS keyring.
+Track when secrets are accessed, by whom, and with what authentication method. Each entry is encrypted and appended to `audit.log` in the nokey config directory; the encryption key is stored in your OS keyring.
 
 ### Enable Audit Logging
 
@@ -384,7 +384,7 @@ nokey audit export --format csv --output audit.csv
 # Export with filters
 nokey audit export --format json --since 7d --secret API_KEY
 
-# Clear audit log (requires authentication)
+# Clear audit log (requires PIN authentication if a PIN is configured)
 nokey audit clear
 ```
 
@@ -583,8 +583,7 @@ Keychain Access, doesn't sync via iCloud Keychain, and doesn't
 auto-unlock at OS login — Touch ID handles unlock on first nokey use
 per process. The keychain locks after 5 minutes idle and on sleep
 (applied automatically at creation). Login-keychain entries are left
-in place after migration; a future `keychain prune-login` step will
-clean them up after a deprecation window.
+in place after migration.
 
 Heads-up on the first-time Touch ID setup prompt: the underlying
 byteness/keyring library hardcodes the string "aws-vault" into its
@@ -780,13 +779,13 @@ curl https://api.openai.com/v1/models  # Authorization header injected automatic
 
 ### Egress Isolation
 
-Block outbound network access to hosts without a proxy rule:
+Route a command's HTTP(S) traffic through a proxy that refuses hosts without a proxy rule:
 
 ```bash
 nokey exec --isolate -- python script.py
 ```
 
-This starts a local proxy with `--isolate` that rejects connections to any host not covered by a proxy rule.
+This starts a local proxy that rejects connections to any host not covered by a proxy rule, and points the command at it via the `http_proxy`/`https_proxy`/`all_proxy` environment variables (and their uppercase forms). It is not a sandbox: clients that ignore those variables, or open raw sockets, are not blocked.
 
 ---
 
@@ -1157,12 +1156,11 @@ When you run `nokey exec`:
 When audit logging is enabled:
 1. Collect audit entry data (timestamp, secrets, command, auth method, user, etc.)
 2. Create AuditEntry struct
-3. Load existing audit log from keyring
-4. Decrypt audit log using NaCl secretbox
-5. Append new entry
-6. Apply retention policy (max entries, age limit)
-7. Encrypt updated log
-8. Store back in keyring under `__nokey_audit_log__`
+3. Load the audit encryption key from the keyring (created on first use)
+4. Once the log reaches twice the entry limit, compact it under the retention policy (max entries, age limit)
+5. Encrypt the entry with NaCl secretbox, chained to the previous entry by HMAC
+6. Append it to the `audit.log` file in the nokey config directory
+7. Update the chain head checkpoint used to detect truncation
 
 All audit data is encrypted before storage, so even system administrators cannot read audit logs without the nokey encryption key.
 

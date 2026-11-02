@@ -192,7 +192,7 @@ keychain configured via keyring.dedicated/keyring.name. Requires PIN auth
 touching the destination. Migration aborts if any secret already exists in
 the destination with a different value — manually resolve the conflict
 (security delete-generic-password ...) and re-run. Login-keychain entries
-are left in place; remove them with a future 'keychain prune-login' step.`,
+are left in place.`,
 	RunE: runKeychainToDedicated,
 }
 
@@ -311,7 +311,7 @@ func runKeychainMigrate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	count, err := store.MigrateAllItems(false)
+	count, err := store.MigrateAllItems()
 	if err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}
@@ -563,8 +563,8 @@ If you no longer use that keychain, delete the item and re-run:
 	}
 
 	// Write an encrypted backup of the source before any destination write
-	// happens. The PIN doubles as the backup password — if no PIN is set,
-	// prompt the user. Skipping this is opt-in only.
+	// happens, protected by a password prompted for separately. Skipping
+	// this is opt-in only.
 	backupPath := "skipped"
 	if !toDedicatedNoBackup {
 		pw, err := resolveBackupPassword(false, "Backup password: ")
@@ -658,7 +658,7 @@ If you no longer use that keychain, delete the item and re-run:
 
 	fmt.Printf("Migrated %d secret(s) to the dedicated keychain (%d already present).\n", len(toWrite), len(alreadyPresent))
 	fmt.Printf("Backup: %s\n", backupPath)
-	fmt.Println("Login-keychain entries left in place — remove them later with 'nokey keychain prune-login' (coming in a future release).")
+	fmt.Println("Login-keychain entries left in place.")
 	return nil
 }
 

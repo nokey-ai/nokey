@@ -13,8 +13,7 @@ import (
 
 // App holds shared dependencies for CLI commands.
 type App struct {
-	Config     *config.Config
-	GetKeyring func() (*keyring.Store, error)
+	Config *config.Config
 }
 
 type appKey struct{}
@@ -29,7 +28,7 @@ func AppFromCmd(cmd *cobra.Command) *App {
 		}
 	}
 	// Fallback for tests or commands that run before PersistentPreRun.
-	return &App{Config: cfg, GetKeyring: getKeyring}
+	return &App{Config: cfg}
 }
 
 // RecordAudit logs an audit entry if auditing is enabled.
@@ -46,7 +45,7 @@ func (a *App) RecordAudit(store *keyring.Store, op, command, authMethod string, 
 
 // setAppContext attaches the App to a command's context.
 func setAppContext(cmd *cobra.Command) {
-	app := &App{Config: cfg, GetKeyring: getKeyring}
+	app := &App{Config: cfg}
 	ctx := context.WithValue(cmd.Context(), appKey{}, app)
 	cmd.SetContext(ctx)
 }

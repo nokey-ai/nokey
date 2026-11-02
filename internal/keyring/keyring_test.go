@@ -813,29 +813,6 @@ func TestStore_AllKeys_Error(t *testing.T) {
 
 // --- MigrateAllItems tests ---
 
-func TestStore_MigrateAllItems_DryRun(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("MigrateAllItems is macOS-only")
-	}
-	s := newTestStore()
-	_ = s.Set("KEY1", "v1")
-	_ = s.Set("KEY2", "v2")
-
-	count, err := s.MigrateAllItems(true)
-	if err != nil {
-		t.Fatalf("MigrateAllItems dry-run: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("dry-run count = %d, want 2", count)
-	}
-
-	// Verify data is unchanged
-	v, _ := s.Get("KEY1")
-	if v != "v1" {
-		t.Errorf("KEY1 = %q after dry-run, want %q", v, "v1")
-	}
-}
-
 func TestStore_MigrateAllItems_Migrate(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("MigrateAllItems is macOS-only")
@@ -844,7 +821,7 @@ func TestStore_MigrateAllItems_Migrate(t *testing.T) {
 	_ = s.Set("KEY1", "v1")
 	_ = s.Set("__nokey_pin", "pinhash")
 
-	count, err := s.MigrateAllItems(false)
+	count, err := s.MigrateAllItems()
 	if err != nil {
 		t.Fatalf("MigrateAllItems: %v", err)
 	}
@@ -865,7 +842,7 @@ func TestStore_MigrateAllItems_Migrate(t *testing.T) {
 
 func TestStore_MigrateAllItems_Empty(t *testing.T) {
 	s := newTestStore()
-	count, err := s.MigrateAllItems(false)
+	count, err := s.MigrateAllItems()
 	if err != nil {
 		t.Fatalf("MigrateAllItems: %v", err)
 	}
@@ -880,7 +857,7 @@ func TestStore_MigrateAllItems_KeysError(t *testing.T) {
 	}
 	ring := &errorRing{mockRing: *newMockRing(), keysErr: errors.New("keys failed")}
 	s := NewWithRing(ring, "test")
-	_, err := s.MigrateAllItems(false)
+	_, err := s.MigrateAllItems()
 	if err == nil {
 		t.Error("MigrateAllItems should fail when Keys() errors")
 	}
@@ -896,7 +873,7 @@ func TestStore_MigrateAllItems_GetError_SkipsUnreadable(t *testing.T) {
 	ring.items["KEY"] = keyring.Item{Key: "KEY", Data: []byte("val")}
 	ring.getErr = errors.New("get failed")
 
-	count, err := s.MigrateAllItems(false)
+	count, err := s.MigrateAllItems()
 	if err != nil {
 		t.Fatalf("MigrateAllItems should skip unreadable keys, got error: %v", err)
 	}
@@ -918,7 +895,7 @@ func TestStore_MigrateAllItems_PartialGetError(t *testing.T) {
 	// Insert a key that will fail on Get
 	ring.items["bad_key"] = keyring.Item{Key: "bad_key", Data: []byte("corrupt")}
 
-	count, err := s.MigrateAllItems(false)
+	count, err := s.MigrateAllItems()
 	if err != nil {
 		t.Fatalf("MigrateAllItems should skip bad keys: %v", err)
 	}
@@ -943,7 +920,7 @@ func TestStore_MigrateAllItems_RemoveError(t *testing.T) {
 	_ = s.Set("KEY", "val")
 	ring.removeErr = errors.New("remove failed")
 
-	_, err := s.MigrateAllItems(false)
+	_, err := s.MigrateAllItems()
 	if err == nil {
 		t.Error("MigrateAllItems should fail when Remove() errors")
 	}
@@ -959,7 +936,7 @@ func TestStore_MigrateAllItems_SetError(t *testing.T) {
 	// Remove will succeed (items exist), but Set will fail
 	ring.setErr = errors.New("set failed")
 
-	_, err := s.MigrateAllItems(false)
+	_, err := s.MigrateAllItems()
 	if err == nil {
 		t.Error("MigrateAllItems should fail when Set() errors")
 	}

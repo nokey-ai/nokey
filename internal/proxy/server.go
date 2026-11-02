@@ -106,10 +106,6 @@ func (s *Server) Start(addr string) (string, error) {
 		return s.listener.Addr().String(), nil
 	}
 
-	if addr == "" {
-		addr = "127.0.0.1:0"
-	}
-
 	// Check before binding: a non-loopback bind must never happen, not even
 	// for the microseconds between Listen and a post-hoc check.
 	if err := ValidateListenAddr(addr); err != nil {
