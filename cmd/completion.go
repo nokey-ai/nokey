@@ -63,7 +63,7 @@ var auditOperations = []string{
 	"mcp:exec_with_secrets", "mcp:exec_with_secrets:approval",
 	"mcp:list_secrets", "mcp:rename_secret", "mcp:rename_secret:approval",
 	"mcp:mint_token", "mcp:mint_token:approval", "mcp:revoke_token",
-	"mcp:token_use", "mcp:auto_mint",
+	"mcp:token_use", "mcp:auto_mint", "mcp:grant", "mcp:grant_use",
 }
 
 var registerCompletionsOnce sync.Once

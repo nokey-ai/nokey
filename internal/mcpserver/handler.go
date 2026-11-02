@@ -55,6 +55,11 @@ type SecretStore interface {
 // what exactly is being approved (see approval.RequestWithDetail).
 type ApprovalFunc func(ctx context.Context, requester approval.Requester, command string, secretNames []string, detail string) error
 
+// RememberApprovalFunc is ApprovalFunc with a "don't ask again this
+// session" option; remember reports whether the user chose it (see
+// approval.RequestRememberable).
+type RememberApprovalFunc func(ctx context.Context, requester approval.Requester, command string, secretNames []string, detail string) (remember bool, err error)
+
 // AuditFunc is the signature for recording audit entries.
 // Matches the pattern used by proxy.AuditFunc.
 type AuditFunc func(operation, command, target string, success bool, errMsg string)
@@ -65,21 +70,26 @@ type Deps struct {
 	// GetPolicy returns the current policy, reloading from disk when the
 	// source file has changed. Called per-request; must be safe for
 	// concurrent use. A nil return value means allow-all.
-	GetPolicy    func() *policy.Policy
-	Config       *config.Config
-	ApprovalFn   ApprovalFunc
-	AuditFn      AuditFunc
-	GetConfigDir func() (string, error)
+	GetPolicy  func() *policy.Policy
+	Config     *config.Config
+	ApprovalFn ApprovalFunc
+	// RememberApprovalFn prompts for per-call exec approval with a "don't
+	// ask again this session" option. Nil falls back to ApprovalFn, which
+	// never remembers.
+	RememberApprovalFn RememberApprovalFunc
+	AuditFn            AuditFunc
+	GetConfigDir       func() (string, error)
 }
 
 // Handler holds session-scoped state and serves MCP tool requests.
 type Handler struct {
-	getStore     func() (SecretStore, error)
-	getPolicy    func() *policy.Policy
-	cfg          *config.Config
-	approvalFn   ApprovalFunc
-	auditFn      AuditFunc
-	getConfigDir func() (string, error)
+	getStore           func() (SecretStore, error)
+	getPolicy          func() *policy.Policy
+	cfg                *config.Config
+	approvalFn         ApprovalFunc
+	rememberApprovalFn RememberApprovalFunc
+	auditFn            AuditFunc
+	getConfigDir       func() (string, error)
 
 	tokenStore *token.Store
 	mcpSrv     *server.MCPServer
@@ -92,6 +102,12 @@ type Handler struct {
 	// minting is the auto-mint in flight, if any. Concurrent calls wait on
 	// it and share its outcome instead of each raising a prompt.
 	minting *mintCall
+
+	// grantsMu guards grants: per command base name, the secrets the user
+	// approved with "don't ask again this session". They live in memory
+	// only, so they end with the MCP server process.
+	grantsMu sync.Mutex
+	grants   map[string]map[string]bool
 }
 
 // mintCall is one in-flight auto-mint. done is closed once err is set.
@@ -106,14 +122,23 @@ func New(deps Deps) *Handler {
 	if auditFn == nil {
 		auditFn = func(string, string, string, bool, string) {}
 	}
+	rememberFn := deps.RememberApprovalFn
+	if rememberFn == nil && deps.ApprovalFn != nil {
+		approvalFn := deps.ApprovalFn
+		rememberFn = func(ctx context.Context, r approval.Requester, command string, secretNames []string, detail string) (bool, error) {
+			return false, approvalFn(ctx, r, command, secretNames, detail)
+		}
+	}
 	return &Handler{
-		getStore:     deps.GetStore,
-		getPolicy:    deps.GetPolicy,
-		cfg:          deps.Config,
-		approvalFn:   deps.ApprovalFn,
-		auditFn:      auditFn,
-		getConfigDir: deps.GetConfigDir,
-		tokenStore:   token.NewStore(),
+		getStore:           deps.GetStore,
+		getPolicy:          deps.GetPolicy,
+		cfg:                deps.Config,
+		approvalFn:         deps.ApprovalFn,
+		rememberApprovalFn: rememberFn,
+		auditFn:            auditFn,
+		getConfigDir:       deps.GetConfigDir,
+		tokenStore:         token.NewStore(),
+		grants:             map[string]map[string]bool{},
 	}
 }
 
@@ -711,6 +736,14 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 		return nil
 	}
 
+	// An earlier "don't ask again this session" covers this call. It only
+	// stands in for the prompt: the policy check, token_required and
+	// approval: never have all been applied above.
+	if h.granted(command, secretNames) {
+		h.recordAudit("mcp:grant_use", command, strings.Join(secretNames, ","), true, "")
+		return nil
+	}
+
 	// Auto-mint: one approval covers the rest of the session.
 	if h.cfg != nil && h.cfg.Auth.AutoMintToken {
 		if err := h.tryAutoMint(ctx, secretNames); err == nil {
@@ -723,12 +756,48 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 	}
 
 	if needsApproval {
-		if err := h.approvalFn(ctx, h.mcpSrv, command, secretNames, detail); err != nil {
+		remember, err := h.rememberApprovalFn(ctx, h.mcpSrv, command, secretNames, detail)
+		if err != nil {
 			return fmt.Errorf("approval denied: %w", err)
+		}
+		if remember {
+			h.grant(command, secretNames)
+			h.recordAudit("mcp:grant", command, strings.Join(secretNames, ","), true, "")
 		}
 	}
 
 	return nil
+}
+
+// granted reports whether the user chose "don't ask again this session"
+// for command with every one of secretNames.
+func (h *Handler) granted(command string, secretNames []string) bool {
+	h.grantsMu.Lock()
+	defer h.grantsMu.Unlock()
+	approved := h.grants[filepath.Base(command)]
+	if approved == nil {
+		return false
+	}
+	for _, name := range secretNames {
+		if !approved[name] {
+			return false
+		}
+	}
+	return true
+}
+
+// grant remembers secretNames as approved for command until the MCP server
+// stops. Grants for the same command accumulate.
+func (h *Handler) grant(command string, secretNames []string) {
+	h.grantsMu.Lock()
+	defer h.grantsMu.Unlock()
+	base := filepath.Base(command)
+	if h.grants[base] == nil {
+		h.grants[base] = map[string]bool{}
+	}
+	for _, name := range secretNames {
+		h.grants[base][name] = true
+	}
 }
 
 // tokenInvalid explains why a token was refused for command.

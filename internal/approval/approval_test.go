@@ -28,62 +28,22 @@ func TestRequestWithDetail_NoDetail(t *testing.T) {
 		wantErr string // empty = no error expected
 	}{
 		{
-			name: "user accepts with approve true",
-			result: &mcp.ElicitationResult{
-				ElicitationResponse: mcp.ElicitationResponse{
-					Action:  mcp.ElicitationResponseActionAccept,
-					Content: map[string]any{"approve": true},
-				},
-			},
-		},
-		{
-			name: "user accepts with approve false",
-			result: &mcp.ElicitationResult{
-				ElicitationResponse: mcp.ElicitationResponse{
-					Action:  mcp.ElicitationResponseActionAccept,
-					Content: map[string]any{"approve": false},
-				},
-			},
-			wantErr: `user did not approve secret access for "gh"`,
-		},
-		{
-			name: "user accepts without content",
+			// The Accept button is the approval; no form field is needed.
+			name: "user accepts",
 			result: &mcp.ElicitationResult{
 				ElicitationResponse: mcp.ElicitationResponse{
 					Action: mcp.ElicitationResponseActionAccept,
 				},
 			},
-			wantErr: "user did not approve secret access",
 		},
 		{
-			name: "user accepts without approve field",
+			name: "user accepts with unrelated content",
 			result: &mcp.ElicitationResult{
 				ElicitationResponse: mcp.ElicitationResponse{
 					Action:  mcp.ElicitationResponseActionAccept,
 					Content: map[string]any{"other": true},
 				},
 			},
-			wantErr: "user did not approve secret access",
-		},
-		{
-			name: "user accepts with non-boolean approve",
-			result: &mcp.ElicitationResult{
-				ElicitationResponse: mcp.ElicitationResponse{
-					Action:  mcp.ElicitationResponseActionAccept,
-					Content: map[string]any{"approve": "true"},
-				},
-			},
-			wantErr: "user did not approve secret access",
-		},
-		{
-			name: "user accepts with non-object content",
-			result: &mcp.ElicitationResult{
-				ElicitationResponse: mcp.ElicitationResponse{
-					Action:  mcp.ElicitationResponseActionAccept,
-					Content: true,
-				},
-			},
-			wantErr: "user did not approve secret access",
 		},
 		{
 			name: "user declines",
@@ -142,8 +102,9 @@ func TestRequestWithDetail_NoDetail(t *testing.T) {
 }
 
 type capturingRequester struct {
-	msg    string
-	schema map[string]any
+	msg     string
+	schema  map[string]any
+	content any // what the "user" submits with Accept
 }
 
 func (c *capturingRequester) RequestElicitation(_ context.Context, req mcp.ElicitationRequest) (*mcp.ElicitationResult, error) {
@@ -152,7 +113,7 @@ func (c *capturingRequester) RequestElicitation(_ context.Context, req mcp.Elici
 	return &mcp.ElicitationResult{
 		ElicitationResponse: mcp.ElicitationResponse{
 			Action:  mcp.ElicitationResponseActionAccept,
-			Content: map[string]any{"approve": true},
+			Content: c.content,
 		},
 	}, nil
 }
@@ -165,8 +126,8 @@ func TestRequestWithDetail_ShowsDetail(t *testing.T) {
 	if !strings.Contains(c.msg, `args: "https://example.com"`) {
 		t.Errorf("prompt %q does not show the detail", c.msg)
 	}
-	if !strings.HasSuffix(c.msg, "Do you approve?") {
-		t.Errorf("prompt %q should still end with the question", c.msg)
+	if !strings.HasSuffix(c.msg, "Accept to approve, Decline to deny.") {
+		t.Errorf("prompt %q should end by saying what the buttons do", c.msg)
 	}
 }
 
@@ -176,22 +137,93 @@ func TestRequestWithDetail_EmptyDetailPrompt(t *testing.T) {
 	if err := RequestWithDetail(context.Background(), c, "gh", []string{"A", "B"}, ""); err != nil {
 		t.Fatalf("RequestWithDetail: %v", err)
 	}
-	want := "nokey: \"gh\" wants to access secret(s): A, B\n\nDo you approve?"
+	want := "nokey: \"gh\" wants to access secret(s): A, B\n\nAccept to approve, Decline to deny."
 	if c.msg != want {
 		t.Errorf("prompt = %q, want %q", c.msg, want)
 	}
 }
 
-// The schema marks approve as required, so a client cannot present a form
-// without the one field the answer is read from.
-func TestRequestWithDetail_SchemaRequiresApprove(t *testing.T) {
+// The plain prompt has no form fields, so approving is one click on Accept.
+func TestRequestWithDetail_SchemaHasNoFields(t *testing.T) {
 	c := &capturingRequester{}
 	if err := RequestWithDetail(context.Background(), c, "gh", []string{"A"}, ""); err != nil {
 		t.Fatalf("RequestWithDetail: %v", err)
 	}
-	required, _ := c.schema["required"].([]string)
-	if len(required) != 1 || required[0] != "approve" {
-		t.Errorf("required = %v, want [approve]", c.schema["required"])
+	props, _ := c.schema["properties"].(map[string]any)
+	if len(props) != 0 {
+		t.Errorf("properties = %v, want none", c.schema["properties"])
+	}
+	if _, ok := c.schema["required"]; ok {
+		t.Errorf("required = %v, want no required fields", c.schema["required"])
+	}
+}
+
+// The rememberable prompt offers one optional checkbox, off by default.
+func TestRequestRememberable_Schema(t *testing.T) {
+	c := &capturingRequester{}
+	if _, err := RequestRememberable(context.Background(), c, "curl", []string{"A"}, ""); err != nil {
+		t.Fatalf("RequestRememberable: %v", err)
+	}
+	props, _ := c.schema["properties"].(map[string]any)
+	if len(props) != 1 {
+		t.Fatalf("properties = %v, want only remember", props)
+	}
+	remember, _ := props["remember"].(map[string]any)
+	if remember["type"] != "boolean" || remember["default"] != false {
+		t.Errorf("remember = %v, want an optional boolean defaulting to false", remember)
+	}
+	if !strings.Contains(remember["description"].(string), `"curl"`) {
+		t.Errorf("description %q should name the command", remember["description"])
+	}
+	if _, ok := c.schema["required"]; ok {
+		t.Errorf("remember must be optional, got required = %v", c.schema["required"])
+	}
+}
+
+func TestRequestRememberable_Answers(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		content any
+		want    bool
+	}{
+		{"accept without content", nil, false},
+		{"accept with box unticked", map[string]any{"remember": false}, false},
+		{"accept with box ticked", map[string]any{"remember": true}, true},
+		{"non-boolean remember", map[string]any{"remember": "true"}, false},
+		{"non-object content", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &capturingRequester{content: tc.content}
+			got, err := RequestRememberable(context.Background(), c, "curl", []string{"A"}, "")
+			if err != nil {
+				t.Fatalf("an Accept must approve: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("remember = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// A plain prompt never reports remember, even if a client sends it.
+func TestRequestWithDetail_IgnoresRemember(t *testing.T) {
+	c := &capturingRequester{content: map[string]any{"remember": true}}
+	remember, err := request(context.Background(), c, "gh", []string{"A"}, "", false)
+	if err != nil || remember {
+		t.Errorf("got (%v, %v), want (false, nil)", remember, err)
+	}
+}
+
+func TestRequestRememberable_Decline(t *testing.T) {
+	mock := &mockRequester{result: &mcp.ElicitationResult{
+		ElicitationResponse: mcp.ElicitationResponse{
+			Action:  mcp.ElicitationResponseActionDecline,
+			Content: map[string]any{"remember": true},
+		},
+	}}
+	remember, err := RequestRememberable(context.Background(), mock, "curl", []string{"A"}, "")
+	if err == nil || remember {
+		t.Errorf("got (%v, %v), want a decline error and no remember", remember, err)
 	}
 }
 

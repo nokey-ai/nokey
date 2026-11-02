@@ -65,12 +65,13 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	}
 
 	h := mcpserver.New(mcpserver.Deps{
-		GetStore:     func() (mcpserver.SecretStore, error) { return getKeyring() },
-		GetPolicy:    polStore.Current,
-		Config:       cfg,
-		ApprovalFn:   approval.RequestWithDetail,
-		AuditFn:      recordAudit,
-		GetConfigDir: getConfigDir,
+		GetStore:           func() (mcpserver.SecretStore, error) { return getKeyring() },
+		GetPolicy:          polStore.Current,
+		Config:             cfg,
+		ApprovalFn:         approval.RequestWithDetail,
+		RememberApprovalFn: approval.RequestRememberable,
+		AuditFn:            recordAudit,
+		GetConfigDir:       getConfigDir,
 	})
 
 	s := newMCPServer()

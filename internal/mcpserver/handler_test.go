@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -3054,3 +3055,195 @@ func TestHandleRenameSecret_StoreErrors(t *testing.T) {
 type failingRenameStore struct{ mapStore }
 
 func (f *failingRenameStore) Rename(string, string) error { return fmt.Errorf("write failed") }
+
+// --- "don't ask again this session" grants ---
+
+// rememberRecorder answers per-call prompts with a fixed remember choice
+// and counts them; plain approvals (rename, mint, session token) are
+// counted separately.
+type rememberRecorder struct {
+	mu       sync.Mutex
+	remember bool
+	prompts  []string // command of each rememberable prompt
+	plain    int
+}
+
+func (r *rememberRecorder) rememberFn(_ context.Context, _ approval.Requester, command string, _ []string, _ string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.prompts = append(r.prompts, command)
+	return r.remember, nil
+}
+
+func (r *rememberRecorder) plainFn(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.plain++
+	return nil
+}
+
+func (r *rememberRecorder) count() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.prompts)
+}
+
+// grantHandler returns a handler whose policy (swappable via *pol) makes
+// every call need approval.
+func grantHandler(t *testing.T, rec *rememberRecorder, pol **policy.Policy) (*Handler, *[]string) {
+	t.Helper()
+	var audits []string
+	var mu sync.Mutex
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	h := New(Deps{
+		GetStore: func() (SecretStore, error) {
+			return &mapStore{secrets: map[string]string{"A": "a", "B": "b", "OLD": "o"}}, nil
+		},
+		GetPolicy:          func() *policy.Policy { return *pol },
+		Config:             c,
+		ApprovalFn:         rec.plainFn,
+		RememberApprovalFn: rec.rememberFn,
+		AuditFn: func(op, _, _ string, _ bool, _ string) {
+			mu.Lock()
+			audits = append(audits, op)
+			mu.Unlock()
+		},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+	return h, &audits
+}
+
+func alwaysPolicy() *policy.Policy {
+	return &policy.Policy{Rules: []policy.Rule{{Commands: []string{"*"}, Secrets: []string{"*"}, Approval: policy.ApprovalAlways}}}
+}
+
+func TestGrant_RememberSkipsLaterPrompts(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, audits := grantHandler(t, rec, &pol)
+	ctx := context.Background()
+
+	if err := h.checkTokenOrApproval(ctx, "", "/usr/bin/curl", []string{"A", "B"}, ""); err != nil {
+		t.Fatalf("first call: %v", err)
+	}
+	// Same command (any path), same or fewer secrets: no prompt.
+	for _, call := range []struct {
+		cmd     string
+		secrets []string
+	}{{"curl", []string{"A", "B"}}, {"curl", []string{"B"}}, {"/opt/bin/curl", []string{"A"}}} {
+		if err := h.checkTokenOrApproval(ctx, "", call.cmd, call.secrets, ""); err != nil {
+			t.Fatalf("%s %v: %v", call.cmd, call.secrets, err)
+		}
+	}
+	if n := rec.count(); n != 1 {
+		t.Errorf("prompts = %d, want 1", n)
+	}
+	if !slices.Contains(*audits, "mcp:grant") || !slices.Contains(*audits, "mcp:grant_use") {
+		t.Errorf("audits = %v, want mcp:grant and mcp:grant_use", *audits)
+	}
+}
+
+func TestGrant_DoesNotCoverOtherCommandsOrSecrets(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, _ := grantHandler(t, rec, &pol)
+	ctx := context.Background()
+
+	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"A"}, "")
+	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"A", "B"}, "") // B is new
+	_ = h.checkTokenOrApproval(ctx, "", "wget", []string{"A"}, "")      // other command
+	if n := rec.count(); n != 3 {
+		t.Errorf("prompts = %d, want 3 (new secret and new command each prompt)", n)
+	}
+	// The second prompt was remembered too, so curl with A and B is now covered.
+	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"B"}, "")
+	if n := rec.count(); n != 3 {
+		t.Errorf("prompts = %d after a covered call, want still 3", n)
+	}
+}
+
+func TestGrant_WithoutRememberPromptsEveryTime(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: false}
+	h, _ := grantHandler(t, rec, &pol)
+	for range 3 {
+		if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n := rec.count(); n != 3 {
+		t.Errorf("prompts = %d, want 3", n)
+	}
+}
+
+// A grant replaces only the prompt: token_required added to the policy
+// afterwards still applies.
+func TestGrant_DoesNotBypassTokenRequired(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, _ := grantHandler(t, rec, &pol)
+	if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	pol = &policy.Policy{Rules: []policy.Rule{{Commands: []string{"curl"}, Secrets: []string{"A"}, TokenRequired: true}}}
+	err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, "")
+	if err == nil || !strings.Contains(err.Error(), "token required") {
+		t.Errorf("err = %v, want token required despite the grant", err)
+	}
+}
+
+// A grant does not survive a policy that now denies the command.
+func TestGrant_DoesNotBypassPolicyDeny(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, _ := grantHandler(t, rec, &pol)
+	if err := h.checkTokenOrApproval(context.Background(), "", "echo", []string{"A"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	pol = &policy.Policy{Rules: []policy.Rule{{Commands: []string{"other"}, Secrets: []string{"*"}}}}
+	result, err := h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "echo",
+		"args":    []any{"${{NOKEY:A}}"},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "policy denied") {
+		t.Errorf("result = %q, want policy denied despite the grant", text)
+	}
+}
+
+// rename_secret always prompts, whatever was remembered.
+func TestGrant_RenameStillPrompts(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, _ := grantHandler(t, rec, &pol)
+	_ = h.checkTokenOrApproval(context.Background(), "", "rename_secret", []string{"OLD"}, "")
+
+	if _, err := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW")); err != nil {
+		t.Fatal(err)
+	}
+	if rec.plain != 1 {
+		t.Errorf("rename prompts = %d, want 1 even after a grant", rec.plain)
+	}
+}
+
+// Without RememberApprovalFn the handler falls back to ApprovalFn and
+// never remembers.
+func TestGrant_FallbackNeverRemembers(t *testing.T) {
+	pol := alwaysPolicy()
+	prompts := 0
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"A": "a"}}, pol, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+		prompts++
+		return nil
+	})
+	for range 2 {
+		if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if prompts != 2 {
+		t.Errorf("prompts = %d, want 2", prompts)
+	}
+}
