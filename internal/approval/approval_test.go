@@ -142,11 +142,13 @@ func TestRequestWithDetail_NoDetail(t *testing.T) {
 }
 
 type capturingRequester struct {
-	msg string
+	msg    string
+	schema map[string]any
 }
 
 func (c *capturingRequester) RequestElicitation(_ context.Context, req mcp.ElicitationRequest) (*mcp.ElicitationResult, error) {
 	c.msg = req.Params.Message
+	c.schema, _ = req.Params.RequestedSchema.(map[string]any)
 	return &mcp.ElicitationResult{
 		ElicitationResponse: mcp.ElicitationResponse{
 			Action:  mcp.ElicitationResponseActionAccept,
@@ -177,6 +179,19 @@ func TestRequestWithDetail_EmptyDetailPrompt(t *testing.T) {
 	want := "nokey: \"gh\" wants to access secret(s): A, B\n\nDo you approve?"
 	if c.msg != want {
 		t.Errorf("prompt = %q, want %q", c.msg, want)
+	}
+}
+
+// The schema marks approve as required, so a client cannot present a form
+// without the one field the answer is read from.
+func TestRequestWithDetail_SchemaRequiresApprove(t *testing.T) {
+	c := &capturingRequester{}
+	if err := RequestWithDetail(context.Background(), c, "gh", []string{"A"}, ""); err != nil {
+		t.Fatalf("RequestWithDetail: %v", err)
+	}
+	required, _ := c.schema["required"].([]string)
+	if len(required) != 1 || required[0] != "approve" {
+		t.Errorf("required = %v, want [approve]", c.schema["required"])
 	}
 }
 

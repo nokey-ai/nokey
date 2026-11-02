@@ -54,6 +54,7 @@ func RequestWithDetail(ctx context.Context, requester Requester, command string,
 						"description": "Approve secret access",
 					},
 				},
+				"required": []string{"approve"},
 			},
 		},
 	})
