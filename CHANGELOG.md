@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- "Don't ask again this session" on MCP `exec` and `exec_with_secrets`
+  approval prompts. Accepting with the box ticked approves that command
+  (by base name) with those secrets, or a subset, until the MCP server
+  stops, which is when the client session ends or reconnects the
+  server. Other commands and new secrets still prompt, and approvals
+  for the same command accumulate. A remembered approval only replaces
+  the prompt: policy denies, `token_required` and `approval: never` are
+  applied first, and `rename_secret`, `mint_token` and the session-token
+  prompt always ask. Audited as `mcp:grant` and `mcp:grant_use`.
+
+### Changed
+- MCP approval is one step: **Accept** approves and **Decline** or
+  **Cancel** denies. The prompt no longer has a required `approve`
+  checkbox that had to be ticked before accepting; with nothing to tick,
+  the button cannot disagree with a form field. Clients now see a form
+  with no required fields (only the optional checkbox above on exec
+  prompts).
+
 ## [0.9.0] - 2026-11-01
 
 ### Security

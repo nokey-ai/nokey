@@ -646,6 +646,8 @@ This adds it for you in the current project. Add `--scope user` to make it avail
 
 Other MCP clients take the same command and arguments in their own MCP configuration. Approval prompts use MCP elicitation; with a client that doesn't support it, any access that needs approval is denied.
 
+Approval prompts have no yes/no question of their own: **Accept** approves the request and **Decline** (or Cancel) denies it. Prompts for `exec` and `exec_with_secrets` also offer an optional **Don't ask again this session** checkbox. Ticking it before you accept approves that command with those secrets (or fewer) for the rest of the MCP session, which ends when the client closes or reconnects the server. A different command, or a secret you have not approved for it, still prompts. A remembered approval only replaces the prompt: policy denies and `token_required` still apply, and `rename_secret` and `mint_token` always prompt.
+
 ### Available MCP Tools
 
 | Tool | Description |
