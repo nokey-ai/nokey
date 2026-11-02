@@ -795,11 +795,11 @@ This starts a local proxy that rejects connections to any host not covered by a 
 
 `~/.config/nokey/policies.yaml` controls which commands can access which secrets, approval requirements, and proxy rules.
 
-> **Heads-up:** if `policies.yaml` is **absent**, nokey runs in allow-all
-> mode — every command can request every secret with no rule-based
-> approval gate (interactive prompts still apply for `nokey exec`). The
-> fail-closed behaviour described below only kicks in once you have a
-> `policies.yaml` file. Run `nokey init` to scaffold a starter policy.
+> **Heads-up:** if `policies.yaml` is **absent**, the MCP server asks
+> you to approve every secret access (no command is denied outright, and
+> `nokey exec` keeps its own confirmation prompt). Deny rules and
+> `approval: never` only exist once you have a `policies.yaml` file. Run
+> `nokey init` to scaffold a starter policy.
 
 ### Full Reference
 

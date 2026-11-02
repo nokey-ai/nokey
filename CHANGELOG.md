@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- With no `policies.yaml`, the MCP server now asks the user to approve
+  every secret access. It used to allow everything without a prompt
+  (unless `auto_mint_token` was on), so a hand-configured install with
+  no policy file let any MCP client read any secret silently.
+  **Breaking** for setups that relied on that: run `nokey init` for a
+  starter policy, or add `approval: never` rules for what should not
+  prompt.
 - Declining the auto-minted session token no longer grants access. With
   no `policies.yaml`, a declined session prompt fell through to "no
   approval required" and the call went ahead. A declined session token

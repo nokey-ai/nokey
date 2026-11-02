@@ -1577,15 +1577,41 @@ func TestCheckTokenOrApproval_AutoMint_Disabled(t *testing.T) {
 		return nil
 	})
 
-	// With nil policy, no approval required; auto-mint disabled -> no prompt at all.
+	// No policy file and auto-mint disabled: one per-call prompt, no token.
 	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
-	if approvalCount != 0 {
-		t.Errorf("approvalCount = %d, want 0 (auto-mint disabled)", approvalCount)
+	if approvalCount != 1 {
+		t.Errorf("approvalCount = %d, want 1 (per-call prompt, auto-mint disabled)", approvalCount)
 	}
 	if h.sessionTokenID != "" {
 		t.Error("sessionTokenID should remain empty when auto-mint is disabled")
+	}
+}
+
+// With no policy file every secret access is prompted for, and a decline
+// denies it. A call that reads no secrets raises no prompt.
+func TestCheckTokenOrApproval_NoPolicyPrompts(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "v"}}
+	prompts := 0
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+		prompts++
+		return fmt.Errorf("user declined")
+	})
+
+	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	if err == nil || !strings.Contains(err.Error(), "approval denied") {
+		t.Errorf("err = %v, want approval denied", err)
+	}
+	if prompts != 1 {
+		t.Errorf("prompts = %d, want 1", prompts)
+	}
+
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", nil, ""); err != nil {
+		t.Errorf("a call with no secrets should not need approval: %v", err)
+	}
+	if prompts != 1 {
+		t.Errorf("prompts = %d after a secret-free call, want still 1", prompts)
 	}
 }
 

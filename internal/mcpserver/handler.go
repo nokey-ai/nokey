@@ -831,11 +831,18 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", base, names, base)
 	}
 
-	// A rule that resolves to approval: never means no prompt of any kind,
-	// so the session-token prompt is skipped too. With no policy file the
-	// session prompt is the only gate, so it still runs.
-	needsApproval := pol.RequiresApproval(command, secretNames)
-	if pol != nil && !needsApproval {
+	// With no policy file there are no rules to say approval: never, so
+	// every secret access is prompted for: an MCP client is never allowed
+	// to read secrets silently by default. A rule that resolves to
+	// approval: never means no prompt of any kind, the session-token
+	// prompt included.
+	var needsApproval bool
+	if pol == nil {
+		needsApproval = len(secretNames) > 0
+	} else {
+		needsApproval = pol.RequiresApproval(command, secretNames)
+	}
+	if !needsApproval {
 		return nil
 	}
 
