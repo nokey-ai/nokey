@@ -17,22 +17,6 @@ type AuditConfig struct {
 	RetentionDays int  `yaml:"retention_days,omitempty"`
 }
 
-// OAuthGitHubConfig contains GitHub OAuth configuration
-type OAuthGitHubConfig struct {
-	Enabled bool `yaml:"enabled,omitempty"`
-}
-
-// OAuthCustomConfig contains custom OAuth 2.0 provider configuration
-type OAuthCustomConfig struct {
-	Enabled bool `yaml:"enabled,omitempty"`
-}
-
-// OAuthConfig contains OAuth configuration for all providers
-type OAuthConfig struct {
-	GitHub OAuthGitHubConfig `yaml:"github,omitempty"`
-	Custom OAuthCustomConfig `yaml:"custom,omitempty"`
-}
-
 // KeyringConfig contains keyring backend configuration.
 // Lives at the top level of Config (not under Auth) because it controls
 // the storage backend, not authentication policy.
@@ -43,7 +27,7 @@ type KeyringConfig struct {
 
 // AuthConfig contains authentication configuration
 type AuthConfig struct {
-	DefaultMethod string `yaml:"default_method,omitempty"`  // "pin", "oauth", "both", "none"
+	DefaultMethod string `yaml:"default_method,omitempty"`  // "pin" or "none"
 	SessionTTL    string `yaml:"session_ttl,omitempty"`     // duration string, e.g. "15m" (default), max "8h"
 	SkipConfirm   bool   `yaml:"skip_confirm,omitempty"`    // skip y/N confirmation prompt in exec
 	AutoMintToken bool   `yaml:"auto_mint_token,omitempty"` // auto-mint session token on first MCP approval
@@ -54,8 +38,7 @@ type AuthConfig struct {
 	// CLIEnforcePolicy controls whether policies.yaml rules are applied to
 	// `nokey exec` invocations. Defaults to true. Set false to bypass policy
 	// for the local CLI while still enforcing it for MCP and the proxy.
-	CLIEnforcePolicy *bool       `yaml:"cli_enforce_policy,omitempty"`
-	OAuth            OAuthConfig `yaml:"oauth,omitempty"`
+	CLIEnforcePolicy *bool `yaml:"cli_enforce_policy,omitempty"`
 }
 
 // Config represents the nokey configuration
@@ -181,6 +164,13 @@ func LoadStrict() (*Config, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+	switch cfg.Auth.DefaultMethod {
+	case "", "pin", "none":
+	case "oauth", "both":
+		return nil, fmt.Errorf("auth.default_method %q was removed in nokey v0.9.0 (OAuth is no longer supported); use pin or none", cfg.Auth.DefaultMethod)
+	default:
+		return nil, fmt.Errorf("auth.default_method %q is invalid (supported: pin, none)", cfg.Auth.DefaultMethod)
 	}
 
 	return cfg, nil

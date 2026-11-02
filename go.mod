@@ -9,10 +9,8 @@ require (
 	github.com/byteness/keyring v1.9.0
 	github.com/creack/pty v1.1.24
 	github.com/mark3labs/mcp-go v0.44.0
-	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
 	github.com/spf13/cobra v1.10.1
 	golang.org/x/crypto v0.52.0
-	golang.org/x/oauth2 v0.33.0
 	golang.org/x/sys v0.45.0
 	golang.org/x/term v0.43.0
 	gopkg.in/yaml.v3 v3.0.1

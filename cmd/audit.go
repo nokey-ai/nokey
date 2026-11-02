@@ -268,16 +268,13 @@ func runAuditClear(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printAuditListJSON prints entries as {"entries": [...], "count": N}.
+// printAuditListJSON prints entries as a JSON array, the same shape as
+// audit export --format json, so one parser handles both.
 func printAuditListJSON(entries []audit.AuditEntry) error {
-	out := struct {
-		Entries []audit.AuditEntry `json:"entries"`
-		Count   int                `json:"count"`
-	}{
-		Entries: entries,
-		Count:   len(entries),
+	if entries == nil {
+		entries = []audit.AuditEntry{}
 	}
-	data, err := json.MarshalIndent(out, "", "  ")
+	data, err := json.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal JSON: %w", err)
 	}

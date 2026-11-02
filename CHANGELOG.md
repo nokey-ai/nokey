@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- With no `policies.yaml`, the MCP server now asks the user to approve
+  every secret access. It used to allow everything without a prompt
+  (unless `auto_mint_token` was on), so a hand-configured install with
+  no policy file let any MCP client read any secret silently.
+  **Breaking** for setups that relied on that: run `nokey init` for a
+  starter policy, or add `approval: never` rules for what should not
+  prompt.
 - Declining the auto-minted session token no longer grants access. With
   no `policies.yaml`, a declined session prompt fell through to "no
   approval required" and the call went ahead. A declined session token
@@ -19,6 +26,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rule needs the MCP server (session tokens exist only there).
 
 ### Changed
+- The `nokey keychain migrate` hint no longer prints on every command.
+  It is now a warning in `nokey status`, which also suggests
+  `keychain to-dedicated`. The separate tip `nokey exec` printed after
+  PIN entry is gone.
+- `nokey audit list --json` now prints a JSON array of entries, the
+  same shape as `nokey audit export --format json`, instead of
+  `{"entries": [...], "count": N}`. **Breaking** for scripts reading
+  `.entries` or `.count`; use the array (and its length) directly.
 - Proxy rules can no longer say `approval: always`, on the `proxy:`
   section or on a rule: the proxy cannot prompt, so the setting was a
   silent hard deny with a "approval required" message. The policy now
@@ -36,6 +51,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), like `nokey proxy start` always did.
 
 ### Removed
+- `nokey init --with-auth`. Run `nokey auth setup` after `nokey init`;
+  `init` now says so. **Breaking** for scripts passing the flag.
+- `nokey doctor`. Its checks and fix-it hints are now part of
+  `nokey status`, which lists any problems under the usual output and
+  adds a `checks` array to `--json`. **Breaking:** scripts that relied
+  on `doctor` failing should run `nokey status --strict`, which exits
+  non-zero if any check fails.
+- OAuth authentication: the `oauth` and `both` auth methods, the
+  `nokey auth oauth` commands (`setup`, `status`, `refresh`, `logout`),
+  and the `auth.oauth` config section. The OAuth check only confirmed
+  that a token sat in the keyring the PIN already protects, never
+  contacting the provider, so a revoked token still passed and `both`
+  added almost nothing over the PIN. **Breaking:** a config or
+  `--auth-method` that still names `oauth` or `both` now fails with an
+  error saying it was removed (it does not fall back to a weaker
+  method), and `nokey config validate` reports it; set
+  `auth.default_method` to `pin` or `none`. Tokens and client
+  credentials saved by `auth oauth setup` stay in the keyring; remove
+  them with `nokey delete __nokey_oauth_token_<provider>__` and
+  `nokey delete __nokey_oauth_creds_<provider>__` (provider `github` or
+  `generic`).
+- The MCP `start_proxy` and `stop_proxy` tools. `start_proxy` loaded
+  every proxy-rule secret with no approval and kept serving them until
+  stopped, the one MCP path to secrets with no per-call gate. Agents can
+  make a single authenticated request with `exec_with_secrets` and
+  `curl`; for a long-lived proxy, run `nokey proxy start` yourself.
+  **Breaking.**
 - The fallback that accepted a raw 32-byte audit encryption key. Only
   builds older than the first tagged release wrote that format.
 

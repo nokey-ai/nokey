@@ -19,7 +19,6 @@ import (
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/policy"
-	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/token"
 )
@@ -782,171 +781,6 @@ func TestHandleListTokens_UnlimitedUses(t *testing.T) {
 	}
 }
 
-// --- HandleStopProxy ---
-
-func TestHandleStopProxy_NotRunning(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, nil)
-
-	result, err := h.HandleStopProxy(context.Background(), mcp.CallToolRequest{})
-	if err != nil {
-		t.Fatalf("HandleStopProxy: %v", err)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "No proxy running") {
-		t.Errorf("result = %q, want 'No proxy running'", text)
-	}
-}
-
-// --- HandleStartProxy ---
-
-func TestHandleStartProxy_NoProxyRules(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	// Policy with no proxy rules
-	pol := &policy.Policy{}
-	h := newTestHandler(t, store, pol, nil)
-
-	result, err := h.HandleStartProxy(context.Background(), mcp.CallToolRequest{})
-	if err != nil {
-		t.Fatalf("HandleStartProxy: %v", err)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "no proxy rules") {
-		t.Errorf("result = %q, want 'no proxy rules'", text)
-	}
-}
-
-// TestHandleStartProxy_RejectsNonLoopbackAddr covers the AI-controllable path:
-// addr comes straight from the model, and binding it to a routable interface
-// would expose every injected secret to anyone who could reach the port. The
-// refusal must also come before the keyring is opened, so a bad address costs
-// no keychain unlock and pulls no secrets into memory.
-func TestHandleStartProxy_RejectsNonLoopbackAddr(t *testing.T) {
-	for _, addr := range []string{"0.0.0.0:9999", "[::]:9999", ":9999", "192.168.1.10:9999", "evil.example:80"} {
-		t.Run(addr, func(t *testing.T) {
-			storeOpened := false
-			pol := &policy.Policy{
-				Proxy: &policy.ProxyPolicy{
-					Rules: []policy.ProxyRule{{
-						Hosts:   []string{"api.example.com"},
-						Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
-						Secrets: []string{"TOKEN"},
-					}},
-				},
-			}
-
-			c := config.DefaultConfig()
-			c.Audit.Enabled = false
-			h := New(Deps{
-				GetStore: func() (SecretStore, error) {
-					storeOpened = true
-					return &mapStore{secrets: map[string]string{"TOKEN": "sk-secret"}}, nil
-				},
-				GetPolicy:    staticPolicy(pol),
-				Config:       c,
-				ApprovalFn:   func(context.Context, approval.Requester, string, []string, string) error { return nil },
-				AuditFn:      func(string, string, string, bool, string) {},
-				GetConfigDir: func() (string, error) { return t.TempDir(), nil },
-			})
-
-			result, err := h.HandleStartProxy(context.Background(), makeCallToolRequest(map[string]any{"addr": addr}))
-			if err != nil {
-				t.Fatalf("HandleStartProxy: %v", err)
-			}
-
-			text := getResultText(t, result)
-			if !strings.Contains(text, "loopback") {
-				t.Errorf("result = %q, want a loopback refusal", text)
-			}
-			if storeOpened {
-				t.Error("keyring was opened for an address that was going to be refused")
-			}
-			if h.proxyServer != nil {
-				t.Error("proxyServer should not be set after a refused address")
-			}
-		})
-	}
-}
-
-func TestHandleStartProxy_AlreadyRunning(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, nil)
-
-	// Create a real proxy server to test "already running" path
-	dir := t.TempDir()
-	configDir := filepath.Join(dir, ".config", "nokey")
-	os.MkdirAll(configDir, 0700)
-
-	ca, err := proxy.LoadOrCreateCA(configDir)
-	if err != nil {
-		t.Fatalf("LoadOrCreateCA: %v", err)
-	}
-
-	rules := []policy.ProxyRule{{
-		Hosts:   []string{"example.com"},
-		Headers: map[string]string{"X-Key": "val"},
-	}}
-
-	srv := proxy.NewServer(ca, rules, map[string]string{}, nil)
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	t.Cleanup(func() { srv.Stop(context.Background()) })
-
-	h.proxyServer = srv
-
-	result, err := h.HandleStartProxy(context.Background(), mcp.CallToolRequest{})
-	if err != nil {
-		t.Fatalf("HandleStartProxy: %v", err)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "already running") {
-		t.Errorf("result = %q, want 'already running'", text)
-	}
-	if !strings.Contains(text, addr) {
-		t.Errorf("result = %q, want address %q", text, addr)
-	}
-}
-
-func TestHandleStopProxy_Running(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, nil)
-
-	dir := t.TempDir()
-	configDir := filepath.Join(dir, ".config", "nokey")
-	os.MkdirAll(configDir, 0700)
-
-	ca, err := proxy.LoadOrCreateCA(configDir)
-	if err != nil {
-		t.Fatalf("LoadOrCreateCA: %v", err)
-	}
-
-	rules := []policy.ProxyRule{{
-		Hosts:   []string{"example.com"},
-		Headers: map[string]string{"X-Key": "val"},
-	}}
-
-	srv := proxy.NewServer(ca, rules, map[string]string{}, nil)
-	if _, err := srv.Start("127.0.0.1:0"); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-
-	h.proxyServer = srv
-
-	result, err := h.HandleStopProxy(context.Background(), mcp.CallToolRequest{})
-	if err != nil {
-		t.Fatalf("HandleStopProxy: %v", err)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "Proxy stopped") {
-		t.Errorf("result = %q, want 'Proxy stopped'", text)
-	}
-	if h.proxyServer != nil {
-		t.Error("proxyServer should be nil after stop")
-	}
-}
-
 func TestHandleExec_WithAudit(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{
 		"KEY": "val",
@@ -1006,107 +840,6 @@ func TestHandleExecWithSecrets_PolicyDenied(t *testing.T) {
 	text := getResultText(t, result)
 	if !strings.Contains(text, "policy denied") {
 		t.Errorf("result = %q, want policy denial", text)
-	}
-}
-
-func TestHandleStartProxy_FullFlow(t *testing.T) {
-	dir := t.TempDir()
-	configDir := filepath.Join(dir, ".config", "nokey")
-	os.MkdirAll(configDir, 0700)
-
-	// Create policy with proxy rules referencing a secret
-	polYAML := `proxy:
-  rules:
-    - hosts: ["api.example.com"]
-      headers:
-        Authorization: "Bearer $MY_KEY"
-`
-	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
-
-	loadedPol, err := policy.Load(configDir)
-	if err != nil {
-		t.Fatalf("policy.Load: %v", err)
-	}
-
-	store := &mapStore{secrets: map[string]string{
-		"MY_KEY": "secret-value",
-	}}
-
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	h := New(Deps{
-		GetStore:  func() (SecretStore, error) { return store, nil },
-		GetPolicy: staticPolicy(loadedPol),
-		Config:    c,
-		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
-			return nil
-		},
-		AuditFn:      func(string, string, string, bool, string) {},
-		GetConfigDir: func() (string, error) { return configDir, nil },
-	})
-
-	req := makeCallToolRequest(map[string]any{})
-	result, handlerErr := h.HandleStartProxy(context.Background(), req)
-	if handlerErr != nil {
-		t.Fatalf("HandleStartProxy: %v", handlerErr)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "Proxy started on") {
-		t.Errorf("result = %q, want 'Proxy started on'", text)
-	}
-	if !strings.Contains(text, "http_proxy") {
-		t.Errorf("result = %q, want 'http_proxy' env var instructions", text)
-	}
-
-	// Clean up proxy
-	if h.proxyServer != nil {
-		h.proxyServer.Stop(context.Background())
-		h.proxyServer = nil
-	}
-}
-
-func TestHandleStartProxy_SecretNotFound(t *testing.T) {
-	dir := t.TempDir()
-	configDir := filepath.Join(dir, ".config", "nokey")
-	os.MkdirAll(configDir, 0700)
-
-	polYAML := `proxy:
-  rules:
-    - hosts: ["api.example.com"]
-      headers:
-        Authorization: "Bearer $MISSING_SECRET"
-`
-	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
-
-	loadedPol, err := policy.Load(configDir)
-	if err != nil {
-		t.Fatalf("policy.Load: %v", err)
-	}
-
-	// Don't store the secret
-	store := &mapStore{secrets: map[string]string{}}
-
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	h := New(Deps{
-		GetStore:  func() (SecretStore, error) { return store, nil },
-		GetPolicy: staticPolicy(loadedPol),
-		Config:    c,
-		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
-			return nil
-		},
-		AuditFn:      func(string, string, string, bool, string) {},
-		GetConfigDir: func() (string, error) { return configDir, nil },
-	})
-
-	req := makeCallToolRequest(map[string]any{})
-	result, handlerErr := h.HandleStartProxy(context.Background(), req)
-	if handlerErr != nil {
-		t.Fatalf("HandleStartProxy: %v", handlerErr)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "failed to get secret") {
-		t.Errorf("result = %q, want 'failed to get secret'", text)
 	}
 }
 
@@ -1577,15 +1310,41 @@ func TestCheckTokenOrApproval_AutoMint_Disabled(t *testing.T) {
 		return nil
 	})
 
-	// With nil policy, no approval required; auto-mint disabled -> no prompt at all.
+	// No policy file and auto-mint disabled: one per-call prompt, no token.
 	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
-	if approvalCount != 0 {
-		t.Errorf("approvalCount = %d, want 0 (auto-mint disabled)", approvalCount)
+	if approvalCount != 1 {
+		t.Errorf("approvalCount = %d, want 1 (per-call prompt, auto-mint disabled)", approvalCount)
 	}
 	if h.sessionTokenID != "" {
 		t.Error("sessionTokenID should remain empty when auto-mint is disabled")
+	}
+}
+
+// With no policy file every secret access is prompted for, and a decline
+// denies it. A call that reads no secrets raises no prompt.
+func TestCheckTokenOrApproval_NoPolicyPrompts(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "v"}}
+	prompts := 0
+	h := newTestHandler(t, store, nil, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+		prompts++
+		return fmt.Errorf("user declined")
+	})
+
+	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	if err == nil || !strings.Contains(err.Error(), "approval denied") {
+		t.Errorf("err = %v, want approval denied", err)
+	}
+	if prompts != 1 {
+		t.Errorf("prompts = %d, want 1", prompts)
+	}
+
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", nil, ""); err != nil {
+		t.Errorf("a call with no secrets should not need approval: %v", err)
+	}
+	if prompts != 1 {
+		t.Errorf("prompts = %d after a secret-free call, want still 1", prompts)
 	}
 }
 
@@ -1818,55 +1577,6 @@ func TestHandleExec_ApprovalDenied(t *testing.T) {
 
 // --- HandleStartProxy getKeyring error ---
 
-func TestHandleStartProxy_GetKeyringError(t *testing.T) {
-	dir := t.TempDir()
-	configDir := filepath.Join(dir, ".config", "nokey")
-	os.MkdirAll(configDir, 0700)
-
-	polYAML := `proxy:
-  rules:
-    - hosts: ["api.example.com"]
-      headers:
-        Authorization: "Bearer $MY_SECRET"
-`
-	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
-
-	polObj, err := policy.Load(configDir)
-	if err != nil {
-		t.Fatalf("policy.Load: %v", err)
-	}
-
-	// Init CA so LoadOrCreateCA succeeds
-	if _, err := proxy.LoadOrCreateCA(configDir); err != nil {
-		t.Fatalf("LoadOrCreateCA: %v", err)
-	}
-
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	h := New(Deps{
-		GetStore:  func() (SecretStore, error) { return nil, fmt.Errorf("keyring error") },
-		GetPolicy: staticPolicy(polObj),
-		Config:    c,
-		ApprovalFn: func(ctx context.Context, req approval.Requester, cmd string, secrets []string, _ string) error {
-			return nil
-		},
-		AuditFn:      func(string, string, string, bool, string) {},
-		GetConfigDir: func() (string, error) { return configDir, nil },
-	})
-
-	req := makeCallToolRequest(map[string]any{})
-	result, err := h.HandleStartProxy(context.Background(), req)
-	if err != nil {
-		t.Fatalf("HandleStartProxy: %v", err)
-	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "failed to open keyring") {
-		t.Errorf("result = %q, want 'failed to open keyring'", text)
-	}
-}
-
-// --- HandleExec filter secrets error ---
-
 func TestHandleExec_FilterError(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{
 		"KEY": "val",
@@ -2051,78 +1761,6 @@ func TestCheckTokenOrApproval_AutoMint_Concurrent(t *testing.T) {
 	}
 	if n := len(h.tokenStore.List()); n != 1 {
 		t.Errorf("minted %d session tokens, want 1", n)
-	}
-}
-
-// TestHandleStartProxy_Concurrent checks that parallel start_proxy calls
-// start exactly one proxy. Before start/stop were serialised, each call could
-// pass the "already running" check and the losers' proxies were orphaned —
-// still listening, with secrets loaded, and unreachable by stop_proxy.
-func TestHandleStartProxy_Concurrent(t *testing.T) {
-	configDir := t.TempDir()
-	polYAML := `proxy:
-  rules:
-    - hosts: ["api.example.com"]
-      headers:
-        Authorization: "Bearer $MY_KEY"
-`
-	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(polYAML), 0600)
-	loadedPol, err := policy.Load(configDir)
-	if err != nil {
-		t.Fatalf("policy.Load: %v", err)
-	}
-	// Create the CA up front so the parallel calls don't race on writing it.
-	if _, err := proxy.LoadOrCreateCA(configDir); err != nil {
-		t.Fatalf("LoadOrCreateCA: %v", err)
-	}
-
-	store := &mapStore{secrets: map[string]string{"MY_KEY": "secret-value"}}
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	h := New(Deps{
-		GetStore:     func() (SecretStore, error) { return store, nil },
-		GetPolicy:    staticPolicy(loadedPol),
-		Config:       c,
-		AuditFn:      func(string, string, string, bool, string) {},
-		GetConfigDir: func() (string, error) { return configDir, nil },
-	})
-
-	var started atomic.Int32
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			result, err := h.HandleStartProxy(context.Background(), makeCallToolRequest(map[string]any{}))
-			if err != nil {
-				t.Errorf("HandleStartProxy: %v", err)
-				return
-			}
-			text := getResultText(t, result)
-			switch {
-			case strings.Contains(text, "Proxy started on"):
-				started.Add(1)
-			case strings.Contains(text, "already running"):
-			default:
-				t.Errorf("unexpected result: %q", text)
-			}
-		})
-	}
-	wg.Wait()
-
-	if n := started.Load(); n != 1 {
-		t.Errorf("started %d proxies, want 1", n)
-	}
-
-	// Concurrent stops must not double-stop or race on the field.
-	for range 4 {
-		wg.Go(func() {
-			if _, err := h.HandleStopProxy(context.Background(), mcp.CallToolRequest{}); err != nil {
-				t.Errorf("HandleStopProxy: %v", err)
-			}
-		})
-	}
-	wg.Wait()
-	if h.proxyServer != nil {
-		t.Error("proxyServer should be nil after stop")
 	}
 }
 
@@ -2872,8 +2510,7 @@ func TestRegisterTools_Annotations(t *testing.T) {
 		"exec_with_secrets": {destructive: true, openWorld: true},
 		"mint_token":        {},
 		"revoke_token":      {destructive: true, idempotent: true},
-		"start_proxy":       {idempotent: true},
-		"stop_proxy":        {idempotent: true},
+		"rename_secret":     {destructive: true},
 	})
 }
 

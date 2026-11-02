@@ -145,17 +145,12 @@ func runExport(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// exportAuthMethod adds the PIN factor to method when a PIN is stored, so a
-// PIN gates export even under default_method none or oauth.
+// exportAuthMethod raises none to pin when a PIN is stored, so a PIN gates
+// export even under default_method none. Other methods pass through, so a
+// removed or invalid one still fails as it does for exec.
 func exportAuthMethod(store *keyring.Store, method string) string {
-	if !store.HasPIN() {
-		return method
-	}
-	switch method {
-	case "none":
+	if method == "none" && store.HasPIN() {
 		return "pin"
-	case "oauth":
-		return "both"
 	}
 	return method
 }

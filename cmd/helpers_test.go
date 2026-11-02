@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bytes"
-	"context"
 	"io"
 	"os"
 	"testing"
@@ -11,7 +10,6 @@ import (
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
-	"github.com/nokey-ai/nokey/internal/oauth"
 )
 
 // --- mock keyring backend ---
@@ -165,29 +163,6 @@ func withStdin(t *testing.T, content string) {
 	})
 }
 
-// mockOAuthProvider implements oauth.Provider for testing.
-type mockOAuthProvider struct {
-	refreshFn  func(ctx context.Context, refreshToken string) (*oauth.Token, error)
-	validateFn func(ctx context.Context, token *oauth.Token) error
-}
-
-func (m *mockOAuthProvider) GetAuthURL(state string) string { return "http://mock/auth" }
-func (m *mockOAuthProvider) ExchangeCode(ctx context.Context, code string) (*oauth.Token, error) {
-	return nil, nil
-}
-func (m *mockOAuthProvider) RefreshToken(ctx context.Context, refreshToken string) (*oauth.Token, error) {
-	if m.refreshFn != nil {
-		return m.refreshFn(ctx, refreshToken)
-	}
-	return nil, nil
-}
-func (m *mockOAuthProvider) ValidateToken(ctx context.Context, token *oauth.Token) error {
-	if m.validateFn != nil {
-		return m.validateFn(ctx, token)
-	}
-	return nil
-}
-
 // withExecGlobals saves and restores exec-related injectable vars (osExitFn, skipConfirm, authMethod).
 // The caller is responsible for setting execRunFn or redactRunFn if needed.
 func withExecGlobals(t *testing.T) {
@@ -204,22 +179,4 @@ func withExecGlobals(t *testing.T) {
 		skipConfirm = oldSkip
 		authMethod = oldMethod
 	})
-}
-
-// withMockOAuthProvider overrides newOAuthProviderFn to return the given mock and restores on cleanup.
-func withMockOAuthProvider(t *testing.T, provider oauth.Provider) {
-	t.Helper()
-	old := newOAuthProviderFn
-	t.Cleanup(func() { newOAuthProviderFn = old })
-	newOAuthProviderFn = func(name string, creds *oauth.ClientCredentials, redirectURL string) oauth.Provider {
-		return provider
-	}
-}
-
-// withNoBrowser stubs browserOpenFn so tests don't open a real browser.
-func withNoBrowser(t *testing.T) {
-	t.Helper()
-	old := browserOpenFn
-	t.Cleanup(func() { browserOpenFn = old })
-	browserOpenFn = func(url string) error { return nil }
 }

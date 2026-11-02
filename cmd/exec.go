@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -15,7 +14,6 @@ import (
 	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
-	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
@@ -30,9 +28,6 @@ var (
 	redactRunFn = redact.Run
 	osExitFn    = os.Exit
 )
-
-// migrateWarned ensures the keychain migration hint is only printed once per process.
-var migrateWarned bool
 
 var (
 	enableRedact  bool
@@ -55,8 +50,8 @@ Security Options:
   --only          Only inject specific secrets (comma-separated)
   --except        Exclude specific secrets (comma-separated)
   --yes           Skip confirmation prompt (use with caution)
-  --auth-method   Use a stronger authentication method (pin, oauth, both, none);
-                  it cannot skip a factor the config requires
+  --auth-method   Authentication method (pin, none); it can require a PIN
+                  the config doesn't, but never skip one it does
   --isolate       Route HTTP(S) through the nokey proxy, which refuses hosts
                   without a proxy rule (needs the client to honour proxy env vars)
 
@@ -76,11 +71,8 @@ Examples:
   # Combine with redaction for extra safety
   nokey exec --only GITHUB_TOKEN --redact -- gh api /user
 
-  # Require OAuth for this run (the flag can add factors, never drop them)
-  nokey exec --auth-method oauth -- command
-
-  # Require both PIN and OAuth (2FA)
-  nokey exec --auth-method both -- command
+  # Require the PIN for this run even if the config doesn't
+  nokey exec --auth-method pin -- command
 
   # Block egress to hosts without a proxy rule
   nokey exec --isolate -- curl https://api.openai.com/v1/models`,
@@ -95,7 +87,7 @@ func init() {
 	execCmd.Flags().StringVar(&onlySecrets, "only", "", "Only inject these secrets (comma-separated, e.g., API_KEY,TOKEN)")
 	execCmd.Flags().StringVar(&exceptSecrets, "except", "", "Exclude these secrets (comma-separated)")
 	execCmd.Flags().BoolVar(&skipConfirm, "yes", false, "Skip confirmation prompt (inject all secrets without asking)")
-	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Authentication method (pin, oauth, both, none); can only add factors to the configured method")
+	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Authentication method (pin, none); can require a PIN the config does not, never skip one it does")
 	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Route HTTP(S) through the nokey proxy, which refuses hosts without a proxy rule (clients must honour proxy env vars)")
 }
 
@@ -125,14 +117,6 @@ func runExec(cmd *cobra.Command, args []string) error {
 	}
 
 	defer sensitive.ClearMap(allSecrets)
-
-	// On macOS, hint about keychain migration if PIN auth was used and migration hasn't been done.
-	// Like the root hint, skip it in dedicated-keychain mode, where legacy migrate is the wrong advice.
-	if !migrateWarned && runtime.GOOS == "darwin" && (authMethodUsed == "pin" || authMethodUsed == "both") && !store.IsKeychainMigrated() &&
-		!dedicatedConfigEnabled() && !store.IsMigratedToDedicated() {
-		fmt.Fprintln(os.Stderr, "Tip: Run 'nokey keychain migrate' to eliminate macOS Keychain password prompts.")
-		migrateWarned = true
-	}
 
 	if len(allSecrets) == 0 {
 		fmt.Fprintln(os.Stderr, "Warning: no secrets stored")
@@ -342,10 +326,8 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 
 // authMethodFactors lists the factors each auth method requires.
 var authMethodFactors = map[string][]string{
-	"none":  nil,
-	"pin":   {"pin"},
-	"oauth": {"oauth"},
-	"both":  {"pin", "oauth"},
+	"none": nil,
+	"pin":  {"pin"},
 }
 
 // resolveAuthMethod returns the auth method to use: the configured one
@@ -363,17 +345,17 @@ func resolveAuthMethod(store *keyring.Store, override string) (string, error) {
 			configured = "none"
 		}
 	}
+	configuredFactors, ok := authMethodFactors[configured]
+	if !ok {
+		return "", invalidAuthMethod(configured, " in config")
+	}
 	if override == "" {
 		return configured, nil
 	}
 
 	overrideFactors, ok := authMethodFactors[override]
 	if !ok {
-		return "", fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", override)
-	}
-	configuredFactors, ok := authMethodFactors[configured]
-	if !ok {
-		return "", fmt.Errorf("invalid auth method '%s' in config (supported: pin, oauth, both, none)", configured)
+		return "", invalidAuthMethod(override, "")
 	}
 	for _, factor := range configuredFactors {
 		if !slices.Contains(overrideFactors, factor) {
@@ -394,28 +376,12 @@ func getSecretsForMethod(store *keyring.Store, method string, sessionTTL time.Du
 		// PIN authentication only
 		return getSecretsWithPIN(store, sessionTTL, useSession, names)
 
-	case "oauth":
-		// OAuth authentication only
-		if err := validateOAuthToken(store); err != nil {
-			return nil, fmt.Errorf("OAuth authentication failed: %w", err)
-		}
-		return readSecrets(store, names)
-
-	case "both":
-		// Both PIN and OAuth required
-		// First check OAuth
-		if err := validateOAuthToken(store); err != nil {
-			return nil, fmt.Errorf("OAuth authentication failed: %w", err)
-		}
-		// Then require PIN
-		return getSecretsWithPIN(store, sessionTTL, useSession, names)
-
 	case "none":
 		// No authentication required
 		return readSecrets(store, names)
 
 	default:
-		return nil, fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", method)
+		return nil, invalidAuthMethod(method, "")
 	}
 }
 
@@ -468,63 +434,12 @@ func getSecretsWithPIN(store *keyring.Store, sessionTTL time.Duration, useSessio
 	return secrets, nil
 }
 
-// validateOAuthToken validates that a valid OAuth token exists for the configured provider
-// Automatically refreshes expired tokens if refresh token is available
-func validateOAuthToken(store *keyring.Store) error {
-	// Determine which provider is configured by checking which one is enabled
-	var providerName string
-
-	if cfg.Auth.OAuth.GitHub.Enabled {
-		providerName = "github"
-	} else if cfg.Auth.OAuth.Custom.Enabled {
-		providerName = "generic"
-	} else {
-		// Try GitHub by default if no provider explicitly enabled
-		providerName = "github"
+// invalidAuthMethod explains a rejected auth method. oauth and both get
+// their own message: they were removed in v0.9.0, and a config that still
+// names them must fail rather than fall back to a weaker method.
+func invalidAuthMethod(method, where string) error {
+	if method == "oauth" || method == "both" {
+		return fmt.Errorf("auth method '%s'%s was removed in nokey v0.9.0 (OAuth is no longer supported); use pin or none", method, where)
 	}
-
-	// Load the token
-	token, err := oauth.LoadToken(store, providerName)
-	if err != nil {
-		return fmt.Errorf("no OAuth token found for provider %s (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...): %w", providerName, providerName, err)
-	}
-
-	// Check if token is expired and attempt auto-refresh
-	if token.IsExpired() {
-		// Check if we have a refresh token
-		if token.RefreshToken == "" {
-			return fmt.Errorf("OAuth token for %s is expired and no refresh token available (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...)", providerName, providerName)
-		}
-
-		// Load client credentials for refresh
-		creds, err := oauth.LoadClientCredentials(store, providerName)
-		if err != nil {
-			return fmt.Errorf("OAuth token expired but client credentials not found (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...)", providerName)
-		}
-
-		provider := newOAuthProviderFn(providerName, creds, "http://localhost:0/callback")
-		ctx := context.Background()
-
-		// Refresh the token
-		fmt.Fprintf(os.Stderr, "🔄 Refreshing expired OAuth token for %s...\n", providerName)
-		newToken, err := provider.RefreshToken(ctx, token.RefreshToken)
-		if err != nil {
-			return fmt.Errorf("failed to refresh OAuth token (run: nokey auth oauth setup --provider %s --client-id ... --client-secret ...): %w", providerName, err)
-		}
-
-		// Validate the new token
-		if err := provider.ValidateToken(ctx, newToken); err != nil {
-			return fmt.Errorf("refreshed OAuth token validation failed: %w", err)
-		}
-
-		// Save the refreshed token
-		if err := oauth.SaveToken(store, providerName, newToken); err != nil {
-			return fmt.Errorf("failed to save refreshed OAuth token: %w", err)
-		}
-
-		fmt.Fprintf(os.Stderr, "✅ OAuth token refreshed successfully\n")
-	}
-
-	// Token is valid
-	return nil
+	return fmt.Errorf("invalid auth method '%s'%s (supported: pin, none)", method, where)
 }

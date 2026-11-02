@@ -633,9 +633,8 @@ func TestValidateLoopbackAddr(t *testing.T) {
 }
 
 // TestStartRejectsNonLoopback is the regression test for the proxy being
-// bindable to the network: the MCP start_proxy tool takes addr straight from
-// the model, so a compromised agent could have exposed every injected secret
-// to anyone who could reach the port.
+// bindable to the network: anyone who could reach the port would get every
+// injected secret.
 func TestStartRejectsNonLoopback(t *testing.T) {
 	for _, addr := range []string{"0.0.0.0:0", "[::]:0", ":0", "[::ffff:0.0.0.0]:0"} {
 		t.Run(addr, func(t *testing.T) {

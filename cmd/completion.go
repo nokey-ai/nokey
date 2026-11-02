@@ -62,7 +62,6 @@ var auditOperations = []string{
 	"mcp:exec", "mcp:exec:approval",
 	"mcp:exec_with_secrets", "mcp:exec_with_secrets:approval",
 	"mcp:list_secrets", "mcp:rename_secret", "mcp:rename_secret:approval",
-	"mcp:start_proxy", "mcp:stop_proxy",
 	"mcp:mint_token", "mcp:mint_token:approval", "mcp:revoke_token",
 	"mcp:token_use", "mcp:auto_mint",
 }
@@ -73,28 +72,21 @@ var registerCompletionsOnce sync.Once
 // Secret names are deliberately not completed: listing them opens the
 // keyring, which can show an unlock dialog (a locked dedicated keychain,
 // a locked Secret Service collection) every time the user presses Tab.
-// For the same reason PersistentPreRun skips the keychain migration hint
-// for completion requests (see root.go).
 func registerFlagCompletions() {
 	registerCompletionsOnce.Do(func() {
 		fixed := func(values ...string) cobra.CompletionFunc {
 			return cobra.FixedCompletions(values, cobra.ShellCompDirectiveNoFileComp)
 		}
-		providers := fixed("github", "custom", "generic")
-
 		for _, r := range []struct {
 			cmd  *cobra.Command
 			flag string
 			fn   cobra.CompletionFunc
 		}{
 			{exportCmd, "shell", fixed("bash", "zsh", "fish", "powershell")},
-			{execCmd, "auth-method", fixed("pin", "oauth", "both", "none")},
+			{execCmd, "auth-method", fixed("pin", "none")},
 			{auditExportCmd, "format", fixed("json", "csv")},
 			{auditListCmd, "operation", fixed(auditOperations...)},
 			{auditExportCmd, "operation", fixed(auditOperations...)},
-			{authOAuthSetupCmd, "provider", providers},
-			{authOAuthRefreshCmd, "provider", providers},
-			{authOAuthLogoutCmd, "provider", providers},
 		} {
 			_ = r.cmd.RegisterFlagCompletionFunc(r.flag, r.fn)
 		}

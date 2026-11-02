@@ -3,7 +3,6 @@ package cmd
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -734,19 +733,22 @@ func withFromDedicatedGlobals(t *testing.T) {
 	fileExistsFn = func(string) bool { return false }
 }
 
-func TestCheckKeychainMigrationHint(t *testing.T) {
+func TestKeychainMigrationPending(t *testing.T) {
 	// Capture stderr around a single call.
+	// run renders the status check the way status prints it, or "" when
+	// no migration is pending.
 	run := func(t *testing.T, setup func(t *testing.T)) string {
 		t.Helper()
-		old := os.Stderr
-		r, w, _ := os.Pipe()
-		os.Stderr = w
-		defer func() { os.Stderr = old }()
 		setup(t)
-		checkKeychainMigrationHint()
-		_ = w.Close()
-		out, _ := io.ReadAll(r)
-		return string(out)
+		store, err := getKeyring()
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := keychainMigrationPending(store)
+		if n == 0 {
+			return ""
+		}
+		return fmt.Sprintf("Run 'nokey keychain migrate' for %d existing secret(s)", n)
 	}
 
 	t.Run("suppressed_when_dedicated_enabled", func(t *testing.T) {

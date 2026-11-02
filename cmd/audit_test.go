@@ -935,18 +935,28 @@ func TestRunAuditList_JSON(t *testing.T) {
 		}
 	})
 
-	var got struct {
-		Entries []audit.AuditEntry `json:"entries"`
-		Count   int                `json:"count"`
-	}
+	var got []audit.AuditEntry
 	if err := json.Unmarshal([]byte(output), &got); err != nil {
-		t.Fatalf("invalid JSON %q: %v", output, err)
+		t.Fatalf("output is not a JSON array of entries %q: %v", output, err)
 	}
-	if got.Count != 2 || len(got.Entries) != 2 {
-		t.Errorf("count = %d, entries = %d, want 2", got.Count, len(got.Entries))
+	if len(got) != 2 {
+		t.Fatalf("entries = %d, want 2", len(got))
 	}
-	if got.Entries[0].Command != "test-cmd" {
-		t.Errorf("entry command = %q, want test-cmd", got.Entries[0].Command)
+	if got[0].Command != "test-cmd" {
+		t.Errorf("entry command = %q, want test-cmd", got[0].Command)
+	}
+
+	// Same shape and content as audit export --format json.
+	log, err := audit.Load(store)
+	if err != nil {
+		t.Fatalf("audit.Load: %v", err)
+	}
+	want, err := log.ExportJSON(log.Filter(audit.FilterOptions{}))
+	if err != nil {
+		t.Fatalf("ExportJSON: %v", err)
+	}
+	if strings.TrimSpace(output) != string(want) {
+		t.Errorf("list --json and export --format json differ:\nlist:   %s\nexport: %s", output, want)
 	}
 }
 
@@ -967,8 +977,8 @@ func TestRunAuditList_JSONEmpty(t *testing.T) {
 			t.Fatalf("runAuditList: %v", err)
 		}
 	})
-	if !strings.Contains(output, `"entries": []`) || !strings.Contains(output, `"count": 0`) {
-		t.Errorf("output = %q, want an empty entries array", output)
+	if strings.TrimSpace(output) != "[]" {
+		t.Errorf("output = %q, want an empty JSON array", output)
 	}
 }
 
@@ -989,7 +999,7 @@ func TestRunAuditList_JSONDisabled(t *testing.T) {
 			}
 		})
 	})
-	if !strings.Contains(output, `"count": 0`) {
-		t.Errorf("stdout = %q, want empty JSON result when audit is disabled", output)
+	if strings.TrimSpace(output) != "[]" {
+		t.Errorf("stdout = %q, want an empty JSON array when audit is disabled", output)
 	}
 }
