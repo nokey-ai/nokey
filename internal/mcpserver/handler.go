@@ -23,7 +23,6 @@ import (
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/env"
-	"github.com/nokey-ai/nokey/internal/integration"
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/placeholder"
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -58,7 +57,7 @@ type SecretStore interface {
 type ApprovalFunc func(ctx context.Context, requester approval.Requester, command string, secretNames []string, detail string) error
 
 // AuditFunc is the signature for recording audit entries.
-// Matches the pattern used by proxy.AuditFunc and integration.Deps.AuditFn.
+// Matches the pattern used by proxy.AuditFunc.
 type AuditFunc func(operation, command, target string, success bool, errMsg string)
 
 // Deps holds the injected dependencies for a Handler.
@@ -323,29 +322,6 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 		h.HandleStopProxy,
 	)
 
-	// Register pre-built integrations (GitHub, etc.)
-	deps := integration.Deps{
-		GetSecret: func(name string) (string, error) {
-			store, err := h.getStore()
-			if err != nil {
-				return "", err
-			}
-			return store.Get(name)
-		},
-		GetPolicy: h.getPolicy,
-		Requester: s,
-		AuditFn:   h.recordAudit,
-		UseToken: func(id, command string, secrets []string) error {
-			result := h.tokenStore.UseFor(id, command, secrets)
-			if !result.Valid {
-				return tokenInvalid(result, command)
-			}
-			return nil
-		},
-	}
-	for _, integ := range integration.All() {
-		s.AddTools(integ.Tools(deps)...)
-	}
 }
 
 func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

@@ -5,7 +5,6 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nokey-ai/nokey/internal/approval"
-	_ "github.com/nokey-ai/nokey/internal/integration/github"
 	"github.com/nokey-ai/nokey/internal/mcpserver"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/version"
@@ -88,7 +87,7 @@ Call list_secrets first to see which secret names exist.
 
 Prefer exec_with_secrets: put ${{NOKEY:NAME}} placeholders in args (for example a header value). Only the referenced secrets are read, and they never enter the environment. Use exec when a program reads its credentials from environment variables; narrow what it receives with only/except.
 
-The user may be asked to approve access through an elicitation prompt. policies.yaml can deny a command or require a token: mint_token creates a short-lived lease (it needs approval once) that you pass as the token parameter. The github_* tools use the GITHUB_TOKEN secret and are checked by policy as the command nokey:integration:github.`
+The user may be asked to approve access through an elicitation prompt. policies.yaml can deny a command or require a token: mint_token creates a short-lived lease (it needs approval once) that you pass as the token parameter.`
 
 // newMCPServer builds the MCP server with nokey's options.
 func newMCPServer() *server.MCPServer {

@@ -31,7 +31,7 @@ func TestNewMCPServer_SendsInstructions(t *testing.T) {
 	if err := json.Unmarshal([]byte(resp), &parsed); err != nil {
 		t.Fatalf("unmarshal %s: %v", resp, err)
 	}
-	for _, want := range []string{"list_secrets", "exec_with_secrets", "mint_token", "nokey:integration:github"} {
+	for _, want := range []string{"list_secrets", "exec_with_secrets", "mint_token"} {
 		if !strings.Contains(parsed.Result.Instructions, want) {
 			t.Errorf("instructions do not mention %q: %q", want, parsed.Result.Instructions)
 		}

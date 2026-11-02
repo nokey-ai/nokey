@@ -209,7 +209,7 @@ func TestUseForEnforcesMintedFor(t *testing.T) {
 		{"wildcard matches anything", "*", "curl", "ok"},
 		{"exact match", "gh", "gh", "ok"},
 		{"matches basename of a path", "gh", "/usr/local/bin/gh", "ok"},
-		{"glob match", "nokey:integration:*", "nokey:integration:github", "ok"},
+		{"glob match", "terraform*", "terraform-docs", "ok"},
 		{"other command rejected", "gh", "curl", "wrong_command"},
 		{"prefix is not a match", "gh", "ghx", "wrong_command"},
 		{"scoped token rejected for unknown command", "gh", "*", "wrong_command"},
@@ -360,26 +360,4 @@ func TestConcurrency(t *testing.T) {
 		}(tok.ID)
 	}
 	wg2.Wait()
-}
-
-func TestContextHelpers(t *testing.T) {
-	ctx := WithTokenID(t.Context(), "test-id")
-
-	id, ok := TokenIDFromContext(ctx)
-	if !ok || id != "test-id" {
-		t.Errorf("expected test-id, got %q (ok=%v)", id, ok)
-	}
-
-	// Empty context should return false
-	_, ok = TokenIDFromContext(t.Context())
-	if ok {
-		t.Error("expected ok=false for empty context")
-	}
-
-	// Empty string should return false
-	ctx = WithTokenID(t.Context(), "")
-	_, ok = TokenIDFromContext(ctx)
-	if ok {
-		t.Error("expected ok=false for empty token ID")
-	}
 }

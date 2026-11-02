@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- The MCP GitHub tools (`github_api`, `github_create_issue`,
+  `github_create_pr`, `github_list_issues`, `github_list_prs`,
+  `github_get_file`) and the integration framework behind them. They
+  duplicated what `exec` and `exec_with_secrets` already do with `gh` or
+  `curl`, under the same policy, approval, redaction and audit, and all
+  six were registered even when no `GITHUB_TOKEN` secret existed.
+  **Breaking:** call `gh` through `exec` (for example with
+  `only: GITHUB_TOKEN`) instead. Policy rules for
+  `nokey:integration:github` no longer match anything and can be
+  deleted.
+
 ## [0.6.6] - 2026-10-26
 
 ### Added

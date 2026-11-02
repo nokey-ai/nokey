@@ -696,22 +696,8 @@ Other MCP clients take the same command and arguments in their own MCP configura
 | `list_tokens` | List active access lease tokens |
 | `start_proxy` | Start the HTTP/HTTPS secret-injection proxy |
 | `stop_proxy` | Stop the running proxy |
-| `github_api` | Call any GitHub API endpoint with automatic token injection |
-| `github_create_issue` | Create a GitHub issue |
-| `github_create_pr` | Create a GitHub pull request |
-| `github_list_issues` | List repository issues |
-| `github_list_prs` | List repository pull requests |
-| `github_get_file` | Get a file from a GitHub repository |
 
 All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
-
-The `github_*` tools read the `GITHUB_TOKEN` secret and are checked against `policies.yaml` as the command `nokey:integration:github` (not `gh`). Once a policy file exists, they are denied unless a rule allows that name:
-
-```yaml
-rules:
-  - commands: ["nokey:integration:github"]
-    secrets: ["GITHUB_TOKEN"]
-```
 
 ### Session Tokens
 
@@ -816,9 +802,6 @@ rules:
     secrets: ["GITHUB_TOKEN"]
     approval: always          # Always prompt
     token_required: true      # Require a session token (no per-call approval fallback)
-
-  - commands: ["nokey:integration:github"]  # The MCP github_* tools
-    secrets: ["GITHUB_TOKEN"]
 
   - commands: ["*"]
     secrets: ["*"]
@@ -1289,7 +1272,6 @@ nokey/
 │   ├── proxy/                # HTTP/HTTPS proxy server and CA
 │   ├── token/                # Session token store
 │   ├── mcpserver/            # MCP tool handlers (served by cmd/mcp.go)
-│   ├── integration/          # MCP integration tools (GitHub, generic API client)
 │   ├── placeholder/          # ${{NOKEY:...}} resolution
 │   ├── update/               # Release download, checksum check, binary swap
 │   └── oauth/
