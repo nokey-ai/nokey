@@ -446,9 +446,9 @@ func TestRequiresToken(t *testing.T) {
 		{
 			name: "matching rule with token_required true",
 			policy: &Policy{Rules: []Rule{
-				{Commands: []string{"nokey:integration:github"}, Secrets: []string{"GITHUB_TOKEN"}, TokenRequired: true},
+				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}, TokenRequired: true},
 			}},
-			command:     "nokey:integration:github",
+			command:     "gh",
 			secretNames: []string{"GITHUB_TOKEN"},
 			want:        true,
 		},
@@ -569,13 +569,13 @@ func TestMatchesAny(t *testing.T) {
 }
 
 func TestDenialHint(t *testing.T) {
-	d := &Denial{Command: "nokey:integration:github", Secret: "GITHUB_TOKEN"}
+	d := &Denial{Command: "gh", Secret: "GITHUB_TOKEN"}
 	for path, where := range map[string]string{
 		"/home/u/.config/nokey/policies.yaml": "/home/u/.config/nokey/policies.yaml",
 		"":                                    "policies.yaml",
 	} {
 		hint := d.Hint(path)
-		for _, want := range []string{where, `commands: ["nokey:integration:github"]`, `secrets: ["GITHUB_TOKEN"]`} {
+		for _, want := range []string{where, `commands: ["gh"]`, `secrets: ["GITHUB_TOKEN"]`} {
 			if !strings.Contains(hint, want) {
 				t.Errorf("Hint(%q) = %q, want it to contain %q", path, hint, want)
 			}
