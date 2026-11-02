@@ -12,50 +12,47 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var statusJSON bool
+var (
+	statusJSON   bool
+	statusStrict bool
+)
 
 var statusCmd = &cobra.Command{
 	Use:   "status",
 	Short: "Show nokey health check and configuration status",
 	Long: `Display the current state of nokey: PIN authentication, keyring access,
-configuration validity, policy rules, and stored secrets count.
+configuration validity, policy rules, and stored secrets count. Problems are
+listed with a hint for fixing each one.
 
-status always exits 0; use 'nokey doctor' for a check that fails on problems.`,
+status exits 0 unless --strict is given, in which case it exits non-zero if
+any check fails. Warnings (such as no PIN configured) never fail.`,
 	RunE: runStatus,
-}
-
-var doctorCmd = &cobra.Command{
-	Use:   "doctor",
-	Short: "Check the nokey setup and suggest fixes",
-	Long: `Run the same checks as 'nokey status', print a hint for each problem,
-and exit non-zero if any check fails. Warnings (such as no PIN configured)
-are reported but do not fail.`,
-	RunE: runDoctor,
 }
 
 func init() {
 	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(doctorCmd)
 	statusCmd.Flags().BoolVar(&statusJSON, "json", false, "Output as JSON")
+	statusCmd.Flags().BoolVar(&statusStrict, "strict", false, "Exit non-zero if any check fails")
 }
 
 type statusOutput struct {
-	Keyring      string `json:"keyring"`
-	PIN          string `json:"pin"`
-	Config       string `json:"config"`
-	Policy       string `json:"policy"`
-	PolicyRule   int    `json:"policy_rules"`
-	ProxyRules   int    `json:"proxy_rules"`
-	Secrets      int    `json:"secrets"`
-	AuditEnabled bool   `json:"audit_enabled"`
-	AuthMethod   string `json:"auth_method"`
-	ConfigDir    string `json:"config_dir"`
-	CAPresent    bool   `json:"ca_present"`
-	Version      string `json:"version"`
+	Keyring      string        `json:"keyring"`
+	PIN          string        `json:"pin"`
+	Config       string        `json:"config"`
+	Policy       string        `json:"policy"`
+	PolicyRule   int           `json:"policy_rules"`
+	ProxyRules   int           `json:"proxy_rules"`
+	Secrets      int           `json:"secrets"`
+	AuditEnabled bool          `json:"audit_enabled"`
+	AuthMethod   string        `json:"auth_method"`
+	ConfigDir    string        `json:"config_dir"`
+	CAPresent    bool          `json:"ca_present"`
+	Version      string        `json:"version"`
+	Checks       []statusCheck `json:"checks"`
 }
 
-// statusReport holds the status output plus the underlying errors so that
-// doctor can turn them into pass/fail checks.
+// statusReport holds the status output plus the underlying errors that
+// statusChecks turns into pass/warn/fail checks.
 type statusReport struct {
 	out        statusOutput
 	keyringErr error
@@ -152,7 +149,22 @@ func collectStatus() *statusReport {
 }
 
 func runStatus(cmd *cobra.Command, args []string) error {
-	out := collectStatus().out
+	r := collectStatus()
+	out := r.out
+	out.Checks = statusChecks(r)
+
+	failed := 0
+	for _, c := range out.Checks {
+		if c.Level == checkFail {
+			failed++
+		}
+	}
+	strictErr := func() error {
+		if statusStrict && failed > 0 {
+			return fmt.Errorf("%d check(s) failed", failed)
+		}
+		return nil
+	}
 
 	if statusJSON {
 		data, err := json.MarshalIndent(out, "", "  ")
@@ -160,7 +172,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("failed to marshal JSON: %w", err)
 		}
 		fmt.Println(string(data))
-		return nil
+		return strictErr()
 	}
 
 	// Human-readable output
@@ -184,7 +196,22 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "  Secrets stored:      error\n")
 	}
 
-	return nil
+	problems := false
+	for _, c := range out.Checks {
+		if c.Level == checkOK {
+			continue
+		}
+		if !problems {
+			fmt.Println("\nProblems:")
+			problems = true
+		}
+		fmt.Printf("  [%-4s] %-14s %s\n", c.Level, c.Name, c.Detail)
+		if c.Hint != "" {
+			fmt.Printf("         %-14s -> %s\n", "", c.Hint)
+		}
+	}
+
+	return strictErr()
 }
 
 func enabledString(b bool) string {
@@ -207,18 +234,20 @@ const (
 	checkFail = "FAIL"
 )
 
-type doctorCheck struct {
-	level  string
-	name   string
-	detail string
-	hint   string
+// statusCheck is one health check, with a hint for fixing it when it
+// does not pass.
+type statusCheck struct {
+	Level  string `json:"level"`
+	Name   string `json:"name"`
+	Detail string `json:"detail"`
+	Hint   string `json:"hint,omitempty"`
 }
 
-// doctorChecks turns a status report into checks with fix-it hints.
-func doctorChecks(r *statusReport) []doctorCheck {
-	var checks []doctorCheck
+// statusChecks turns a status report into checks with fix-it hints.
+func statusChecks(r *statusReport) []statusCheck {
+	var checks []statusCheck
 	add := func(level, name, detail, hint string) {
-		checks = append(checks, doctorCheck{level, name, detail, hint})
+		checks = append(checks, statusCheck{level, name, detail, hint})
 	}
 
 	configPath := "config.yaml"
@@ -271,25 +300,4 @@ func doctorChecks(r *statusReport) []doctorCheck {
 	}
 
 	return checks
-}
-
-func runDoctor(cmd *cobra.Command, args []string) error {
-	checks := doctorChecks(collectStatus())
-
-	failed := 0
-	for _, c := range checks {
-		fmt.Printf("[%-4s] %-14s %s\n", c.level, c.name, c.detail)
-		if c.hint != "" {
-			fmt.Printf("       %-14s -> %s\n", "", c.hint)
-		}
-		if c.level == checkFail {
-			failed++
-		}
-	}
-
-	if failed > 0 {
-		return fmt.Errorf("%d check(s) failed", failed)
-	}
-	fmt.Println("\nNo problems found.")
-	return nil
 }

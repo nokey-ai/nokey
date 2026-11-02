@@ -177,7 +177,19 @@ func TestRunStatus_AuthMethodFromConfig(t *testing.T) {
 	}
 }
 
-func TestRunDoctor_Healthy(t *testing.T) {
+// runStatusStrict runs human-readable status with --strict and returns its
+// output and error.
+func runStatusStrict(t *testing.T) (string, error) {
+	t.Helper()
+	oldJSON, oldStrict := statusJSON, statusStrict
+	t.Cleanup(func() { statusJSON, statusStrict = oldJSON, oldStrict })
+	statusJSON, statusStrict = false, true
+	var err error
+	output := captureStdout(t, func() { err = runStatus(nil, nil) })
+	return output, err
+}
+
+func TestRunStatus_StrictHealthy(t *testing.T) {
 	store, _ := newTestStore()
 	_ = store.SetPINHash("somehash")
 	withTestKeyring(t, store)
@@ -185,76 +197,114 @@ func TestRunDoctor_Healthy(t *testing.T) {
 	c.Audit.Enabled = true
 	withTestConfig(t, c)
 
-	var err error
-	output := captureStdout(t, func() { err = runDoctor(nil, nil) })
+	output, err := runStatusStrict(t)
 	if err != nil {
-		t.Fatalf("runDoctor: %v\n%s", err, output)
+		t.Fatalf("runStatus --strict: %v\n%s", err, output)
 	}
 	if strings.Contains(output, "FAIL") {
 		t.Errorf("healthy setup reported a failure:\n%s", output)
 	}
 }
 
-func TestRunDoctor_InvalidConfigFails(t *testing.T) {
+func TestRunStatus_StrictInvalidConfigFails(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
 	writeTestConfigFile(t, "audti:\n  enabled: true\n")
 
-	var err error
-	output := captureStdout(t, func() { err = runDoctor(nil, nil) })
+	output, err := runStatusStrict(t)
 	if err == nil {
-		t.Fatal("runDoctor should fail on an invalid config")
+		t.Fatal("status --strict should fail on an invalid config")
 	}
 	if !strings.Contains(output, "FAIL") || !strings.Contains(output, "nokey config validate") {
 		t.Errorf("output should show the failure and a fix-it hint:\n%s", output)
 	}
 }
 
-func TestRunDoctor_InvalidPolicyFails(t *testing.T) {
+func TestRunStatus_StrictInvalidPolicyFails(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
 	dir, _ := config.ConfigDir()
 	os.WriteFile(filepath.Join(dir, "policies.yaml"), []byte("rulez: []\n"), 0600)
 
-	var err error
-	output := captureStdout(t, func() { err = runDoctor(nil, nil) })
+	output, err := runStatusStrict(t)
 	if err == nil {
-		t.Fatalf("runDoctor should fail on an invalid policy:\n%s", output)
+		t.Fatalf("status --strict should fail on an invalid policy:\n%s", output)
 	}
 	if !strings.Contains(output, "policies.yaml") {
 		t.Errorf("output should name the policy file:\n%s", output)
 	}
 }
 
-func TestRunDoctor_KeyringErrorFails(t *testing.T) {
+func TestRunStatus_StrictKeyringErrorFails(t *testing.T) {
 	withTestConfig(t, config.DefaultConfig())
 	old := getKeyring
 	t.Cleanup(func() { getKeyring = old })
 	getKeyring = func() (*nkeyring.Store, error) { return nil, errors.New("no backend") }
 
-	var err error
-	output := captureStdout(t, func() { err = runDoctor(nil, nil) })
+	output, err := runStatusStrict(t)
 	if err == nil {
-		t.Fatal("runDoctor should fail when the keyring cannot be opened")
+		t.Fatal("status --strict should fail when the keyring cannot be opened")
 	}
 	if !strings.Contains(output, "no backend") {
 		t.Errorf("output should include the keyring error:\n%s", output)
 	}
 }
 
-func TestRunDoctor_WarningsDoNotFail(t *testing.T) {
+func TestRunStatus_StrictWarningsDoNotFail(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig()) // no PIN, audit disabled
 
-	var err error
-	output := captureStdout(t, func() { err = runDoctor(nil, nil) })
+	output, err := runStatusStrict(t)
 	if err != nil {
-		t.Fatalf("warnings alone should not fail doctor: %v\n%s", err, output)
+		t.Fatalf("warnings alone should not fail --strict: %v\n%s", err, output)
 	}
 	if !strings.Contains(output, "WARN") || !strings.Contains(output, "nokey auth setup") {
 		t.Errorf("output should warn about the missing PIN with a hint:\n%s", output)
 	}
+}
+
+// Without --strict, status exits 0 even when a check fails, but still
+// lists the problem.
+func TestRunStatus_NonStrictFailureExitsZero(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+	writeTestConfigFile(t, "audti:\n  enabled: true\n")
+
+	oldJSON, oldStrict := statusJSON, statusStrict
+	t.Cleanup(func() { statusJSON, statusStrict = oldJSON, oldStrict })
+	statusJSON, statusStrict = false, false
+	var err error
+	output := captureStdout(t, func() { err = runStatus(nil, nil) })
+	if err != nil {
+		t.Fatalf("status without --strict should not fail: %v", err)
+	}
+	if !strings.Contains(output, "Problems:") || !strings.Contains(output, "FAIL") {
+		t.Errorf("output should list the problem:\n%s", output)
+	}
+}
+
+func TestRunStatus_JSONIncludesChecks(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig()) // no PIN
+
+	got := runStatusJSON(t)
+	checks, ok := got["checks"].([]any)
+	if !ok || len(checks) == 0 {
+		t.Fatalf("checks = %v, want a non-empty list", got["checks"])
+	}
+	for _, c := range checks {
+		m := c.(map[string]any)
+		if m["name"] == "PIN" {
+			if m["level"] != "WARN" || !strings.Contains(m["hint"].(string), "nokey auth setup") {
+				t.Errorf("PIN check = %v, want WARN with a hint", m)
+			}
+			return
+		}
+	}
+	t.Error("no PIN check in JSON output")
 }

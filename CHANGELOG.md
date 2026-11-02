@@ -43,6 +43,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), like `nokey proxy start` always did.
 
 ### Removed
+- `nokey doctor`. Its checks and fix-it hints are now part of
+  `nokey status`, which lists any problems under the usual output and
+  adds a `checks` array to `--json`. **Breaking:** scripts that relied
+  on `doctor` failing should run `nokey status --strict`, which exits
+  non-zero if any check fails.
 - OAuth authentication: the `oauth` and `both` auth methods, the
   `nokey auth oauth` commands (`setup`, `status`, `refresh`, `logout`),
   and the `auth.oauth` config section. The OAuth check only confirmed
