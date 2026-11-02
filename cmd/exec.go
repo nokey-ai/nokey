@@ -297,7 +297,7 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 		return nil, noop, fmt.Errorf("failed to load CA: %w", err)
 	}
 
-	srv := proxy.NewServer(ca, rules, secrets, pol, nil)
+	srv := proxy.NewServer(ca, rules, secrets, recordAudit)
 	srv.SetBlockUnmatched(true)
 
 	addr, err := srv.Start("127.0.0.1:0")

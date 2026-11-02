@@ -887,7 +887,7 @@ func TestHandleStartProxy_AlreadyRunning(t *testing.T) {
 		Headers: map[string]string{"X-Key": "val"},
 	}}
 
-	srv := proxy.NewServer(ca, rules, map[string]string{}, nil, nil)
+	srv := proxy.NewServer(ca, rules, map[string]string{}, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -927,7 +927,7 @@ func TestHandleStopProxy_Running(t *testing.T) {
 		Headers: map[string]string{"X-Key": "val"},
 	}}
 
-	srv := proxy.NewServer(ca, rules, map[string]string{}, nil, nil)
+	srv := proxy.NewServer(ca, rules, map[string]string{}, nil)
 	if _, err := srv.Start("127.0.0.1:0"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}

@@ -67,7 +67,7 @@ func TestHTTPProxyForwardsAndInjectsHeaders(t *testing.T) {
 		audits = append(audits, auditEntry{op, host, secrets, ok, errMsg})
 	}
 
-	srv := NewServer(ca, rules, secrets, nil, auditFn)
+	srv := NewServer(ca, rules, secrets, auditFn)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -121,7 +121,7 @@ func TestHTTPProxyNoMatchPassesThrough(t *testing.T) {
 	}
 	secrets := map[string]string{"TOKEN": "sk-test-123"}
 
-	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv := NewServer(ca, rules, secrets, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -170,7 +170,7 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 		audits = append(audits, auditEntry{op, host, secrets, ok, errMsg})
 	}
 
-	srv := NewServer(ca, rules, secrets, nil, auditFn)
+	srv := NewServer(ca, rules, secrets, auditFn)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -229,54 +229,9 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 	}
 }
 
-func TestApprovalDeniesRequest(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("request should not reach upstream")
-	}))
-	defer upstream.Close()
-
-	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
-	host := stripPort(upstreamHost)
-
-	ca := newTestCA(t)
-	rules := []policy.ProxyRule{
-		{
-			Hosts:    []string{host},
-			Headers:  map[string]string{"Authorization": "Bearer $TOKEN"},
-			Secrets:  []string{"TOKEN"},
-			Approval: policy.ApprovalAlways,
-		},
-	}
-	secrets := map[string]string{"TOKEN": "sk-123"}
-	pol := &policy.Policy{
-		Proxy: &policy.ProxyPolicy{
-			Approval: policy.ApprovalAlways,
-			Rules:    rules,
-		},
-	}
-
-	srv := NewServer(ca, rules, secrets, pol, nil)
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() { _ = srv.Stop(context.Background()) }()
-
-	client := &http.Client{Transport: proxyTransport(addr)}
-
-	resp, err := client.Get(upstream.URL + "/test")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", resp.StatusCode)
-	}
-}
-
 func TestGracefulShutdown(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 
 	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
@@ -318,7 +273,7 @@ func TestStopDrainsInflightCONNECT(t *testing.T) {
 		Headers: map[string]string{"X-Api-Key": "$KEY"},
 		Secrets: []string{"KEY"},
 	}}
-	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil, nil)
+	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -422,7 +377,7 @@ func TestCONNECTRejectsHostMismatch(t *testing.T) {
 		Headers: map[string]string{"X-Api-Key": "$KEY"},
 		Secrets: []string{"KEY"},
 	}}
-	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil, nil)
+	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -508,7 +463,7 @@ func TestBlockUnmatchedHTTP(t *testing.T) {
 	}
 	secrets := map[string]string{"TOKEN": "sk-test-123"}
 
-	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv := NewServer(ca, rules, secrets, nil)
 	srv.SetBlockUnmatched(true)
 
 	addr, err := srv.Start("127.0.0.1:0")
@@ -549,7 +504,7 @@ func TestBlockUnmatchedAllowsMatchedHost(t *testing.T) {
 	}
 	secrets := map[string]string{"TOKEN": "sk-test-123"}
 
-	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv := NewServer(ca, rules, secrets, nil)
 	srv.SetBlockUnmatched(true)
 
 	addr, err := srv.Start("127.0.0.1:0")
@@ -587,7 +542,7 @@ func TestBlockUnmatchedCONNECT(t *testing.T) {
 		},
 	}
 
-	srv := NewServer(ca, rules, map[string]string{"TOKEN": "sk-123"}, nil, nil)
+	srv := NewServer(ca, rules, map[string]string{"TOKEN": "sk-123"}, nil)
 	srv.SetBlockUnmatched(true)
 
 	addr, err := srv.Start("127.0.0.1:0")
@@ -619,7 +574,7 @@ func TestBlockUnmatchedCONNECT(t *testing.T) {
 
 func TestStartAlreadyRunning(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 	addr1, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -685,7 +640,7 @@ func TestStartRejectsNonLoopback(t *testing.T) {
 	for _, addr := range []string{"0.0.0.0:0", "[::]:0", ":0", "[::ffff:0.0.0.0]:0"} {
 		t.Run(addr, func(t *testing.T) {
 			ca := newTestCA(t)
-			srv := NewServer(ca, nil, nil, nil, nil)
+			srv := NewServer(ca, nil, nil, nil)
 
 			got, err := srv.Start(addr)
 			if err == nil {
@@ -706,7 +661,7 @@ func TestStartAcceptsLoopback(t *testing.T) {
 	for _, addr := range []string{"127.0.0.1:0", "localhost:0"} {
 		t.Run(addr, func(t *testing.T) {
 			ca := newTestCA(t)
-			srv := NewServer(ca, nil, nil, nil, nil)
+			srv := NewServer(ca, nil, nil, nil)
 
 			got, err := srv.Start(addr)
 			if err != nil {
@@ -749,7 +704,7 @@ func TestVerifyLoopbackListener(t *testing.T) {
 
 func TestAddrNotRunning(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 	if addr := srv.Addr(); addr != "" {
 		t.Errorf("Addr before Start should be empty, got %q", addr)
 	}
@@ -804,7 +759,7 @@ func TestHTTPProxyHeaderResolveError(t *testing.T) {
 	// secrets map is missing the required secret.
 	secrets := map[string]string{}
 
-	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv := NewServer(ca, rules, secrets, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -824,7 +779,7 @@ func TestHTTPProxyHeaderResolveError(t *testing.T) {
 
 func TestGetOrCreateCert_Cache(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 
 	cert1, err := srv.getOrCreateCert("example.com")
 	if err != nil {
@@ -836,78 +791,6 @@ func TestGetOrCreateCert_Cache(t *testing.T) {
 	}
 	if cert1 != cert2 {
 		t.Error("expected same cert pointer from cache")
-	}
-}
-
-func TestHTTPSConnectApprovalDenied(t *testing.T) {
-	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("request should not reach upstream")
-	}))
-	defer upstream.Close()
-
-	upstreamHost := strings.TrimPrefix(upstream.URL, "https://")
-	host := stripPort(upstreamHost)
-
-	ca := newTestCA(t)
-	rules := []policy.ProxyRule{
-		{
-			Hosts:    []string{host},
-			Headers:  map[string]string{"Authorization": "Bearer $TOKEN"},
-			Secrets:  []string{"TOKEN"},
-			Approval: policy.ApprovalAlways,
-		},
-	}
-	secrets := map[string]string{"TOKEN": "sk-123"}
-	pol := &policy.Policy{
-		Proxy: &policy.ProxyPolicy{
-			Approval: policy.ApprovalAlways,
-			Rules:    rules,
-		},
-	}
-
-	srv := NewServer(ca, rules, secrets, pol, nil)
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() { _ = srv.Stop(context.Background()) }()
-
-	// Inject a transport that trusts the upstream TLS cert.
-	upstreamPool := x509.NewCertPool()
-	upstreamCert, err := x509.ParseCertificate(upstream.TLS.Certificates[0].Certificate[0])
-	if err != nil {
-		t.Fatalf("parse upstream cert: %v", err)
-	}
-	upstreamPool.AddCert(upstreamCert)
-	srv.SetTransport(&http.Transport{
-		TLSClientConfig: &tls.Config{
-			RootCAs:    upstreamPool,
-			MinVersion: tls.VersionTLS12,
-		},
-	})
-
-	// Client trusts the proxy CA for the MITM cert.
-	proxyPool := x509.NewCertPool()
-	proxyPool.AddCert(ca.Cert)
-
-	proxyURL, _ := url.Parse("http://" + addr)
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyURL(proxyURL),
-			TLSClientConfig: &tls.Config{
-				RootCAs:    proxyPool,
-				MinVersion: tls.VersionTLS12,
-			},
-		},
-	}
-
-	resp, err := client.Get(upstream.URL + "/test")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Errorf("status = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -931,7 +814,7 @@ func TestHTTPSConnectHeaderResolveError(t *testing.T) {
 	// Secrets map is empty — resolve will fail.
 	secrets := map[string]string{}
 
-	srv := NewServer(ca, rules, secrets, nil, nil)
+	srv := NewServer(ca, rules, secrets, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -995,7 +878,7 @@ type auditEntry struct {
 func TestStopClosesListener(t *testing.T) {
 	ca := newTestCA(t)
 	for i := 0; i < 200; i++ {
-		srv := NewServer(ca, nil, map[string]string{}, nil, nil)
+		srv := NewServer(ca, nil, map[string]string{}, nil)
 		addr, err := srv.Start("127.0.0.1:0")
 		if err != nil {
 			t.Fatalf("Start: %v", err)
@@ -1012,7 +895,7 @@ func TestStopClosesListener(t *testing.T) {
 
 func TestStopWithSilentCONNECTClient(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1055,7 +938,7 @@ func TestStopAbortsSlowUpstream(t *testing.T) {
 	defer close(release)
 
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1090,7 +973,7 @@ func TestStopAbortsSlowUpstream(t *testing.T) {
 
 func TestGetOrCreateCert_RegeneratesNearExpiry(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 
 	cert, err := srv.getOrCreateCert("example.com")
 	if err != nil {
@@ -1116,7 +999,7 @@ func TestGetOrCreateCert_RegeneratesNearExpiry(t *testing.T) {
 
 func TestGetOrCreateCert_CacheBounded(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil, nil)
+	srv := NewServer(ca, nil, nil, nil)
 
 	for i := 0; i < maxCachedCerts+10; i++ {
 		if _, err := srv.getOrCreateCert(fmt.Sprintf("h%d.example.com", i)); err != nil {

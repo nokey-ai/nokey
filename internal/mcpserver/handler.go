@@ -404,7 +404,7 @@ func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolReques
 		secrets[name] = val
 	}
 
-	srv := proxy.NewServer(ca, rules, secrets, pol, h.recordAudit)
+	srv := proxy.NewServer(ca, rules, secrets, h.recordAudit)
 
 	//nolint:contextcheck // proxy lifetime is the MCP session, not this request
 	actualAddr, err := srv.Start(addr)

@@ -3,6 +3,7 @@ package policy
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -19,7 +20,7 @@ func TestProxyRulesYAMLParsing(t *testing.T) {
   - commands: ["gh"]
     secrets: ["GITHUB_TOKEN"]
 proxy:
-  approval: always
+  approval: never
   rules:
     - hosts: ["api.openai.com"]
       headers:
@@ -182,142 +183,48 @@ func TestSecretExtraction(t *testing.T) {
 	}
 }
 
-func TestProxyRequiresApproval(t *testing.T) {
-	tests := []struct {
-		name        string
-		policy      *Policy
-		host        string
-		secretNames []string
-		want        bool
-	}{
-		{
-			name:        "nil policy never requires approval",
-			policy:      nil,
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        false,
-		},
-		{
-			name:        "no proxy section never requires approval",
-			policy:      &Policy{},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        false,
-		},
-		{
-			name:        "empty secrets never requires approval",
-			policy:      &Policy{Proxy: &ProxyPolicy{Approval: ApprovalAlways}},
-			host:        "api.example.com",
-			secretNames: []string{},
-			want:        false,
-		},
-		{
-			name: "proxy global always — approval needed",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalAlways,
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        true,
-		},
-		{
-			name: "proxy global never — no approval",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalNever,
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        false,
-		},
-		{
-			name: "per-rule never overrides proxy always",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalAlways,
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}, Approval: ApprovalNever},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        false,
-		},
-		{
-			name: "per-rule always overrides proxy never",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalNever,
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}, Approval: ApprovalAlways},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        true,
-		},
-		{
-			name: "falls back to global policy approval",
-			policy: &Policy{
-				Approval: ApprovalAlways,
-				Proxy: &ProxyPolicy{
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        true,
-		},
-		{
-			name: "no matching rule — fail closed",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalNever,
-					Rules: []ProxyRule{
-						{Hosts: []string{"api.example.com"}, Secrets: []string{"TOKEN"}},
-					},
-				},
-			},
-			host:        "other.example.com",
-			secretNames: []string{"TOKEN"},
-			want:        true,
-		},
-		{
-			name: "wildcard host match",
-			policy: &Policy{
-				Proxy: &ProxyPolicy{
-					Approval: ApprovalNever,
-					Rules: []ProxyRule{
-						{Hosts: []string{"*.example.com"}, Secrets: []string{"API_KEY"}},
-					},
-				},
-			},
-			host:        "api.example.com",
-			secretNames: []string{"API_KEY"},
-			want:        false,
-		},
+// The proxy cannot prompt, so approval: always is refused when the policy
+// loads instead of silently denying every request at run time. The
+// top-level approval mode does not reach proxy rules.
+func TestValidateProxyRules_RejectsAlways(t *testing.T) {
+	rule := func(mode ApprovalMode) ProxyRule {
+		return ProxyRule{Hosts: []string{"api.example.com"}, Headers: map[string]string{"X": "$TOKEN"}, Approval: mode}
 	}
-
+	tests := []struct {
+		name    string
+		pp      *ProxyPolicy
+		wantErr string
+	}{
+		{"proxy global always", &ProxyPolicy{Approval: ApprovalAlways, Rules: []ProxyRule{rule("")}}, "proxy global: approval: always is not supported"},
+		{"rule always", &ProxyPolicy{Rules: []ProxyRule{rule(ApprovalAlways)}}, "proxy rule 0: approval: always is not supported"},
+		{"rule never", &ProxyPolicy{Rules: []ProxyRule{rule(ApprovalNever)}}, ""},
+		{"unset", &ProxyPolicy{Rules: []ProxyRule{rule("")}}, ""},
+		{"proxy global never", &ProxyPolicy{Approval: ApprovalNever, Rules: []ProxyRule{rule("")}}, ""},
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := tt.policy.ProxyRequiresApproval(tt.host, tt.secretNames)
-			if got != tt.want {
-				t.Errorf("ProxyRequiresApproval() = %v, want %v", got, tt.want)
+			err := ValidateProxyRules(tt.pp)
+			if tt.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestLoad_TopLevelAlwaysDoesNotReachProxyRules(t *testing.T) {
+	dir := t.TempDir()
+	yaml := "approval: always\nrules:\n  - commands: [\"*\"]\n    secrets: [\"*\"]\nproxy:\n  rules:\n    - hosts: [\"api.example.com\"]\n      headers:\n        X: \"$TOKEN\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "policies.yaml"), []byte(yaml), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err != nil {
+		t.Fatalf("a top-level approval: always must not invalidate proxy rules: %v", err)
 	}
 }
 

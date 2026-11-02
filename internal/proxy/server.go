@@ -41,7 +41,6 @@ type Server struct {
 	ca             *CA
 	rules          []policy.ProxyRule
 	secrets        map[string]string
-	pol            *policy.Policy
 	auditFn        AuditFunc
 	listener       net.Listener
 	server         *http.Server
@@ -79,12 +78,11 @@ func (s *Server) forwardTransport() http.RoundTripper {
 
 // NewServer creates a new proxy server. Secrets are held in memory for the
 // lifetime of the server (fetched once at startup).
-func NewServer(ca *CA, rules []policy.ProxyRule, secrets map[string]string, pol *policy.Policy, auditFn AuditFunc) *Server {
+func NewServer(ca *CA, rules []policy.ProxyRule, secrets map[string]string, auditFn AuditFunc) *Server {
 	return &Server{
 		ca:      ca,
 		rules:   rules,
 		secrets: secrets,
-		pol:     pol,
 		auditFn: auditFn,
 	}
 }
@@ -274,14 +272,6 @@ func (s *Server) handleHTTP(w http.ResponseWriter, r *http.Request) {
 
 	secretNames := CollectSecretNames(matched)
 
-	// Approval check: proxy runs outside MCP session context, so if approval
-	// is required we deny with a clear error.
-	if len(matched) > 0 && s.pol.ProxyRequiresApproval(host, secretNames) {
-		s.audit("proxy:http", host, secretNames, false, "approval required — set approval: never on this proxy rule")
-		http.Error(w, "nokey proxy: approval required for this host — set approval: never on the proxy rule", http.StatusForbidden)
-		return
-	}
-
 	// Inject headers from matching rules.
 	for _, rule := range matched {
 		headers, err := ResolveHeaders(rule, s.secrets)
@@ -427,13 +417,6 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 		matched := MatchRules(host, s.rules)
 		secretNames := CollectSecretNames(matched)
-
-		// Approval check.
-		if len(matched) > 0 && s.pol.ProxyRequiresApproval(host, secretNames) {
-			s.audit("proxy:https", host, secretNames, false, "approval required — set approval: never on this proxy rule")
-			writeTextResponse(tlsConn, http.StatusForbidden, "nokey proxy: approval required for this host — set approval: never on the proxy rule")
-			continue
-		}
 
 		// Inject headers. If any rule fails to resolve, surface 502 to
 		// the client and skip the upstream RoundTrip — otherwise we
