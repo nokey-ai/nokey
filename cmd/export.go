@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/env"
+	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/sensitive"
-	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
 
@@ -30,7 +30,9 @@ This is a "careful mode" feature that exposes secrets to the current shell sessi
 Use with caution as the secrets will be visible in the shell's memory.
 
 Authentication follows the configured method (auth.default_method), as for
-exec: you may be asked for your PIN and/or need a valid OAuth token.
+exec, with two differences because the secrets end up in your shell: a
+stored PIN is always required, whatever default_method says, and every
+export prompts for it (the PIN session cache is neither used nor started).
 All exports are recorded in the audit log (if enabled).
 
 Usage:
@@ -78,20 +80,19 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Authenticate exactly as exec does with no --auth-method flag
+	// Authenticate as exec does with no --auth-method flag, except that a
+	// stored PIN always applies and the session cache is not used: export
+	// puts the values into the shell, so every export prompts.
 	authMethod, err := resolveAuthMethod(store, "")
 	if err != nil {
 		return err
 	}
-	sessionTTL, err := session.ParseTTL(cfg.Auth.SessionTTL)
-	if err != nil {
-		return fmt.Errorf("config error: %w", err)
-	}
+	authMethod = exportAuthMethod(store, authMethod)
 	if names == nil {
 		// nil would mean "every secret" to getSecretsForMethod
 		names = []string{}
 	}
-	secrets, err := getSecretsForMethod(store, authMethod, sessionTTL, names)
+	secrets, err := getSecretsForMethod(store, authMethod, 0, false, names)
 	if err != nil {
 		return err
 	}
@@ -142,4 +143,19 @@ func runExport(cmd *cobra.Command, args []string) error {
 	AppFromCmd(cmd).RecordAudit(store, "export", shellType, authMethod, secretNames, true, "")
 
 	return nil
+}
+
+// exportAuthMethod adds the PIN factor to method when a PIN is stored, so a
+// PIN gates export even under default_method none or oauth.
+func exportAuthMethod(store *keyring.Store, method string) string {
+	if !store.HasPIN() {
+		return method
+	}
+	switch method {
+	case "none":
+		return "pin"
+	case "oauth":
+		return "both"
+	}
+	return method
 }

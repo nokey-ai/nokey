@@ -239,21 +239,18 @@ func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin, to
 
 func TestRunExport_AuthMethods(t *testing.T) {
 	tests := []struct {
-		name       string
-		method     string
-		pin, token bool
-		wantAudit  string
+		name      string
+		method    string
+		token     bool
+		wantAudit string
 	}{
 		{name: "none", method: "none", wantAudit: "none"},
-		{name: "pin", method: "pin", pin: true, wantAudit: "pin"},
 		{name: "oauth", method: "oauth", token: true, wantAudit: "oauth"},
-		{name: "both", method: "both", pin: true, token: true, wantAudit: "both"},
-		{name: "legacy stored PIN", method: "", pin: true, wantAudit: "pin"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store, _ := newTestStore()
-			exportAuthSetup(t, store, tt.method, tt.pin, tt.token)
+			exportAuthSetup(t, store, tt.method, false, tt.token)
 
 			if got := runExportWith(t, "bash"); got != "export A='1'\n" {
 				t.Errorf("output = %q", got)
@@ -271,6 +268,58 @@ func TestRunExport_AuthMethods(t *testing.T) {
 				t.Errorf("audit entry = %s/%s, want export/%s", last.Operation, last.AuthMethod, tt.wantAudit)
 			}
 		})
+	}
+}
+
+// A stored PIN always gates export, whatever default_method says, and a
+// valid PIN session never skips the prompt. The test setup creates a valid
+// session; with no terminal the prompt fails, which shows it was reached.
+func TestRunExport_PINAlwaysPrompts(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		token  bool
+	}{
+		{name: "pin", method: "pin"},
+		{name: "both", method: "both", token: true},
+		{name: "legacy stored PIN", method: ""},
+		{name: "none is raised to pin", method: "none"},
+		{name: "oauth is raised to both", method: "oauth", token: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, _ := newTestStore()
+			exportAuthSetup(t, store, tt.method, true, tt.token)
+			shellType = "bash"
+
+			var err error
+			output := captureStdout(t, func() { err = runExport(nil, nil) })
+			if err == nil || !strings.Contains(err.Error(), "PIN authentication failed") {
+				t.Errorf("err = %v, want the PIN prompt to be reached", err)
+			}
+			if output != "" {
+				t.Errorf("printed %q without a PIN", output)
+			}
+		})
+	}
+}
+
+func TestExportAuthMethod(t *testing.T) {
+	for _, tt := range []struct{ method, withPIN, withoutPIN string }{
+		{"none", "pin", "none"},
+		{"pin", "pin", "pin"},
+		{"oauth", "both", "oauth"},
+		{"both", "both", "both"},
+	} {
+		noPIN, _ := newTestStore()
+		if got := exportAuthMethod(noPIN, tt.method); got != tt.withoutPIN {
+			t.Errorf("exportAuthMethod(no PIN, %q) = %q, want %q", tt.method, got, tt.withoutPIN)
+		}
+		withPIN, _ := newTestStore()
+		withPIN.SetPINHash("hash")
+		if got := exportAuthMethod(withPIN, tt.method); got != tt.withPIN {
+			t.Errorf("exportAuthMethod(PIN, %q) = %q, want %q", tt.method, got, tt.withPIN)
+		}
 	}
 }
 
@@ -302,26 +351,6 @@ func TestRunExport_AuthFailures(t *testing.T) {
 				t.Errorf("printed %q despite failed authentication", output)
 			}
 		})
-	}
-}
-
-// With PIN auth (session path), --only still reads only the selected values.
-func TestRunExport_PINOnlyReadsSelectedValues(t *testing.T) {
-	ring := &readCountingRing{mockRing: newMockRing()}
-	store := nkeyring.NewWithRing(ring, "nokey-test")
-	exportAuthSetup(t, store, "pin", true, false)
-	store.Set("B", "2")
-	store.Set("C", "3")
-	exportOnly = "B"
-	ring.reads = nil
-
-	if got := runExportWith(t, "bash"); got != "export B='2'\n" {
-		t.Errorf("output = %q", got)
-	}
-	for _, k := range ring.reads {
-		if k == "A" || k == "C" {
-			t.Errorf("unselected secret %s was read from the keyring", k)
-		}
 	}
 }
 

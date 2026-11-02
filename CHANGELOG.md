@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - MCP approval prompts now honour the user's answer. Previously any
   "accept" response granted access, even one with `approve: false`.
   Access is now granted only when the response carries `approve: true`;
-  clients that accept without sending `approve: true` are denied.
+  clients that accept without sending `approve: true` are denied. The
+  prompt's schema now marks `approve` as required.
 - `nokey exec --auth-method` can no longer weaken authentication. It
   could previously override the configured method, so `--auth-method
   none` read every secret without the PIN. The flag may now only pick a
@@ -44,10 +45,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey export` now authenticates with the configured method, exactly
   as `exec` does. It previously checked only for a PIN, so with
   `default_method: oauth` and no PIN it exported every secret without
-  authentication, and `both` skipped the OAuth check. PIN entry reuses
-  the session cache, and the audit entry records the method used. An
-  unsupported `--shell` is now rejected before the keyring is opened or
-  any prompt is shown.
+  authentication, and `both` skipped the OAuth check. Because export
+  puts the values into the shell, a stored PIN always gates it, even
+  under `default_method: none` or `oauth`, and every export prompts for
+  it: the PIN session cache is neither used nor started. The audit entry
+  records the method used. An unsupported `--shell` is now rejected
+  before the keyring is opened or any prompt is shown.
 
 ## [0.7.0] - 2026-11-01
 
