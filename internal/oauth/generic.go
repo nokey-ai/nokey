@@ -10,18 +10,13 @@ import (
 
 // GenericProvider implements OAuth for custom providers
 type GenericProvider struct {
-	Name         string
-	AuthURL      string
-	TokenURL     string
-	UserInfoURL  string
-	ClientID     string
-	ClientSecret string
-	Scopes       []string
-	config       *oauth2.Config
+	UserInfoURL string
+	Scopes      []string
+	config      *oauth2.Config
 }
 
 // NewGenericProvider creates a new generic OAuth provider
-func NewGenericProvider(name, authURL, tokenURL, userInfoURL, clientID, clientSecret string, scopes []string, redirectURL string) *GenericProvider {
+func NewGenericProvider(authURL, tokenURL, userInfoURL, clientID, clientSecret string, scopes []string, redirectURL string) *GenericProvider {
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "profile", "email"}
 	}
@@ -38,14 +33,9 @@ func NewGenericProvider(name, authURL, tokenURL, userInfoURL, clientID, clientSe
 	}
 
 	return &GenericProvider{
-		Name:         name,
-		AuthURL:      authURL,
-		TokenURL:     tokenURL,
-		UserInfoURL:  userInfoURL,
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Scopes:       scopes,
-		config:       config,
+		UserInfoURL: userInfoURL,
+		Scopes:      scopes,
+		config:      config,
 	}
 }
 
@@ -105,12 +95,4 @@ func (p *GenericProvider) ValidateToken(ctx context.Context, token *Token) error
 	}
 
 	return nil
-}
-
-// GetProviderName returns the custom provider name
-func (p *GenericProvider) GetProviderName() string {
-	if p.Name != "" {
-		return p.Name
-	}
-	return "custom"
 }

@@ -891,7 +891,6 @@ func (m *oauthSetupCapture) RefreshToken(_ context.Context, _ string) (*oauth.To
 	return nil, nil
 }
 func (m *oauthSetupCapture) ValidateToken(_ context.Context, _ *oauth.Token) error { return nil }
-func (m *oauthSetupCapture) GetProviderName() string                               { return "github" }
 
 func TestRunAuthOAuthSetup_GitHub_HappyPath(t *testing.T) {
 	store, _ := newTestStore()
