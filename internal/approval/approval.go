@@ -33,7 +33,23 @@ const stdinPreviewBytes = 64
 // access is denied. detail is an extra line describing what is being
 // approved — the arguments the command will run with, or the scope of a
 // token — so the user isn't approving a bare command name; it may be empty.
+//
+// The client's Accept button is the approval and Decline or Cancel denies;
+// the form asks no yes/no question of its own, so there is no second answer
+// that could disagree with the button.
 func RequestWithDetail(ctx context.Context, requester Requester, command string, secretNames []string, detail string) error {
+	_, err := request(ctx, requester, command, secretNames, detail, false)
+	return err
+}
+
+// RequestRememberable is RequestWithDetail with an optional "don't ask
+// again this session" checkbox. remember is true only when the user
+// accepted with the box ticked.
+func RequestRememberable(ctx context.Context, requester Requester, command string, secretNames []string, detail string) (remember bool, err error) {
+	return request(ctx, requester, command, secretNames, detail, true)
+}
+
+func request(ctx context.Context, requester Requester, command string, secretNames []string, detail string, offerRemember bool) (bool, error) {
 	msg := fmt.Sprintf(
 		"nokey: %q wants to access secret(s): %s\n\n",
 		command, strings.Join(secretNames, ", "),
@@ -41,60 +57,59 @@ func RequestWithDetail(ctx context.Context, requester Requester, command string,
 	if detail != "" {
 		msg += detail + "\n\n"
 	}
-	msg += "Do you approve?"
+	msg += "Accept to approve, Decline to deny."
+
+	properties := map[string]any{}
+	if offerRemember {
+		properties["remember"] = map[string]any{
+			"type":        "boolean",
+			"title":       "Don't ask again this session",
+			"description": fmt.Sprintf("Approve %s with these secrets (or fewer) without prompting until this MCP session ends", Quote(command)),
+			"default":     false,
+		}
+	}
 
 	result, err := requester.RequestElicitation(ctx, mcp.ElicitationRequest{
 		Params: mcp.ElicitationParams{
 			Message: msg,
 			RequestedSchema: map[string]any{
-				"type": "object",
-				"properties": map[string]any{
-					"approve": map[string]any{
-						"type":        "boolean",
-						"description": "Approve secret access",
-					},
-				},
-				"required": []string{"approve"},
+				"type":       "object",
+				"properties": properties,
 			},
 		},
 	})
 	if err != nil {
 		if errors.Is(err, server.ErrElicitationNotSupported) {
-			return fmt.Errorf("approval required but client does not support elicitation prompts")
+			return false, fmt.Errorf("approval required but client does not support elicitation prompts")
 		}
 		if errors.Is(err, server.ErrNoActiveSession) {
-			return fmt.Errorf("approval required but no active MCP session")
+			return false, fmt.Errorf("approval required but no active MCP session")
 		}
-		return fmt.Errorf("approval request failed: %w", err)
+		return false, fmt.Errorf("approval request failed: %w", err)
 	}
 
 	switch result.Action {
 	case mcp.ElicitationResponseActionAccept:
-		// Accept only means the client submitted the form; the user's
-		// answer is the approve field. Anything but approve: true denies.
-		if !approved(result.Content) {
-			return fmt.Errorf("user did not approve secret access for %q", command)
-		}
-		return nil
+		return offerRemember && remembered(result.Content), nil
 	case mcp.ElicitationResponseActionDecline:
-		return fmt.Errorf("user declined secret access for %q", command)
+		return false, fmt.Errorf("user declined secret access for %q", command)
 	case mcp.ElicitationResponseActionCancel:
-		return fmt.Errorf("user cancelled secret access for %q", command)
+		return false, fmt.Errorf("user cancelled secret access for %q", command)
 	default:
-		return fmt.Errorf("unexpected elicitation response: %s", result.Action)
+		return false, fmt.Errorf("unexpected elicitation response: %s", result.Action)
 	}
 }
 
-// approved reports whether elicitation content carries approve: true. The
-// transport decodes content from JSON, so it is a map[string]any; a
-// non-object, a missing field or a non-boolean value is not approval.
-func approved(content any) bool {
+// remembered reports whether elicitation content carries remember: true.
+// The transport decodes content from JSON, so it is a map[string]any; a
+// missing field or any value but boolean true means "ask again next time".
+func remembered(content any) bool {
 	c, ok := content.(map[string]any)
 	if !ok {
 		return false
 	}
-	approve, ok := c["approve"].(bool)
-	return ok && approve
+	remember, ok := c["remember"].(bool)
+	return ok && remember
 }
 
 // Quote renders a model-supplied value for an approval prompt: %q-quoted,
