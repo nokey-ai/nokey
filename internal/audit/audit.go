@@ -49,7 +49,7 @@ type storedEntry struct {
 	PrevHMAC string     `json:"prev_hmac"`
 }
 
-// chainHead is persisted in the keyring to detect truncation.
+// chainHead is persisted in a file beside audit.log to detect truncation.
 type chainHead struct {
 	HMAC  string `json:"hmac"`
 	Count int    `json:"count"`
