@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-01
+
 ### Removed
 - The `auth.oauth.github.client_id` / `client_secret` and
   `auth.oauth.custom.provider_name` / `auth_url` / `token_url` /
