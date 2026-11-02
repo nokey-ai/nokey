@@ -2227,3 +2227,115 @@ func TestRunExec_CleansUpBeforeExit(t *testing.T) {
 		t.Fatal("expected the isolation proxy address in the child env")
 	}
 }
+
+// --- --auth-method can only strengthen the configured method ---
+
+func TestResolveAuthMethod(t *testing.T) {
+	tests := []struct {
+		configured string // auth.default_method
+		hasPIN     bool   // legacy: a PIN set with no default_method
+		override   string
+		want       string
+		wantErr    string // non-empty = error expected
+	}{
+		// No override: the configured method is used as-is.
+		{configured: "pin", want: "pin"},
+		{configured: "", want: "none"},
+		{configured: "", hasPIN: true, want: "pin"},
+
+		// Equal or stronger overrides are allowed.
+		{configured: "none", override: "none", want: "none"},
+		{configured: "none", override: "pin", want: "pin"},
+		{configured: "none", override: "oauth", want: "oauth"},
+		{configured: "none", override: "both", want: "both"},
+		{configured: "pin", override: "pin", want: "pin"},
+		{configured: "pin", override: "both", want: "both"},
+		{configured: "oauth", override: "oauth", want: "oauth"},
+		{configured: "oauth", override: "both", want: "both"},
+		{configured: "both", override: "both", want: "both"},
+		{configured: "", hasPIN: true, override: "pin", want: "pin"},
+		{configured: "", hasPIN: true, override: "both", want: "both"},
+
+		// Every downgrade is refused.
+		{configured: "pin", override: "none", wantErr: "--auth-method none would skip pin required by config"},
+		{configured: "pin", override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
+		{configured: "oauth", override: "none", wantErr: "--auth-method none would skip oauth required by config"},
+		{configured: "oauth", override: "pin", wantErr: "--auth-method pin would skip oauth required by config"},
+		{configured: "both", override: "none", wantErr: "--auth-method none would skip pin required by config"},
+		{configured: "both", override: "pin", wantErr: "--auth-method pin would skip oauth required by config"},
+		{configured: "both", override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
+		{configured: "", hasPIN: true, override: "none", wantErr: "--auth-method none would skip pin required by config"},
+		{configured: "", hasPIN: true, override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
+
+		// Unknown methods are rejected.
+		{configured: "none", override: "bogus", wantErr: "invalid auth method 'bogus'"},
+		{configured: "bogus", override: "both", wantErr: "invalid auth method 'bogus' in config"},
+	}
+
+	for _, tt := range tests {
+		name := fmt.Sprintf("config=%q pin=%v flag=%q", tt.configured, tt.hasPIN, tt.override)
+		t.Run(name, func(t *testing.T) {
+			store, _ := newTestStore()
+			if tt.hasPIN {
+				store.SetPINHash("hash")
+			}
+			c := config.DefaultConfig()
+			c.Auth.DefaultMethod = tt.configured
+			withTestConfig(t, c)
+
+			got, err := resolveAuthMethod(store, tt.override)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("got (%q, %v), want error containing %q", got, err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// The legacy require_auth setting counts as configuring pin.
+func TestResolveAuthMethod_LegacyRequireAuth(t *testing.T) {
+	store, _ := newTestStore()
+	c := config.DefaultConfig()
+	c.Auth.DefaultMethod = ""
+	c.RequireAuth = true
+	withTestConfig(t, c)
+
+	if _, err := resolveAuthMethod(store, "none"); err == nil || !strings.Contains(err.Error(), "would skip pin") {
+		t.Fatalf("expected downgrade error, got %v", err)
+	}
+}
+
+// A downgrade via the flag fails before any secret is read or the command runs.
+func TestRunExec_AuthMethodDowngradeRefused(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Auth.DefaultMethod = ""
+	withTestConfig(t, c)
+	store.Set("KEY", "val")
+	store.SetPINHash("hash")
+
+	withExecGlobals(t)
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		t.Error("command must not run when --auth-method downgrades auth")
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	err := runExec(cmd, []string{"printenv"})
+	if err == nil || !strings.Contains(err.Error(), "--auth-method none would skip pin required by config") {
+		t.Fatalf("expected downgrade error, got: %v", err)
+	}
+}

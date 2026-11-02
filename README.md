@@ -268,13 +268,19 @@ nokey auth oauth logout --provider github
 - **PIN only** - Traditional PIN authentication
 - **OAuth only** - Use GitHub or custom OAuth provider
 - **Both (2FA)** - Require both PIN and OAuth
-- **Per-command** - Choose auth method per execution
+- **Per-command** - Strengthen the auth method for one execution
+
+`--auth-method` can only add factors to the configured method, never
+remove them: with `default_method: pin`, `--auth-method both` works but
+`--auth-method none` or `--auth-method oauth` is refused because it would
+skip the PIN. With no `default_method`, setting a PIN (or `require_auth`)
+counts as configuring `pin`.
 
 ```bash
 # Use default auth method from config
 nokey exec -- command
 
-# Override to use OAuth only
+# Require OAuth for this run (when config doesn't already require a PIN)
 nokey exec --auth-method oauth -- command
 
 # Require both PIN and OAuth (2FA)
