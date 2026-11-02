@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name already taken, invalid name) are refused before any prompt.
   Audited as `mcp:rename_secret` and `mcp:rename_secret:approval`.
 
+### Fixed
+- `nokey auth oauth refresh --provider custom` and `logout --provider
+  custom` now find the token. `setup` accepted `custom` as an alias and
+  stored the token as `generic`, but the other subcommands looked it up
+  under `custom` and failed.
+
 ## [0.7.0] - 2026-11-01
 
 ### Removed

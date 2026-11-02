@@ -1007,3 +1007,51 @@ func TestRunAuthOAuthSetup_Generic_HappyPath(t *testing.T) {
 		t.Errorf("access token = %q, want %q", saved.AccessToken, tok.AccessToken)
 	}
 }
+
+func TestRunAuthOAuthLogout_CustomAliasRemovesGenericToken(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	tok := &oauth.Token{AccessToken: "generic-token", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
+	if err := oauth.SaveToken(store, "generic", tok); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
+
+	oldProvider := oauthProvider
+	t.Cleanup(func() { oauthProvider = oldProvider })
+	oauthProvider = "custom"
+
+	_ = captureStdout(t, func() {
+		_ = captureStderr(t, func() {
+			if err := runAuthOAuthLogout(nil, nil); err != nil {
+				t.Fatalf("runAuthOAuthLogout: %v", err)
+			}
+		})
+	})
+	if _, err := oauth.LoadToken(store, "generic"); err == nil {
+		t.Error("generic token should be deleted by logout --provider custom")
+	}
+}
+
+func TestRunAuthOAuthRefresh_CustomAliasFindsGenericToken(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+
+	tok := &oauth.Token{AccessToken: "generic-token", TokenType: "Bearer", Expiry: time.Now().Add(-time.Hour)}
+	if err := oauth.SaveToken(store, "generic", tok); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
+
+	oldProvider := oauthProvider
+	t.Cleanup(func() { oauthProvider = oldProvider })
+	oauthProvider = "custom"
+
+	// The token has no refresh token, so reaching that check proves the
+	// "custom" alias resolved to the stored "generic" entry.
+	err := runAuthOAuthRefresh(nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "no refresh token available for provider generic") {
+		t.Errorf("expected 'no refresh token' error for generic, got: %v", err)
+	}
+}
