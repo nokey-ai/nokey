@@ -66,7 +66,7 @@ type AuditEntry struct {
 	Hostname     string    `json:"hostname"`        // Machine hostname
 	PID          int       `json:"pid"`             // Process ID
 	ErrorMessage string    `json:"error,omitempty"` // Error message if failed
-	Operation    string    `json:"operation"`       // "exec", "set", "delete", "import", "auth"
+	Operation    string    `json:"operation"`       // e.g. "exec", "set", "rename", "mcp:exec"
 }
 
 // AuditLog contains all audit entries and any integrity warnings.
@@ -584,7 +584,7 @@ func (a *AuditLog) ApplyRetentionPolicy(maxEntries int, retentionDays int) {
 	a.Entries = validEntries
 }
 
-// Filter returns entries matching the criteria
+// FilterOptions selects audit entries; zero-value fields match everything.
 type FilterOptions struct {
 	Since      *time.Time
 	SecretName string
@@ -593,6 +593,7 @@ type FilterOptions struct {
 	Limit      int
 }
 
+// Filter returns entries matching the criteria
 func (a *AuditLog) Filter(opts FilterOptions) []AuditEntry {
 	filtered := make([]AuditEntry, 0)
 

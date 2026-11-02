@@ -87,7 +87,7 @@ func init() {
 	auditListCmd.Flags().StringVar(&auditSince, "since", "", "Show entries since time (1h, 1d, 1w, 1m)")
 	auditListCmd.Flags().StringVar(&auditSecret, "secret", "", "Filter by secret name")
 	auditListCmd.Flags().StringVar(&auditCommand, "command", "", "Filter by command")
-	auditListCmd.Flags().StringVar(&auditOperation, "operation", "", "Filter by operation (exec, set, delete, import, auth)")
+	auditListCmd.Flags().StringVar(&auditOperation, "operation", "", "Filter by exact operation, e.g. exec, set, rename, mcp:exec (tab-complete for the full list)")
 	auditListCmd.Flags().IntVar(&auditLimit, "limit", 20, "Maximum number of entries to show")
 	auditListCmd.Flags().BoolVar(&auditListJSON, "json", false, "Output as JSON")
 
