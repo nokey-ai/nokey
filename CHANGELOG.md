@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rule needs the MCP server (session tokens exist only there).
 
 ### Changed
+- `nokey audit list --json` now prints a JSON array of entries, the
+  same shape as `nokey audit export --format json`, instead of
+  `{"entries": [...], "count": N}`. **Breaking** for scripts reading
+  `.entries` or `.count`; use the array (and its length) directly.
 - Proxy rules can no longer say `approval: always`, on the `proxy:`
   section or on a rule: the proxy cannot prompt, so the setting was a
   silent hard deny with a "approval required" message. The policy now

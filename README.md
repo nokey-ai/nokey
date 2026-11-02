@@ -336,7 +336,7 @@ nokey audit list --operation exec
 nokey audit list --limit 50
 
 # Machine-readable output: {"entries": [...], "count": N}
-nokey audit list --json
+nokey audit list --json   # JSON array of entries, same shape as export --format json
 
 # Export to JSON
 nokey audit export --format json --output audit.json
