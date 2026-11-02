@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"sort"
@@ -164,6 +165,14 @@ func runExec(cmd *cobra.Command, args []string) error {
 		if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
 			AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
 			return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this, or set auth.cli_enforce_policy: false in config.yaml to bypass policy for CLI exec", checkErr, configDir)
+		}
+		// token_required rules exist to stop an agent reaching a secret
+		// without a minted session token. Tokens only exist inside the MCP
+		// server, so the CLI must refuse rather than quietly skip the rule.
+		if pol.RequiresToken(args[0], secretNames) {
+			msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
+			AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
+			return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command, or set auth.cli_enforce_policy: false in config.yaml to bypass policy for CLI exec", msg, configDir)
 		}
 	}
 

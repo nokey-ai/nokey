@@ -109,6 +109,37 @@ func TestRunExec_PolicyDenies(t *testing.T) {
 	}
 }
 
+// A token_required rule is refused by the CLI: session tokens exist only in
+// the MCP server, so skipping the rule here would let an agent shell out
+// around it.
+func TestRunExec_PolicyTokenRequiredDenies(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	withTestConfigDir(t, "rules:\n  - commands: [\"echo\"]\n    secrets: [\"MY_SECRET\"]\n    approval: never\n    token_required: true\n")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		t.Fatal("execRunFn should not run when policy requires a token")
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	err := runExec(cmd, []string{"echo", "hi"})
+	if err == nil || !strings.Contains(err.Error(), "requires a session token") {
+		t.Fatalf("error = %v, want token-required denial", err)
+	}
+}
+
 func TestRunExec_PolicyAllows(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
