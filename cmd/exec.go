@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -53,7 +54,8 @@ Security Options:
   --only          Only inject specific secrets (comma-separated)
   --except        Exclude specific secrets (comma-separated)
   --yes           Skip confirmation prompt (use with caution)
-  --auth-method   Override authentication method (pin, oauth, both, none)
+  --auth-method   Use a stronger authentication method (pin, oauth, both, none);
+                  it cannot skip a factor the config requires
   --isolate       Block network egress to hosts without a proxy rule
 
 Examples:
@@ -72,7 +74,7 @@ Examples:
   # Combine with redaction for extra safety
   nokey exec --only GITHUB_TOKEN --redact -- gh api /user
 
-  # Override auth method (use OAuth instead of PIN)
+  # Require OAuth for this run (the flag can add factors, never drop them)
   nokey exec --auth-method oauth -- command
 
   # Require both PIN and OAuth (2FA)
@@ -91,7 +93,7 @@ func init() {
 	execCmd.Flags().StringVar(&onlySecrets, "only", "", "Only inject these secrets (comma-separated, e.g., API_KEY,TOKEN)")
 	execCmd.Flags().StringVar(&exceptSecrets, "except", "", "Exclude these secrets (comma-separated)")
 	execCmd.Flags().BoolVar(&skipConfirm, "yes", false, "Skip confirmation prompt (inject all secrets without asking)")
-	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Override authentication method (pin, oauth, both, none)")
+	execCmd.Flags().StringVar(&authMethod, "auth-method", "", "Authentication method (pin, oauth, both, none); can only add factors to the configured method")
 	execCmd.Flags().BoolVar(&enableIsolate, "isolate", false, "Block network egress to hosts without a proxy rule")
 }
 
@@ -106,19 +108,11 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var allSecrets map[string]string
 	var authMethodUsed string
 
-	// Get auth method: flag takes precedence over config
-	authMethodConfig := authMethod // from flag
-	if authMethodConfig == "" {
-		// Use config default
-		authMethodConfig = cfg.Auth.DefaultMethod
-	}
-	if authMethodConfig == "" {
-		// Legacy behavior: use PIN if configured, otherwise none
-		if cfg.RequireAuth || store.HasPIN() {
-			authMethodConfig = "pin"
-		} else {
-			authMethodConfig = "none"
-		}
+	// Get auth method: the flag may strengthen the configured method but
+	// never weaken it
+	authMethodConfig, err := resolveAuthMethod(store, authMethod)
+	if err != nil {
+		return err
 	}
 
 	// Parse session TTL for PIN caching.
@@ -376,6 +370,49 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 	}
 
 	return envVars, cleanup, nil
+}
+
+// authMethodFactors lists the factors each auth method requires.
+var authMethodFactors = map[string][]string{
+	"none":  nil,
+	"pin":   {"pin"},
+	"oauth": {"oauth"},
+	"both":  {"pin", "oauth"},
+}
+
+// resolveAuthMethod returns the auth method to use: the configured one
+// (auth.default_method, else pin when a PIN is required or set, else
+// none), or override when it is set. An override must require every
+// factor the configured method does, so a flag can add authentication
+// but never skip what config demands.
+func resolveAuthMethod(store *keyring.Store, override string) (string, error) {
+	configured := cfg.Auth.DefaultMethod
+	if configured == "" {
+		// Legacy behavior: use PIN if configured, otherwise none
+		if cfg.RequireAuth || store.HasPIN() {
+			configured = "pin"
+		} else {
+			configured = "none"
+		}
+	}
+	if override == "" {
+		return configured, nil
+	}
+
+	overrideFactors, ok := authMethodFactors[override]
+	if !ok {
+		return "", fmt.Errorf("invalid auth method '%s' (supported: pin, oauth, both, none)", override)
+	}
+	configuredFactors, ok := authMethodFactors[configured]
+	if !ok {
+		return "", fmt.Errorf("invalid auth method '%s' in config (supported: pin, oauth, both, none)", configured)
+	}
+	for _, factor := range configuredFactors {
+		if !slices.Contains(overrideFactors, factor) {
+			return "", fmt.Errorf("--auth-method %s would skip %s required by config (auth method %s); the flag can only add authentication, not remove it", override, factor, configured)
+		}
+	}
+	return override, nil
 }
 
 // getSecretsWithPIN returns all secrets after PIN authentication, skipping

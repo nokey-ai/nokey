@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "accept" response granted access, even one with `approve: false`.
   Access is now granted only when the response carries `approve: true`;
   clients that accept without sending `approve: true` are denied.
+- `nokey exec --auth-method` can no longer weaken authentication. It
+  could previously override the configured method, so `--auth-method
+  none` read every secret without the PIN. The flag may now only pick a
+  method that includes every factor the configured method requires
+  (e.g. `pin` → `both`); a downgrade is refused with an error. With no
+  `default_method`, a stored PIN or `require_auth` counts as `pin`.
 
 ## [0.7.0] - 2026-11-01
 
