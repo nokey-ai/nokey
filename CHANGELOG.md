@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey keychain to-dedicated` now prints its one-time note about the
   "aws-vault" passphrase prompt with the default config. It was only
   shown when `keyring.name` was set explicitly.
+- The `nokey keychain migrate` hint no longer counts internal entries
+  such as the PIN hash, so an install with a PIN and no secrets is not
+  told it has "1 existing secret(s)". The matching tip printed by
+  `nokey exec` is now also hidden in dedicated-keychain mode, where
+  legacy `migrate` is the wrong advice.
 
 ## [0.7.0] - 2026-11-01
 

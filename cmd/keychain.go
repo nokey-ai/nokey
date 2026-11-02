@@ -264,7 +264,7 @@ func checkKeychainMigrationHint() {
 	if store.IsKeychainMigrated() || store.IsMigratedToDedicated() {
 		return
 	}
-	keys, err := store.AllKeys()
+	keys, err := store.List()
 	if err != nil || len(keys) == 0 {
 		return
 	}

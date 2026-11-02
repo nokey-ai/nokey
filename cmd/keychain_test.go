@@ -786,6 +786,38 @@ func TestCheckKeychainMigrationHint(t *testing.T) {
 		}
 	})
 
+	t.Run("suppressed_when_only_internal_keys", func(t *testing.T) {
+		store, _ := newTestStore()
+		// A PIN-only install has an internal __nokey_ key but no secrets.
+		if err := store.SetPINHash("hash"); err != nil {
+			t.Fatal(err)
+		}
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if got != "" {
+			t.Errorf("expected no hint without user secrets, got: %q", got)
+		}
+	})
+
+	t.Run("counts_only_user_secrets", func(t *testing.T) {
+		store, _ := newTestStore()
+		store.Set("FOO", "bar")
+		if err := store.SetPINHash("hash"); err != nil {
+			t.Fatal(err)
+		}
+		withTestKeyring(t, store)
+		withKeychainGOOS(t, "darwin")
+		withTestConfig(t, config.DefaultConfig())
+
+		got := run(t, func(t *testing.T) {})
+		if !strings.Contains(got, "for 1 existing secret(s)") {
+			t.Errorf("expected hint to count 1 secret, got: %q", got)
+		}
+	})
+
 	t.Run("prints_for_legacy_install_with_items", func(t *testing.T) {
 		store, _ := newTestStore()
 		store.Set("FOO", "bar")
