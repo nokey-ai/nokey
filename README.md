@@ -705,8 +705,6 @@ Other MCP clients take the same command and arguments in their own MCP configura
 | `mint_token` | Create a short-lived access lease token |
 | `revoke_token` | Revoke an access lease token |
 | `list_tokens` | List active access lease tokens |
-| `start_proxy` | Start the HTTP/HTTPS secret-injection proxy |
-| `stop_proxy` | Stop the running proxy |
 
 All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
 

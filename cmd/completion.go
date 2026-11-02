@@ -62,7 +62,6 @@ var auditOperations = []string{
 	"mcp:exec", "mcp:exec:approval",
 	"mcp:exec_with_secrets", "mcp:exec_with_secrets:approval",
 	"mcp:list_secrets", "mcp:rename_secret", "mcp:rename_secret:approval",
-	"mcp:start_proxy", "mcp:stop_proxy",
 	"mcp:mint_token", "mcp:mint_token:approval", "mcp:revoke_token",
 	"mcp:token_use", "mcp:auto_mint",
 }

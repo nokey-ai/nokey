@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), like `nokey proxy start` always did.
 
 ### Removed
+- The MCP `start_proxy` and `stop_proxy` tools. `start_proxy` loaded
+  every proxy-rule secret with no approval and kept serving them until
+  stopped, the one MCP path to secrets with no per-call gate. Agents can
+  make a single authenticated request with `exec_with_secrets` and
+  `curl`; for a long-lived proxy, run `nokey proxy start` yourself.
+  **Breaking.**
 - The fallback that accepted a raw 32-byte audit encryption key. Only
   builds older than the first tagged release wrote that format.
 

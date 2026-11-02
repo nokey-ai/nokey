@@ -26,7 +26,6 @@ import (
 	nokeyKeyring "github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/placeholder"
 	"github.com/nokey-ai/nokey/internal/policy"
-	"github.com/nokey-ai/nokey/internal/proxy"
 	"github.com/nokey-ai/nokey/internal/redact"
 	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/nokey-ai/nokey/internal/token"
@@ -84,12 +83,6 @@ type Handler struct {
 
 	tokenStore *token.Store
 	mcpSrv     *server.MCPServer
-
-	// mcp-go dispatches tool calls on a pool of workers, so handlers run
-	// concurrently. proxyMu is held for the whole of start_proxy/stop_proxy
-	// so two starts can't both pass the "already running" check.
-	proxyMu     sync.Mutex
-	proxyServer *proxy.Server
 
 	// sessionMu guards sessionTokenID and minting. It is only ever held
 	// briefly, never across a prompt, so reading the cached token can't
@@ -314,136 +307,8 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 		h.HandleListTokens,
 	)
 
-	// start_proxy — start the local HTTP/HTTPS proxy
-	s.AddTool(
-		mcp.NewTool("start_proxy",
-			mcp.WithDescription(
-				"Start a local HTTP/HTTPS proxy that injects secrets into request headers "+
-					"based on proxy rules in policies.yaml. Returns the proxy address. "+
-					"Set http_proxy and https_proxy to route requests through it.",
-			),
-			// Idempotent: a second call returns the running proxy's address.
-			mcp.WithTitleAnnotation("Start secret-injecting proxy"),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithIdempotentHintAnnotation(true),
-			mcp.WithOpenWorldHintAnnotation(false),
-			mcp.WithString("addr",
-				mcp.Description("Loopback address to listen on (default: 127.0.0.1:0 for random port). "+
-					"Non-loopback addresses are rejected."),
-			),
-		),
-		h.HandleStartProxy,
-	)
-
-	// stop_proxy — stop the running proxy
-	s.AddTool(
-		mcp.NewTool("stop_proxy",
-			mcp.WithDescription("Stop the running local HTTP/HTTPS proxy."),
-			mcp.WithTitleAnnotation("Stop proxy"),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithIdempotentHintAnnotation(true),
-			mcp.WithOpenWorldHintAnnotation(false),
-		),
-		h.HandleStopProxy,
-	)
-
 }
 
-func (h *Handler) HandleStartProxy(_ context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	h.proxyMu.Lock()
-	defer h.proxyMu.Unlock()
-
-	// If already running, return the address.
-	if h.proxyServer != nil {
-		addr := h.proxyServer.Addr()
-		if addr != "" {
-			return mcp.NewToolResultText(fmt.Sprintf("Proxy already running on %s", addr)), nil
-		}
-	}
-
-	// Validate the caller-supplied address first. This comes from the model,
-	// so refusing it before the keyring is opened means a bad address costs no
-	// keychain unlock and loads no secrets into memory.
-	addr := request.GetString("addr", "127.0.0.1:0")
-	if err := proxy.ValidateListenAddr(addr); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-
-	configDir, err := h.getConfigDir()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to get config directory: %s", err)), nil
-	}
-
-	// Load proxy rules from the current policy (reloaded from disk if the
-	// source file has changed since the last call).
-	pol := h.getPolicy()
-	rules := pol.ProxyRules()
-	if len(rules) == 0 {
-		return mcp.NewToolResultError("no proxy rules found in policies.yaml — add a proxy: section with rules"), nil
-	}
-
-	// Load or create CA.
-	ca, err := proxy.LoadOrCreateCA(configDir)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to load/create CA: %s", err)), nil
-	}
-
-	// Fetch referenced secrets.
-	secretNames := proxy.CollectSecretNames(rules)
-	store, err := h.getStore()
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
-	}
-
-	secrets := make(map[string]string, len(secretNames))
-	for _, name := range secretNames {
-		val, err := store.Get(name)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to get secret %q: %s", name, err)), nil
-		}
-		secrets[name] = val
-	}
-
-	srv := proxy.NewServer(ca, rules, secrets, h.recordAudit)
-
-	//nolint:contextcheck // proxy lifetime is the MCP session, not this request
-	actualAddr, err := srv.Start(addr)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to start proxy: %s", err)), nil
-	}
-
-	h.proxyServer = srv
-	h.recordAudit("mcp:start_proxy", "proxy", strings.Join(secretNames, ","), true, "")
-
-	return mcp.NewToolResultText(fmt.Sprintf(
-		"Proxy started on %s\n\nSet environment variables:\n  export http_proxy=http://%s\n  export https_proxy=http://%s\n\nCA cert: %s",
-		actualAddr, actualAddr, actualAddr, filepath.Join(configDir, "ca", "ca-cert.pem"),
-	)), nil
-}
-
-func (h *Handler) HandleStopProxy(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	h.proxyMu.Lock()
-	defer h.proxyMu.Unlock()
-
-	if h.proxyServer == nil {
-		return mcp.NewToolResultText("No proxy running."), nil
-	}
-
-	// WithoutCancel: a client cancelling the call must not cut the graceful
-	// shutdown short.
-	if err := h.proxyServer.Stop(context.WithoutCancel(ctx)); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to stop proxy: %s", err)), nil
-	}
-
-	h.proxyServer = nil
-	h.recordAudit("mcp:stop_proxy", "proxy", "", true, "")
-	return mcp.NewToolResultText("Proxy stopped."), nil
-}
-
-// HandleRenameSecret renames a secret after explicit user approval.
-// Approval is unconditional — not skipped by policy "approval: never" or
-// by a session token — because renaming can move a secret under a policy
-// rule that lets more commands read it.
 func (h *Handler) HandleRenameSecret(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	oldName := request.GetString("old_name", "")
 	newName := request.GetString("new_name", "")
