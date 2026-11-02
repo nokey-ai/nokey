@@ -732,61 +732,6 @@ func TestRunExec_PINAuthWithSession(t *testing.T) {
 	}
 }
 
-func TestRunExec_MigrateTipSuppressedInDedicatedMode(t *testing.T) {
-	if runtime.GOOS != "darwin" {
-		t.Skip("keychain migrate tip is macOS-only")
-	}
-	for _, dedicated := range []bool{false, true} {
-		t.Run(fmt.Sprintf("dedicated=%v", dedicated), func(t *testing.T) {
-			store, _ := newTestStore()
-			withTestKeyring(t, store)
-			c := config.DefaultConfig()
-			c.Audit.Enabled = false
-			c.Auth.DefaultMethod = "pin"
-			c.Auth.SessionTTL = "5m"
-			if dedicated {
-				c.Keyring.Dedicated = dedicatedTrue()
-			}
-			withTestConfig(t, c)
-
-			store.Set("KEY", "val")
-			store.SetPINHash("hash")
-			_ = session.Create("hash")
-
-			oldExec := execRunFn
-			oldExit := osExitFn
-			oldSkip := skipConfirm
-			oldMethod := authMethod
-			oldWarned := migrateWarned
-			t.Cleanup(func() {
-				execRunFn = oldExec
-				osExitFn = oldExit
-				skipConfirm = oldSkip
-				authMethod = oldMethod
-				migrateWarned = oldWarned
-			})
-			osExitFn = func(_ int) {}
-			execRunFn = func(string, []string, map[string]string, ...string) (int, error) { return 0, nil }
-			skipConfirm = true
-			authMethod = "pin"
-			migrateWarned = false
-
-			cmd := &cobra.Command{}
-			cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-			errOut := captureStderr(t, func() {
-				if err := runExec(cmd, []string{"echo"}); err != nil {
-					t.Fatalf("runExec: %v", err)
-				}
-			})
-			gotTip := strings.Contains(errOut, "keychain migrate")
-			if gotTip == dedicated {
-				t.Errorf("dedicated=%v: tip shown=%v, stderr: %q", dedicated, gotTip, errOut)
-			}
-		})
-	}
-}
-
 func TestRunExec_InvalidSessionTTL(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)

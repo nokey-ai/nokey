@@ -308,3 +308,21 @@ func TestRunStatus_JSONIncludesChecks(t *testing.T) {
 	}
 	t.Error("no PIN check in JSON output")
 }
+
+// A login-keychain install with secrets the legacy migrate would help gets
+// a status warning instead of a hint on every command.
+func TestRunStatus_KeychainMigrationWarning(t *testing.T) {
+	store, _ := newTestStore()
+	store.Set("FOO", "bar")
+	withTestKeyring(t, store)
+	withKeychainGOOS(t, "darwin")
+	withTestConfig(t, config.DefaultConfig())
+
+	output, err := runStatusStrict(t)
+	if err != nil {
+		t.Fatalf("a migration warning must not fail --strict: %v", err)
+	}
+	if !strings.Contains(output, "1 secret(s) not yet trusted") || !strings.Contains(output, "nokey keychain migrate") {
+		t.Errorf("output should warn about the pending migration with a hint:\n%s", output)
+	}
+}

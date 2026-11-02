@@ -62,6 +62,8 @@ type statusReport struct {
 	strictErr  error // policies.yaml loads, but has keys Load silently ignores
 	listErr    error
 	pinSet     bool
+	// migratePending counts secrets the legacy keychain migrate would help.
+	migratePending int
 }
 
 func collectStatus() *statusReport {
@@ -76,6 +78,7 @@ func collectStatus() *statusReport {
 		out.PIN = "unknown"
 	} else {
 		out.Keyring = "accessible"
+		r.migratePending = keychainMigrationPending(store)
 		if store.HasPIN() {
 			r.pinSet = true
 			out.PIN = "configured"
@@ -291,6 +294,11 @@ func statusChecks(r *statusReport) []statusCheck {
 		} else {
 			add(checkWarn, "PIN", "not configured; anything that can run nokey can read secrets", "Run 'nokey auth setup' to require a PIN")
 		}
+	}
+
+	if r.migratePending > 0 {
+		add(checkWarn, "keychain", fmt.Sprintf("%d secret(s) not yet trusted for this build; macOS may prompt for each", r.migratePending),
+			"Run 'nokey keychain migrate', or 'nokey keychain to-dedicated' to move to a dedicated keychain")
 	}
 
 	if r.out.AuditEnabled {

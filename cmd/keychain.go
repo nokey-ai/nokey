@@ -240,35 +240,31 @@ func init() {
 	rootCmd.AddCommand(keychainCmd)
 }
 
-// checkKeychainMigrationHint prints a one-time hint if existing items need
-// migration. The hint advertises the legacy `keychain migrate` command
-// (re-ACLs login-keychain items to trust the current binary). It is
-// suppressed on every install where the legacy command would be the wrong
-// advice: non-macOS, biometrics explicitly disabled, already migrated to
-// the dedicated keychain, or running in dedicated-keychain mode at all —
-// users on dedicated mode use `to-dedicated`, not the legacy migrate.
-func checkKeychainMigrationHint() {
-	if keychainGOOS != "darwin" {
-		return
+// keychainMigrationPending returns how many secrets the legacy
+// `keychain migrate` command (re-ACLs login-keychain items to trust the
+// current binary) would still help with, for nokey status to report. It is
+// 0 on every install where that command would be the wrong advice:
+// non-macOS, biometrics explicitly disabled, already migrated to the
+// dedicated keychain, or running in dedicated-keychain mode at all — users
+// on dedicated mode use `to-dedicated`, not the legacy migrate.
+func keychainMigrationPending(store *nkeyring.Store) int {
+	if keychainGOOS != "darwin" || store == nil {
+		return 0
 	}
 	if cfg == nil || (cfg.Auth.UseBiometrics != nil && !*cfg.Auth.UseBiometrics) {
-		return
+		return 0
 	}
 	if dedicatedConfigEnabled() {
-		return
-	}
-	store, err := getKeyring()
-	if err != nil {
-		return
+		return 0
 	}
 	if store.IsKeychainMigrated() || store.IsMigratedToDedicated() {
-		return
+		return 0
 	}
 	keys, err := store.List()
-	if err != nil || len(keys) == 0 {
-		return
+	if err != nil {
+		return 0
 	}
-	fmt.Fprintf(os.Stderr, "Hint: Run 'nokey keychain migrate' to enable Touch ID for %d existing secret(s).\n", len(keys))
+	return len(keys)
 }
 
 func runKeychainMigrate(cmd *cobra.Command, args []string) error {

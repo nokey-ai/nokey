@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rule needs the MCP server (session tokens exist only there).
 
 ### Changed
+- The `nokey keychain migrate` hint no longer prints on every command.
+  It is now a warning in `nokey status`, which also suggests
+  `keychain to-dedicated`. The separate tip `nokey exec` printed after
+  PIN entry is gone.
 - `nokey audit list --json` now prints a JSON array of entries, the
   same shape as `nokey audit export --format json`, instead of
   `{"entries": [...], "count": N}`. **Breaking** for scripts reading
