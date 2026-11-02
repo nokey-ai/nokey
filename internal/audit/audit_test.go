@@ -1129,24 +1129,19 @@ func TestGetOrCreateEncryptionKey_CreatesNew(t *testing.T) {
 	}
 }
 
-func TestGetOrCreateEncryptionKey_LegacyRaw32(t *testing.T) {
+// A raw 32-byte key was written only by builds that predate the first
+// release; it is no longer accepted.
+func TestGetOrCreateEncryptionKey_RawKeyRejected(t *testing.T) {
 	resetEncKeyCache(t)
 	store := newTestStore()
-	// Store a legacy 32-byte raw key
 	raw32 := strings.Repeat("A", 32)
 	_ = store.Set(AuditEncryptionKeyKey, raw32)
 
-	key, err := getOrCreateEncryptionKey(store)
-	if err != nil {
-		t.Fatalf("getOrCreateEncryptionKey: %v", err)
+	if _, err := getOrCreateEncryptionKey(store); err == nil || !strings.Contains(err.Error(), "invalid encryption key length") {
+		t.Fatalf("err = %v, want invalid key length", err)
 	}
-	if key == nil {
-		t.Fatal("expected non-nil key")
-	}
-	// Should have migrated to base64
-	val, _ := store.Get(AuditEncryptionKeyKey)
-	if val == raw32 {
-		t.Error("expected key to be migrated to base64")
+	if val, _ := store.Get(AuditEncryptionKeyKey); val != raw32 {
+		t.Error("a rejected key must be left untouched")
 	}
 }
 

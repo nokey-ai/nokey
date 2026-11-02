@@ -891,23 +891,12 @@ func loadOrCreateEncryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byt
 	// Try to load existing key
 	keyStr, err := store.Get(AuditEncryptionKeyKey)
 	if err == nil {
-		// Key exists — try base64 decode first (new format)
 		decoded, decErr := base64.StdEncoding.DecodeString(keyStr)
 		if decErr == nil && len(decoded) == 32 {
 			var key [32]byte
 			copy(key[:], decoded)
 			return &key, nil
 		}
-
-		// Fall back to raw bytes (legacy format — may have null-byte issues)
-		if len(keyStr) == 32 {
-			var key [32]byte
-			copy(key[:], []byte(keyStr))
-			// Re-store as base64 for future safety
-			_ = store.Set(AuditEncryptionKeyKey, base64.StdEncoding.EncodeToString(key[:]))
-			return &key, nil
-		}
-
 		return nil, fmt.Errorf("invalid encryption key length")
 	}
 
