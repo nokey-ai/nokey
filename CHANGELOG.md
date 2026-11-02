@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-01
+
 ### Removed
 - The MCP GitHub tools (`github_api`, `github_create_issue`,
   `github_create_pr`, `github_list_issues`, `github_list_prs`,
