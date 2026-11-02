@@ -174,11 +174,10 @@ func runProxyInitCA(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	ca, err := proxy.LoadOrCreateCA(configDir)
-	if err != nil {
+	// Only the side effect of creating the CA files is needed.
+	if _, err := proxy.LoadOrCreateCA(configDir); err != nil {
 		return fmt.Errorf("failed to create CA: %w", err)
 	}
-	_ = ca // Just need side effect of creating files.
 
 	certPath := filepath.Join(configDir, "ca", "ca-cert.pem")
 	fmt.Printf("CA certificate: %s\n", certPath)
