@@ -1481,24 +1481,90 @@ func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
 	c.Auth.AutoMintToken = true
 	c.Audit.Enabled = false
 
+	prompts := []string{}
 	h := New(Deps{
 		GetStore:  func() (SecretStore, error) { return store, nil },
 		GetPolicy: staticPolicy(nil),
 		Config:    c,
-		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+		ApprovalFn: func(_ context.Context, _ approval.Requester, command string, _ []string, _ string) error {
+			prompts = append(prompts, command)
 			return fmt.Errorf("user declined")
 		},
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
 
-	// Auto-mint declined -> falls through. With nil policy, no further approval needed.
+	// Declining the session token must not grant access by itself, even
+	// with no policy file: the per-call prompt follows, and its decline
+	// denies the call.
 	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
-	if err != nil {
-		t.Errorf("expected nil (fallthrough with nil policy), got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "approval denied") {
+		t.Errorf("expected approval denied after both prompts were declined, got: %v", err)
+	}
+	if len(prompts) != 2 || prompts[0] != "session_token" || prompts[1] != "cmd" {
+		t.Errorf("prompts = %v, want [session_token cmd]", prompts)
 	}
 	if h.sessionTokenID != "" {
 		t.Error("sessionTokenID should remain empty after declined auto-mint")
+	}
+}
+
+// A declined session token followed by an approved per-call prompt grants
+// just that call.
+func TestCheckTokenOrApproval_AutoMint_DeclinedThenPerCallApproved(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "val"}}
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	c.Audit.Enabled = false
+	h := New(Deps{
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(nil),
+		Config:    c,
+		ApprovalFn: func(_ context.Context, _ approval.Requester, command string, _ []string, _ string) error {
+			if command == "session_token" {
+				return fmt.Errorf("user declined")
+			}
+			return nil
+		},
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+		t.Fatalf("per-call approval should grant the call: %v", err)
+	}
+	if h.sessionTokenID != "" {
+		t.Error("no session token should exist after it was declined")
+	}
+}
+
+// A rule that says approval: never raises no prompt at all, not even the
+// session-token prompt.
+func TestCheckTokenOrApproval_AutoMint_SkippedWhenRuleNeverPrompts(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"SEC": "val"}}
+	c := config.DefaultConfig()
+	c.Auth.AutoMintToken = true
+	c.Audit.Enabled = false
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"cmd"}, Secrets: []string{"SEC"}, Approval: policy.ApprovalNever}}}
+	prompts := 0
+	h := New(Deps{
+		GetStore:  func() (SecretStore, error) { return store, nil },
+		GetPolicy: staticPolicy(pol),
+		Config:    c,
+		ApprovalFn: func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+			prompts++
+			return nil
+		},
+		AuditFn:      func(string, string, string, bool, string) {},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+		t.Fatalf("checkTokenOrApproval: %v", err)
+	}
+	if prompts != 0 {
+		t.Errorf("prompts = %d, want 0 under approval: never", prompts)
+	}
+	if h.sessionTokenID != "" {
+		t.Error("no session token should be minted when no prompt was needed")
 	}
 }
 
@@ -2136,7 +2202,10 @@ func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
 	autoMintPromptTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { autoMintPromptTimeout = old })
 
-	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+	h := autoMintHandler(t, func(ctx context.Context, _ approval.Requester, command string, _ []string, _ string) error {
+		if command != "session_token" {
+			return fmt.Errorf("declined") // the mandatory per-call prompt after the timeout
+		}
 		<-ctx.Done()
 		return ctx.Err()
 	})
@@ -2156,8 +2225,11 @@ func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
 // Calls waiting on a pending auto-mint share its outcome, a decline
 // included, rather than each raising a prompt of its own.
 func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
-	var approvals atomic.Int32
-	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, _ string, _ []string, _ string) error {
+	var approvals atomic.Int32 // session-token prompts only
+	h := autoMintHandler(t, func(_ context.Context, _ approval.Requester, command string, _ []string, _ string) error {
+		if command != "session_token" {
+			return fmt.Errorf("user declined") // each call's own prompt after the shared decline
+		}
 		approvals.Add(1)
 		time.Sleep(50 * time.Millisecond)
 		return fmt.Errorf("user declined")

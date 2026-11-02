@@ -831,16 +831,26 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", base, names, base)
 	}
 
+	// A rule that resolves to approval: never means no prompt of any kind,
+	// so the session-token prompt is skipped too. With no policy file the
+	// session prompt is the only gate, so it still runs.
+	needsApproval := pol.RequiresApproval(command, secretNames)
+	if pol != nil && !needsApproval {
+		return nil
+	}
+
 	// Auto-mint: one approval covers the rest of the session.
 	if h.cfg != nil && h.cfg.Auth.AutoMintToken {
 		if err := h.tryAutoMint(ctx, secretNames); err == nil {
 			return nil
 		}
-		// Auto-mint declined or failed — fall through to per-call approval.
+		// The user declined the session token (or the prompt failed). The
+		// per-call prompt is then mandatory, so a decline never grants
+		// access on its own.
+		needsApproval = true
 	}
 
-	// Fall through to existing approval gateway.
-	if pol.RequiresApproval(command, secretNames) {
+	if needsApproval {
 		if err := h.approvalFn(ctx, h.mcpSrv, command, secretNames, detail); err != nil {
 			return fmt.Errorf("approval denied: %w", err)
 		}
