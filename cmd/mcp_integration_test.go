@@ -165,7 +165,7 @@ func TestMCPIntegration_InitializeAndListTools(t *testing.T) {
 	for _, tool := range toolsResult.Tools {
 		toolNames[tool.Name] = true
 	}
-	for _, expected := range []string{"list_secrets", "exec", "exec_with_secrets", "mint_token"} {
+	for _, expected := range []string{"list_secrets", "rename_secret", "exec", "exec_with_secrets", "mint_token"} {
 		if !toolNames[expected] {
 			t.Errorf("expected tool %q not found in tools list", expected)
 		}

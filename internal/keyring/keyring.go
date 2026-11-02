@@ -223,6 +223,81 @@ func (s *Store) Delete(key string) error {
 	return nil
 }
 
+// Rename moves the secret stored under oldKey to newKey. The keyring has
+// no native rename, so the value is copied to newKey, read back and
+// compared, and only then is oldKey removed. If removing oldKey fails the
+// copy is removed again, so a failed rename never leaves both names in
+// place. Rename refuses to overwrite an existing newKey and never touches
+// internal __nokey_ keys.
+func (s *Store) Rename(oldKey, newKey string) error {
+	if oldKey == "" {
+		return fmt.Errorf("key cannot be empty")
+	}
+	if strings.HasPrefix(oldKey, "__nokey_") {
+		return fmt.Errorf("secret name cannot use reserved prefix '__nokey_'")
+	}
+	if err := ValidateSecretName(newKey); err != nil {
+		return err
+	}
+	if oldKey == newKey {
+		return fmt.Errorf("old and new names are the same: %s", oldKey)
+	}
+
+	// Check for the new name via Keys, not Get, so the check reads no
+	// secret value (and triggers no access prompt for it).
+	keys, err := s.ring.Keys()
+	if err != nil {
+		return fmt.Errorf("failed to list secrets: %w", err)
+	}
+	for _, k := range keys {
+		if k == newKey {
+			return fmt.Errorf("secret already exists: %s", newKey)
+		}
+	}
+
+	if s.trustBuild != nil {
+		s.trustBuildOnce.Do(s.trustBuild)
+	}
+	item, err := s.ring.Get(oldKey)
+	if err != nil {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
+			return fmt.Errorf("secret not found: %s", oldKey)
+		}
+		return fmt.Errorf("failed to retrieve secret: %w", err)
+	}
+
+	moved := keyring.Item{
+		Key:   newKey,
+		Data:  item.Data,
+		Label: "nokey: " + newKey,
+	}
+	if err := s.ring.Set(moved); err != nil {
+		return fmt.Errorf("failed to store secret: %w", err)
+	}
+
+	check, err := s.ring.Get(newKey)
+	if err != nil || !bytes.Equal(check.Data, item.Data) {
+		_ = s.ring.Remove(newKey)
+		if err != nil {
+			return fmt.Errorf("failed to verify renamed secret: %w", err)
+		}
+		return fmt.Errorf("failed to verify renamed secret: stored value does not match")
+	}
+
+	if err := s.ring.Remove(oldKey); err != nil {
+		if rbErr := s.ring.Remove(newKey); rbErr != nil {
+			return fmt.Errorf("failed to delete old secret %s: %w (the copy at %s could not be removed: %w)", oldKey, err, newKey, rbErr)
+		}
+		return fmt.Errorf("failed to delete old secret %s: %w", oldKey, err)
+	}
+
+	s.mu.Lock()
+	delete(s.cache, oldKey)
+	s.cache[newKey] = moved
+	s.mu.Unlock()
+	return nil
+}
+
 // List returns all stored secret keys (not values)
 // Filters out internal keys like the PIN hash
 func (s *Store) List() ([]string, error) {

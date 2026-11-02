@@ -64,6 +64,22 @@ func (m *mapStore) List() ([]string, error) {
 	return keys, nil
 }
 
+func (m *mapStore) Rename(oldName, newName string) error {
+	if m.err != nil {
+		return m.err
+	}
+	v, ok := m.secrets[oldName]
+	if !ok {
+		return fmt.Errorf("secret not found: %s", oldName)
+	}
+	if _, ok := m.secrets[newName]; ok {
+		return fmt.Errorf("secret already exists: %s", newName)
+	}
+	m.secrets[newName] = v
+	delete(m.secrets, oldName)
+	return nil
+}
+
 // --- helpers ---
 
 // getResultText extracts the text content from a CallToolResult.
@@ -3139,3 +3155,204 @@ func TestCheckTokenOrApproval_TokenRequiredSaysWhatToMint(t *testing.T) {
 		}
 	}
 }
+
+// --- rename_secret ---
+
+// approvalRecorder counts approval prompts and records what they showed.
+type approvalRecorder struct {
+	calls   int
+	command string
+	secrets []string
+	detail  string
+	err     error
+}
+
+func (r *approvalRecorder) fn(_ context.Context, _ approval.Requester, command string, secrets []string, detail string) error {
+	r.calls++
+	r.command, r.secrets, r.detail = command, secrets, detail
+	return r.err
+}
+
+type auditRecord struct {
+	op, command, target string
+	ok                  bool
+}
+
+func newRenameHandler(t *testing.T, store SecretStore, pol *policy.Policy, rec *approvalRecorder) (*Handler, *[]auditRecord) {
+	t.Helper()
+	var audits []auditRecord
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	h := New(Deps{
+		GetStore:   func() (SecretStore, error) { return store, nil },
+		GetPolicy:  staticPolicy(pol),
+		Config:     c,
+		ApprovalFn: rec.fn,
+		AuditFn: func(op, command, target string, ok bool, _ string) {
+			audits = append(audits, auditRecord{op, command, target, ok})
+		},
+		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
+	})
+	return h, &audits
+}
+
+func renameRequest(oldName, newName string) mcp.CallToolRequest {
+	return makeCallToolRequest(map[string]any{"old_name": oldName, "new_name": newName})
+}
+
+func TestHandleRenameSecret_Approved(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"OLD": "value"}}
+	rec := &approvalRecorder{}
+	h, audits := newRenameHandler(t, store, nil, rec)
+
+	result, err := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW"))
+	if err != nil {
+		t.Fatalf("HandleRenameSecret: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error result: %s", getResultText(t, result))
+	}
+	if text := getResultText(t, result); !strings.Contains(text, "renamed to NEW") {
+		t.Errorf("result = %q, want rename confirmation", text)
+	}
+	if _, ok := store.secrets["OLD"]; ok {
+		t.Error("OLD should be gone")
+	}
+	if store.secrets["NEW"] != "value" {
+		t.Errorf("NEW = %q, want value", store.secrets["NEW"])
+	}
+	if rec.calls != 1 || rec.command != "rename_secret" {
+		t.Errorf("approval calls = %d, command = %q; want one rename_secret prompt", rec.calls, rec.command)
+	}
+	if len(rec.secrets) != 1 || rec.secrets[0] != "OLD" {
+		t.Errorf("approval secrets = %v, want [OLD]", rec.secrets)
+	}
+	for _, want := range []string{`"OLD"`, `"NEW"`, "Policy rules"} {
+		if !strings.Contains(rec.detail, want) {
+			t.Errorf("approval detail %q missing %q", rec.detail, want)
+		}
+	}
+	wantAudits := []auditRecord{
+		{"mcp:rename_secret:approval", "rename_secret", "OLD -> NEW", true},
+		{"mcp:rename_secret", "rename_secret", "OLD -> NEW", true},
+	}
+	if len(*audits) != len(wantAudits) {
+		t.Fatalf("audits = %+v, want %+v", *audits, wantAudits)
+	}
+	for i, a := range wantAudits {
+		if (*audits)[i] != a {
+			t.Errorf("audit[%d] = %+v, want %+v", i, (*audits)[i], a)
+		}
+	}
+}
+
+func TestHandleRenameSecret_Declined(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"OLD": "value"}}
+	rec := &approvalRecorder{err: fmt.Errorf("user declined secret access for \"rename_secret\"")}
+	h, audits := newRenameHandler(t, store, nil, rec)
+
+	result, _ := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW"))
+	if !result.IsError || !strings.Contains(getResultText(t, result), "declined") {
+		t.Errorf("result = %q, want declined error", getResultText(t, result))
+	}
+	if store.secrets["OLD"] != "value" {
+		t.Error("OLD must be untouched when approval is declined")
+	}
+	if _, ok := store.secrets["NEW"]; ok {
+		t.Error("NEW must not exist when approval is declined")
+	}
+	if len(*audits) != 1 || (*audits)[0].op != "mcp:rename_secret:approval" || (*audits)[0].ok {
+		t.Errorf("audits = %+v, want one failed approval record", *audits)
+	}
+}
+
+// A policy that skips approval for the secret, and a session token, must
+// not skip the rename prompt.
+func TestHandleRenameSecret_AlwaysPrompts(t *testing.T) {
+	store := &mapStore{secrets: map[string]string{"OLD": "value"}}
+	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"*"}, Secrets: []string{"*"}, Approval: "never"}}}
+	rec := &approvalRecorder{}
+	h, _ := newRenameHandler(t, store, pol, rec)
+	h.sessionTokenID = "tok-123"
+
+	req := makeCallToolRequest(map[string]any{"old_name": "OLD", "new_name": "NEW", "token": "tok-123"})
+	if _, err := h.HandleRenameSecret(context.Background(), req); err != nil {
+		t.Fatalf("HandleRenameSecret: %v", err)
+	}
+	if rec.calls != 1 {
+		t.Errorf("approval calls = %d, want 1 even with approval: never and a token", rec.calls)
+	}
+}
+
+func TestHandleRenameSecret_RejectsWithoutPrompt(t *testing.T) {
+	tests := []struct {
+		name, old, new, want string
+	}{
+		{"missing old_name", "", "NEW", "required"},
+		{"missing new_name", "OLD", "", "required"},
+		{"reserved old", "__nokey_pin_hash", "NEW", "reserved prefix"},
+		{"reserved new", "OLD", "__nokey_pin_hash", "reserved prefix"},
+		{"invalid new", "OLD", "bad name", "invalid secret name"},
+		{"same name", "OLD", "OLD", "same"},
+		{"old not found", "MISSING", "NEW", "not found"},
+		{"new exists", "OLD", "TAKEN", "already exists"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store := &mapStore{secrets: map[string]string{"OLD": "v1", "TAKEN": "v2"}}
+			rec := &approvalRecorder{}
+			h, _ := newRenameHandler(t, store, nil, rec)
+
+			result, err := h.HandleRenameSecret(context.Background(), renameRequest(tt.old, tt.new))
+			if err != nil {
+				t.Fatalf("HandleRenameSecret: %v", err)
+			}
+			if !result.IsError || !strings.Contains(getResultText(t, result), tt.want) {
+				t.Errorf("result = %q, want error containing %q", getResultText(t, result), tt.want)
+			}
+			if rec.calls != 0 {
+				t.Errorf("user was prompted %d times for a rename that cannot happen", rec.calls)
+			}
+			if store.secrets["OLD"] != "v1" || store.secrets["TAKEN"] != "v2" || len(store.secrets) != 2 {
+				t.Errorf("store changed: %v", store.secrets)
+			}
+		})
+	}
+}
+
+func TestHandleRenameSecret_StoreErrors(t *testing.T) {
+	t.Run("open keyring", func(t *testing.T) {
+		rec := &approvalRecorder{}
+		c := config.DefaultConfig()
+		h := New(Deps{
+			GetStore:   func() (SecretStore, error) { return nil, fmt.Errorf("locked") },
+			Config:     c,
+			ApprovalFn: rec.fn,
+		})
+		result, _ := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW"))
+		if !result.IsError || !strings.Contains(getResultText(t, result), "failed to open keyring") {
+			t.Errorf("result = %q, want keyring error", getResultText(t, result))
+		}
+		if rec.calls != 0 {
+			t.Error("should not prompt when the keyring cannot be opened")
+		}
+	})
+
+	t.Run("rename fails after approval", func(t *testing.T) {
+		store := &failingRenameStore{mapStore: mapStore{secrets: map[string]string{"OLD": "v"}}}
+		rec := &approvalRecorder{}
+		h, audits := newRenameHandler(t, store, nil, rec)
+		result, _ := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW"))
+		if !result.IsError || !strings.Contains(getResultText(t, result), "write failed") {
+			t.Errorf("result = %q, want rename error", getResultText(t, result))
+		}
+		last := (*audits)[len(*audits)-1]
+		if last.op != "mcp:rename_secret" || last.ok {
+			t.Errorf("last audit = %+v, want failed mcp:rename_secret", last)
+		}
+	})
+}
+
+type failingRenameStore struct{ mapStore }
+
+func (f *failingRenameStore) Rename(string, string) error { return fmt.Errorf("write failed") }

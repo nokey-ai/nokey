@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `nokey rename OLD NEW` (alias `mv`) renames a secret and keeps its
+  value. The value is copied to the new name, read back and compared,
+  and only then removed from the old name; if that removal fails the
+  copy is removed again, so a failed rename never leaves both names.
+  Renaming onto an existing secret is refused. Audited as `rename`.
+- MCP `rename_secret` tool, which does the same from an AI assistant.
+  It always asks the user to approve, showing both names, even when a
+  policy rule says `approval: never` or a session token is in use,
+  because policy rules match secret names and a rename can change which
+  commands may read a secret. Requests that would fail (unknown secret,
+  name already taken, invalid name) are refused before any prompt.
+  Audited as `mcp:rename_secret` and `mcp:rename_secret:approval`.
+
 ## [0.7.0] - 2026-11-01
 
 ### Removed

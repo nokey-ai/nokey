@@ -1160,3 +1160,93 @@ func TestRunExport_HasPINPath(t *testing.T) {
 	}
 	// AuthenticatedGetAll should fail because authenticateFn requires TTY
 }
+
+// --- rename ---
+
+func TestRunRename_Success(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	withTestConfig(t, c)
+
+	_ = store.Set("OLD_KEY", "secret")
+
+	output := captureStdout(t, func() {
+		if err := runRename(nil, []string{"OLD_KEY", "NEW_KEY"}); err != nil {
+			t.Fatalf("runRename: %v", err)
+		}
+	})
+	if !strings.Contains(output, "renamed to 'NEW_KEY'") {
+		t.Errorf("output = %q, want rename message", output)
+	}
+	keys, _ := store.List()
+	if len(keys) != 1 || keys[0] != "NEW_KEY" {
+		t.Errorf("keys = %v, want [NEW_KEY]", keys)
+	}
+	if got, _ := store.Get("NEW_KEY"); got != "secret" {
+		t.Errorf("NEW_KEY = %q, want secret", got)
+	}
+}
+
+func TestRunRename_Errors(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"missing", []string{"NONEXISTENT", "NEW_KEY"}, "secret not found"},
+		{"target exists", []string{"OLD_KEY", "TAKEN"}, "already exists"},
+		{"invalid target", []string{"OLD_KEY", "bad name"}, "invalid secret name"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			store, _ := newTestStore()
+			withTestKeyring(t, store)
+			c := config.DefaultConfig()
+			c.Audit.Enabled = false
+			withTestConfig(t, c)
+			_ = store.Set("OLD_KEY", "v1")
+			_ = store.Set("TAKEN", "v2")
+
+			err := runRename(nil, tt.args)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want it to contain %q", err, tt.want)
+			}
+			if got, _ := store.Get("OLD_KEY"); got != "v1" {
+				t.Errorf("OLD_KEY = %q after failed rename, want v1", got)
+			}
+			if got, _ := store.Get("TAKEN"); got != "v2" {
+				t.Errorf("TAKEN = %q after failed rename, want v2", got)
+			}
+		})
+	}
+}
+
+func TestRunRename_WithAudit(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestAuditDir(t)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = true
+	withTestConfig(t, c)
+
+	_ = store.Set("OLD_KEY", "secret")
+
+	output := captureStdout(t, func() {
+		_ = captureStderr(t, func() {
+			if err := runRename(nil, []string{"OLD_KEY", "NEW_KEY"}); err != nil {
+				t.Fatalf("runRename: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(output, "renamed to") {
+		t.Errorf("output = %q, want rename message", output)
+	}
+}
+
+func TestRenameCmd_RequiresTwoArgs(t *testing.T) {
+	if err := renameCmd.Args(renameCmd, []string{"ONLY_ONE"}); err == nil {
+		t.Error("rename should require two arguments")
+	}
+}

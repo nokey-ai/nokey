@@ -50,6 +50,7 @@ type SecretStore interface {
 	Get(name string) (string, error)
 	GetAll() (map[string]string, error)
 	List() ([]string, error)
+	Rename(oldName, newName string) error
 }
 
 // ApprovalFunc is the signature for requesting user approval. detail says
@@ -142,6 +143,31 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 			mcp.WithOpenWorldHintAnnotation(false),
 		),
 		h.HandleListSecrets,
+	)
+
+	// rename_secret — changes which name (and so which policy rules) a
+	// secret falls under, so it always asks the user first.
+	s.AddTool(
+		mcp.NewTool("rename_secret",
+			mcp.WithDescription(
+				"Rename a stored secret, keeping its value. Refuses to overwrite an existing secret. "+
+					"Always requires user approval: policy rules match secret names, so a rename can change which commands may read the secret. "+
+					"Session tokens do not skip this approval.",
+			),
+			mcp.WithTitleAnnotation("Rename secret"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(false),
+			mcp.WithString("old_name",
+				mcp.Required(),
+				mcp.Description("Current secret name"),
+			),
+			mcp.WithString("new_name",
+				mcp.Required(),
+				mcp.Description("New secret name; must not already exist"),
+			),
+		),
+		h.HandleRenameSecret,
 	)
 
 	// exec — run a command with secrets injected, output always redacted
@@ -413,6 +439,61 @@ func (h *Handler) HandleStopProxy(ctx context.Context, _ mcp.CallToolRequest) (*
 	h.proxyServer = nil
 	h.recordAudit("mcp:stop_proxy", "proxy", "", true, "")
 	return mcp.NewToolResultText("Proxy stopped."), nil
+}
+
+// HandleRenameSecret renames a secret after explicit user approval.
+// Approval is unconditional — not skipped by policy "approval: never" or
+// by a session token — because renaming can move a secret under a policy
+// rule that lets more commands read it.
+func (h *Handler) HandleRenameSecret(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	oldName := request.GetString("old_name", "")
+	newName := request.GetString("new_name", "")
+	if oldName == "" || newName == "" {
+		return mcp.NewToolResultError("parameters 'old_name' and 'new_name' are required"), nil
+	}
+	target := oldName + " -> " + newName
+
+	// Reject anything Rename would refuse before prompting, so the user is
+	// never asked to approve a rename that can't happen.
+	fail := func(err error) (*mcp.CallToolResult, error) {
+		h.recordAudit("mcp:rename_secret", "rename_secret", target, false, err.Error())
+		return mcp.NewToolResultError(fmt.Sprintf("failed to rename secret: %s", err)), nil
+	}
+	if strings.HasPrefix(oldName, "__nokey_") {
+		return fail(fmt.Errorf("secret name cannot use reserved prefix '__nokey_'"))
+	}
+	if err := nokeyKeyring.ValidateSecretName(newName); err != nil {
+		return fail(err)
+	}
+	if oldName == newName {
+		return fail(fmt.Errorf("old and new names are the same: %s", oldName))
+	}
+	store, err := h.getStore()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to open keyring: %s", err)), nil
+	}
+	if err := requireSecretsExist(store, []string{oldName}); err != nil {
+		return fail(err)
+	}
+	if err := requireSecretsExist(store, []string{newName}); err == nil {
+		return fail(fmt.Errorf("secret already exists: %s", newName))
+	}
+
+	detail := fmt.Sprintf(
+		"rename %s to %s. Policy rules match secret names, so this can change which commands may read it.",
+		approval.Quote(oldName), approval.Quote(newName),
+	)
+	if err := h.approvalFn(ctx, h.mcpSrv, "rename_secret", []string{oldName}, detail); err != nil {
+		h.recordAudit("mcp:rename_secret:approval", "rename_secret", target, false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	h.recordAudit("mcp:rename_secret:approval", "rename_secret", target, true, "")
+
+	if err := store.Rename(oldName, newName); err != nil {
+		return fail(err)
+	}
+	h.recordAudit("mcp:rename_secret", "rename_secret", target, true, "")
+	return mcp.NewToolResultText(fmt.Sprintf("Secret %s renamed to %s.", oldName, newName)), nil
 }
 
 func (h *Handler) HandleListSecrets(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
