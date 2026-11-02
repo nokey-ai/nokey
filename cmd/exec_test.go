@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"runtime"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"time"
 
 	kring "github.com/byteness/keyring"
+	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
@@ -103,6 +106,37 @@ func TestRunExec_PolicyDenies(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "policy denied") {
 		t.Errorf("error = %v, want policy denial", err)
+	}
+}
+
+// A token_required rule is refused by the CLI: session tokens exist only in
+// the MCP server, so skipping the rule here would let an agent shell out
+// around it.
+func TestRunExec_PolicyTokenRequiredDenies(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	withTestConfigDir(t, "rules:\n  - commands: [\"echo\"]\n    secrets: [\"MY_SECRET\"]\n    approval: never\n    token_required: true\n")
+	store.Set("MY_SECRET", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(_ int) {}
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		t.Fatal("execRunFn should not run when policy requires a token")
+		return 0, nil
+	}
+	skipConfirm = true
+	authMethod = "none"
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+
+	err := runExec(cmd, []string{"echo", "hi"})
+	if err == nil || !strings.Contains(err.Error(), "requires a session token") {
+		t.Fatalf("error = %v, want token-required denial", err)
 	}
 }
 
@@ -1719,6 +1753,64 @@ func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	if !found {
 		t.Errorf("expected http_proxy in env vars, got: %v", envVars)
 	}
+}
+
+// The isolation proxy records blocked requests in the audit log, like
+// nokey proxy start does.
+func TestSetupIsolationProxy_AuditsBlockedRequests(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	withTestAuditDir(t)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = true
+	withTestConfig(t, c)
+	withTestConfigDir(t, `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_KEY"
+`)
+
+	envVars, cleanup, err := setupIsolationProxy(map[string]string{"MY_KEY": "secret-val"})
+	if err != nil {
+		t.Fatalf("setupIsolationProxy: %v", err)
+	}
+	defer cleanup()
+
+	var proxyURL string
+	for _, ev := range envVars {
+		if strings.HasPrefix(ev, "http_proxy=") {
+			proxyURL = strings.TrimPrefix(ev, "http_proxy=")
+		}
+	}
+	if proxyURL == "" {
+		t.Fatalf("no http_proxy in %v", envVars)
+	}
+	pu, err := url.Parse(proxyURL)
+	if err != nil {
+		t.Fatalf("parse proxy url: %v", err)
+	}
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}}
+	resp, err := client.Get("http://blocked.example/")
+	if err != nil {
+		t.Fatalf("GET through proxy: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", resp.StatusCode)
+	}
+
+	log, err := audit.Load(store)
+	if err != nil {
+		t.Fatalf("audit.Load: %v", err)
+	}
+	for _, e := range log.Entries {
+		if e.Operation == "proxy:http:blocked" {
+			return
+		}
+	}
+	t.Errorf("no proxy:http:blocked audit entry; entries: %+v", log.Entries)
 }
 
 func TestSetupIsolationProxy_OverridesProxyBypassVars(t *testing.T) {

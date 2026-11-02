@@ -45,6 +45,5 @@ func FuzzLoad(f *testing.F) {
 		_ = pol.Check("curl", []string{"API_KEY"})
 		_ = pol.RequiresApproval("curl", []string{"API_KEY"})
 		_ = pol.RequiresToken("curl", []string{"API_KEY"})
-		_ = pol.ProxyRequiresApproval("api.example.com", []string{"TOKEN"})
 	})
 }

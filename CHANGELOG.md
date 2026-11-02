@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Declining the auto-minted session token no longer grants access. With
+  no `policies.yaml`, a declined session prompt fell through to "no
+  approval required" and the call went ahead. A declined session token
+  is now followed by the per-call prompt, and that prompt's answer
+  decides.
+- `nokey exec` now enforces `token_required` rules. They were only
+  checked by the MCP server, so an agent could reach the same secret by
+  running `nokey exec` instead. The CLI refuses with a message saying
+  the rule needs the MCP server (session tokens exist only there).
+
+### Changed
+- Proxy rules can no longer say `approval: always`, on the `proxy:`
+  section or on a rule: the proxy cannot prompt, so the setting was a
+  silent hard deny with a "approval required" message. The policy now
+  fails to load with a clear error instead, and the top-level `approval`
+  mode no longer applies to proxy rules. **Breaking** only for policies
+  that set `approval: always` under `proxy:`; a top-level
+  `approval: always` with proxy rules that had no `approval: never`
+  used to deny every proxied request and now allows them.
+- Rules that resolve to `approval: never` no longer raise the
+  session-token prompt either; `auto_mint_token` prompts only when a
+  call would otherwise need approval.
+
+### Fixed
+- The `--isolate` proxy now writes audit entries (blocked and forwarded
+  requests), like `nokey proxy start` always did.
+
+### Removed
+- The fallback that accepted a raw 32-byte audit encryption key. Only
+  builds older than the first tagged release wrote that format.
+
 ## [0.8.0] - 2026-11-01
 
 ### Removed
