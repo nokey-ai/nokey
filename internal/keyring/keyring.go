@@ -78,13 +78,8 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 		serviceName = "nokey"
 	}
 
-	var backendType keyring.BackendType
-	if backend != "" {
-		backendType = keyring.BackendType(backend)
-	} else {
-		// Use the default backend for the platform
-		backendType = keyring.BackendType("")
-	}
+	// An empty backend selects the platform default.
+	backendType := keyring.BackendType(backend)
 
 	fileDir := getFileBackendDir()
 	// Migrate any legacy file-backend entries from the parent config dir

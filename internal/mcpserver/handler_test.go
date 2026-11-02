@@ -42,17 +42,6 @@ func (m *mapStore) Get(name string) (string, error) {
 	return v, nil
 }
 
-func (m *mapStore) GetAll() (map[string]string, error) {
-	if m.err != nil {
-		return nil, m.err
-	}
-	cp := make(map[string]string, len(m.secrets))
-	for k, v := range m.secrets {
-		cp[k] = v
-	}
-	return cp, nil
-}
-
 func (m *mapStore) List() ([]string, error) {
 	if m.err != nil {
 		return nil, m.err

@@ -72,8 +72,15 @@ func withDedicatedConfig(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Keyring.Dedicated = dedicatedTrue()
 	withTestConfig(t, c)
-	if err := config.Save(c); err != nil {
-		t.Fatalf("save config: %v", err)
+	path, err := config.ConfigPath()
+	if err != nil {
+		t.Fatalf("config path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("keyring:\n  dedicated: true\n"), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
 	}
 }
 

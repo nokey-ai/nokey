@@ -16,9 +16,9 @@ func FuzzExtract(f *testing.F) {
 	f.Add("echo", "${{NOKEY:${{NOKEY:INNER}}}}", "$${{NOKEY:X}}}")
 	f.Add("", "${{nokey:lower}}", "${NOKEY:SINGLE}")
 
-	f.Fuzz(func(t *testing.T, command, arg1, arg2 string) {
-		args := []string{arg1, arg2}
-		names := Extract(command, args)
+	f.Fuzz(func(t *testing.T, arg0, arg1, arg2 string) {
+		args := []string{arg0, arg1, arg2}
+		names := Extract(args)
 
 		if !slices.IsSorted(names) {
 			t.Fatalf("names not sorted: %q", names)
@@ -27,7 +27,7 @@ func FuzzExtract(f *testing.F) {
 			t.Fatalf("names not unique: %q", names)
 		}
 
-		all := command + "\x00" + strings.Join(args, "\x00")
+		all := strings.Join(args, "\x00")
 		secrets := make(map[string]string, len(names))
 		for _, name := range names {
 			if name == "" {
@@ -39,7 +39,7 @@ func FuzzExtract(f *testing.F) {
 			secrets[name] = "v"
 		}
 
-		if ContainsPlaceholder(command) || ContainsPlaceholder(arg1) || ContainsPlaceholder(arg2) {
+		if ContainsPlaceholder(arg0) || ContainsPlaceholder(arg1) || ContainsPlaceholder(arg2) {
 			if len(names) == 0 {
 				t.Fatalf("ContainsPlaceholder is true but Extract found nothing in %q", all)
 			}

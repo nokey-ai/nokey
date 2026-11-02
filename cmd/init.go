@@ -30,7 +30,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initWithAuth, "with-auth", false, "Run PIN setup after generating config")
 }
 
-// writeIfNotExists writes content to path, creating parent dirs as needed.
+// writeInitFile writes content to path, creating parent dirs as needed.
 // Returns true if the file was written, false if it already existed (and force is false).
 var writeInitFile = func(path string, content []byte, force bool) (bool, error) {
 	if !force {

@@ -59,63 +59,50 @@ func TestContainsPlaceholder(t *testing.T) {
 
 func TestExtract(t *testing.T) {
 	tests := []struct {
-		name    string
-		command string
-		args    []string
-		want    []string
+		name string
+		args []string
+		want []string
 	}{
 		{
-			name:    "single placeholder in args",
-			command: "curl",
-			args:    []string{"-H", "Authorization: Bearer ${{NOKEY:TOKEN}}"},
-			want:    []string{"TOKEN"},
+			name: "single placeholder in args",
+			args: []string{"-H", "Authorization: Bearer ${{NOKEY:TOKEN}}"},
+			want: []string{"TOKEN"},
 		},
 		{
-			name:    "multiple across args",
-			command: "curl",
-			args:    []string{"-u", "${{NOKEY:USER}}:${{NOKEY:PASS}}", "${{NOKEY:URL}}"},
-			want:    []string{"PASS", "URL", "USER"},
+			name: "multiple across args",
+			args: []string{"-u", "${{NOKEY:USER}}:${{NOKEY:PASS}}", "${{NOKEY:URL}}"},
+			want: []string{"PASS", "URL", "USER"},
 		},
 		{
-			name:    "deduplication",
-			command: "",
-			args:    []string{"${{NOKEY:KEY}}", "${{NOKEY:KEY}}"},
-			want:    []string{"KEY"},
+			name: "deduplication",
+			args: []string{"${{NOKEY:KEY}}", "${{NOKEY:KEY}}"},
+			want: []string{"KEY"},
 		},
 		{
-			name:    "no placeholders",
-			command: "echo",
-			args:    []string{"hello", "world"},
-			want:    []string{},
+			name: "no placeholders",
+			args: []string{"hello", "world"},
+			want: []string{},
 		},
 		{
-			name:    "placeholder in command",
-			command: "${{NOKEY:CMD}}",
-			args:    nil,
-			want:    []string{"CMD"},
+			name: "malformed patterns ignored",
+			args: []string{"${{NOKEY:}}", "${{OTHER:KEY}}", "${{NOKEY:VALID}}"},
+			want: []string{"VALID"},
 		},
 		{
-			name:    "malformed patterns ignored",
-			command: "",
-			args:    []string{"${{NOKEY:}}", "${{OTHER:KEY}}", "${{NOKEY:VALID}}"},
-			want:    []string{"VALID"},
-		},
-		{
-			name:    "nil args",
-			command: "",
-			args:    nil,
-			want:    []string{},
+			name: "nil args",
+			args: nil,
+			want: []string{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Extract(tt.command, tt.args)
+			got := Extract(tt.args)
 			if len(got) == 0 && len(tt.want) == 0 {
 				return
 			}
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Extract(%q, %v) = %v, want %v", tt.command, tt.args, got, tt.want)
+				t.Errorf("Extract(%v) = %v, want %v", tt.args, got, tt.want)
 			}
 		})
 	}

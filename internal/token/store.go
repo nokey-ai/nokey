@@ -22,7 +22,6 @@ type Token struct {
 	MaxUses   int      // 0 = unlimited (TTL-only)
 	UsesLeft  int
 	ExpiresAt time.Time
-	MintedAt  time.Time
 	MintedFor string // command pattern or "*" for any
 }
 
@@ -97,7 +96,6 @@ func (s *Store) Mint(req MintRequest) (*Token, error) {
 		MaxUses:   req.MaxUses,
 		UsesLeft:  req.MaxUses,
 		ExpiresAt: now.Add(time.Duration(req.TTLSecs) * time.Second),
-		MintedAt:  now,
 		MintedFor: req.MintedFor,
 	}
 	if tok.MintedFor == "" {
@@ -117,11 +115,6 @@ func (s *Store) Validate(id string, secrets []string) ValidationResult {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.validate(id, secrets)
-}
-
-// Use is UseFor with an unknown command: only tokens minted for "*" pass.
-func (s *Store) Use(id string, secrets []string) ValidationResult {
-	return s.UseFor(id, "*", secrets)
 }
 
 // UseFor validates the token for running command with secrets and then

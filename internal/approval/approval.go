@@ -27,17 +27,12 @@ const maxDetailValueBytes = 256
 // stdinPreviewBytes is how much of stdin FormatStdin shows.
 const stdinPreviewBytes = 64
 
-// Request sends an MCP elicitation prompt asking the user to approve
-// secret access for the given command. Returns nil if approved, an error otherwise.
-// Fail-closed: if the client does not support elicitation, access is denied.
-func Request(ctx context.Context, requester Requester, command string, secretNames []string) error {
-	return RequestWithDetail(ctx, requester, command, secretNames, "")
-}
-
-// RequestWithDetail is Request with an extra line describing what is being
+// RequestWithDetail sends an MCP elicitation prompt asking the user to
+// approve secret access for the given command. Returns nil if approved, an
+// error otherwise. Fail-closed: if the client does not support elicitation,
+// access is denied. detail is an extra line describing what is being
 // approved — the arguments the command will run with, or the scope of a
-// token — so the user isn't approving a bare command name. An empty detail
-// gives exactly Request's prompt.
+// token — so the user isn't approving a bare command name; it may be empty.
 func RequestWithDetail(ctx context.Context, requester Requester, command string, secretNames []string, detail string) error {
 	msg := fmt.Sprintf(
 		"nokey: %q wants to access secret(s): %s\n\n",

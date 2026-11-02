@@ -396,7 +396,6 @@ func newOAuthProvider(providerName string, creds *oauth.ClientCredentials, redir
 		return oauth.NewGitHubProvider(creds.ClientID, creds.ClientSecret, redirectURL)
 	}
 	return oauth.NewGenericProvider(
-		"generic",
 		creds.AuthURL,
 		creds.TokenURL,
 		creds.UserInfoURL,

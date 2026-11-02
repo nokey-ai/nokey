@@ -401,11 +401,8 @@ func TestCallbackServer_Timeout(t *testing.T) {
 
 func TestNewGitHubProvider(t *testing.T) {
 	p := NewGitHubProvider("client-id", "client-secret", "http://localhost/callback")
-	if p.ClientID != "client-id" {
-		t.Errorf("ClientID = %q, want %q", p.ClientID, "client-id")
-	}
-	if p.GetProviderName() != "github" {
-		t.Errorf("GetProviderName = %q, want %q", p.GetProviderName(), "github")
+	if p.config.ClientID != "client-id" {
+		t.Errorf("ClientID = %q, want %q", p.config.ClientID, "client-id")
 	}
 }
 
@@ -434,9 +431,7 @@ func TestGitHubProvider_ExchangeCode(t *testing.T) {
 	defer mockServer.Close()
 
 	p := &GitHubProvider{
-		ClientID:     "client-id",
-		ClientSecret: "client-secret",
-		Scopes:       []string{"user:email"},
+		Scopes: []string{"user:email"},
 		config: &oauth2.Config{
 			ClientID:     "client-id",
 			ClientSecret: "client-secret",
@@ -502,11 +497,8 @@ func TestGitHubProvider_ValidateToken(t *testing.T) {
 // --- GenericProvider ---
 
 func TestNewGenericProvider(t *testing.T) {
-	p := NewGenericProvider("custom", "http://auth", "http://token", "http://userinfo",
+	p := NewGenericProvider("http://auth", "http://token", "http://userinfo",
 		"client-id", "client-secret", nil, "http://localhost/callback")
-	if p.GetProviderName() != "custom" {
-		t.Errorf("GetProviderName = %q, want %q", p.GetProviderName(), "custom")
-	}
 	// Default scopes should be applied
 	if len(p.Scopes) != 3 {
 		t.Errorf("expected 3 default scopes, got %d", len(p.Scopes))
@@ -515,22 +507,15 @@ func TestNewGenericProvider(t *testing.T) {
 
 func TestNewGenericProvider_CustomScopes(t *testing.T) {
 	scopes := []string{"read", "write"}
-	p := NewGenericProvider("my-provider", "http://auth", "http://token", "",
+	p := NewGenericProvider("http://auth", "http://token", "",
 		"cid", "csecret", scopes, "http://localhost/callback")
 	if len(p.Scopes) != 2 {
 		t.Errorf("expected 2 scopes, got %d", len(p.Scopes))
 	}
 }
 
-func TestGenericProvider_GetProviderName_Empty(t *testing.T) {
-	p := &GenericProvider{Name: ""}
-	if p.GetProviderName() != "custom" {
-		t.Errorf("empty name should return 'custom', got %q", p.GetProviderName())
-	}
-}
-
 func TestGenericProvider_GetAuthURL(t *testing.T) {
-	p := NewGenericProvider("test", "http://auth.example.com/authorize", "http://auth.example.com/token",
+	p := NewGenericProvider("http://auth.example.com/authorize", "http://auth.example.com/token",
 		"", "cid", "csecret", []string{"read"}, "http://localhost/callback")
 	url := p.GetAuthURL("my-state")
 	if !strings.Contains(url, "state=my-state") {
@@ -553,7 +538,7 @@ func TestGenericProvider_ExchangeCode(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	p := NewGenericProvider("test", mockServer.URL+"/auth", mockServer.URL+"/token",
+	p := NewGenericProvider(mockServer.URL+"/auth", mockServer.URL+"/token",
 		"", "cid", "csecret", []string{"read"}, "http://localhost/callback")
 
 	token, err := p.ExchangeCode(context.Background(), "test-code")
@@ -642,7 +627,7 @@ func TestGenericProvider_RefreshToken(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	p := NewGenericProvider("test", mockServer.URL+"/auth", mockServer.URL+"/token",
+	p := NewGenericProvider(mockServer.URL+"/auth", mockServer.URL+"/token",
 		"", "cid", "csecret", []string{"read"}, "http://localhost/callback")
 
 	token, err := p.RefreshToken(context.Background(), "old-refresh")
@@ -692,7 +677,7 @@ func TestGenericProvider_ExchangeCode_Error(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	p := NewGenericProvider("test", mockServer.URL+"/auth", mockServer.URL+"/token",
+	p := NewGenericProvider(mockServer.URL+"/auth", mockServer.URL+"/token",
 		"", "cid", "csecret", []string{"read"}, "http://localhost/callback")
 
 	_, err := p.ExchangeCode(context.Background(), "bad-code")
@@ -711,7 +696,7 @@ func TestGenericProvider_RefreshToken_Error(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	p := NewGenericProvider("test", mockServer.URL+"/auth", mockServer.URL+"/token",
+	p := NewGenericProvider(mockServer.URL+"/auth", mockServer.URL+"/token",
 		"", "cid", "csecret", []string{"read"}, "http://localhost/callback")
 
 	_, err := p.RefreshToken(context.Background(), "expired-refresh-token")

@@ -472,7 +472,7 @@ func runKeychainRestore(cmd *cobra.Command, args []string) error {
 // originally written for that tool — this banner lets the user know
 // that the misnamed prompt that follows is in fact the nokey keychain
 // passphrase. The banner is suppressed when path is empty (non-macOS)
-// or when the file already exists (setupTouchID will not fire again).
+// or when the file already exists (the library will not prompt again).
 func printDedicatedSetupBannerIfFresh(path string, w io.Writer) {
 	if path == "" {
 		return

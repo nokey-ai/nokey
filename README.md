@@ -390,7 +390,7 @@ Each audit entry contains:
 - **Success/failure status**
 - **User and system info** (username, hostname, process ID)
 - **Error message** (if failed)
-- **Operation type** (exec, set, delete, rename, import, auth)
+- **Operation type** (exec, set, delete, rename, import, export, and `mcp:*` for MCP tool calls)
 
 ### Example Audit Output
 

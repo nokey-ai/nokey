@@ -51,9 +51,6 @@ type Provider interface {
 
 	// ValidateToken validates the token by making a test API call
 	ValidateToken(ctx context.Context, token *Token) error
-
-	// GetProviderName returns the name of the provider
-	GetProviderName() string
 }
 
 // TokenKeyPrefix is the keyring prefix for OAuth tokens

@@ -14,14 +14,11 @@ func ContainsPlaceholder(s string) bool {
 	return placeholderRe.MatchString(s)
 }
 
-// Extract scans command and args for ${{NOKEY:SECRET_NAME}} placeholders and
-// returns the unique secret names in sorted order.
-func Extract(command string, args []string) []string {
+// Extract scans args for ${{NOKEY:SECRET_NAME}} placeholders and returns
+// the unique secret names in sorted order.
+func Extract(args []string) []string {
 	seen := make(map[string]struct{})
 
-	for _, m := range placeholderRe.FindAllStringSubmatch(command, -1) {
-		seen[m[1]] = struct{}{}
-	}
 	for _, arg := range args {
 		for _, m := range placeholderRe.FindAllStringSubmatch(arg, -1) {
 			seen[m[1]] = struct{}{}

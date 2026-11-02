@@ -187,7 +187,6 @@ func (m *mockOAuthProvider) ValidateToken(ctx context.Context, token *oauth.Toke
 	}
 	return nil
 }
-func (m *mockOAuthProvider) GetProviderName() string { return "mock" }
 
 // withExecGlobals saves and restores exec-related injectable vars (osExitFn, skipConfirm, authMethod).
 // The caller is responsible for setting execRunFn or redactRunFn if needed.

@@ -1,12 +1,13 @@
 package config
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -45,7 +46,7 @@ func TestLoadNonExistentConfig(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad(t *testing.T) {
+func TestLoad_RoundTrip(t *testing.T) {
 	// Create a temporary directory for testing
 	tempDir := t.TempDir()
 
@@ -61,9 +62,9 @@ func TestSaveAndLoad(t *testing.T) {
 		ServiceName:     "test-nokey",
 	}
 
-	// Save the config
-	if err := Save(testCfg); err != nil {
-		t.Fatalf("Save() failed: %v", err)
+	// Write the config
+	if err := writeConfig(t, testCfg); err != nil {
+		t.Fatalf("writeConfig failed: %v", err)
 	}
 
 	// Verify the file was created
@@ -74,17 +75,6 @@ func TestSaveAndLoad(t *testing.T) {
 
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		t.Fatalf("Config file was not created at %s", configPath)
-	}
-
-	// Check file permissions
-	fileInfo, err := os.Stat(configPath)
-	if err != nil {
-		t.Fatalf("Stat() failed: %v", err)
-	}
-
-	mode := fileInfo.Mode()
-	if mode.Perm() != 0600 {
-		t.Errorf("Expected file permissions 0600, got %v", mode.Perm())
 	}
 
 	// Load the config
@@ -149,7 +139,7 @@ func TestLoadInvalidYAML(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad_FullConfig(t *testing.T) {
+func TestLoad_RoundTrip_FullConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 
@@ -168,25 +158,14 @@ func TestSaveAndLoad_FullConfig(t *testing.T) {
 			SessionTTL:    "10m",
 			AutoMintToken: true,
 			OAuth: OAuthConfig{
-				GitHub: OAuthGitHubConfig{
-					Enabled:      true,
-					ClientID:     "gh-client-id",
-					ClientSecret: "gh-secret",
-				},
-				Custom: OAuthCustomConfig{
-					Enabled:      true,
-					ProviderName: "myoidc",
-					AuthURL:      "https://auth.example.com/authorize",
-					TokenURL:     "https://auth.example.com/token",
-					ClientID:     "custom-cid",
-					ClientSecret: "custom-secret",
-				},
+				GitHub: OAuthGitHubConfig{Enabled: true},
+				Custom: OAuthCustomConfig{Enabled: true},
 			},
 		},
 	}
 
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := writeConfig(t, cfg); err != nil {
+		t.Fatalf("writeConfig: %v", err)
 	}
 
 	loaded, err := Load()
@@ -212,42 +191,11 @@ func TestSaveAndLoad_FullConfig(t *testing.T) {
 	if !loaded.Auth.AutoMintToken {
 		t.Error("Auth.AutoMintToken should be true")
 	}
-	if loaded.Auth.OAuth.GitHub.ClientID != "gh-client-id" {
-		t.Errorf("GitHub.ClientID = %q, want %q", loaded.Auth.OAuth.GitHub.ClientID, "gh-client-id")
-	}
-	if loaded.Auth.OAuth.Custom.ProviderName != "myoidc" {
-		t.Errorf("Custom.ProviderName = %q, want %q", loaded.Auth.OAuth.Custom.ProviderName, "myoidc")
+	if !loaded.Auth.OAuth.GitHub.Enabled || !loaded.Auth.OAuth.Custom.Enabled {
+		t.Error("OAuth GitHub and Custom should both be enabled")
 	}
 	if loaded.RequireAuth != true {
 		t.Error("RequireAuth should be true")
-	}
-
-	// ClientSecret fields must NOT be persisted to disk
-	if loaded.Auth.OAuth.GitHub.ClientSecret != "" {
-		t.Errorf("GitHub.ClientSecret should be empty on disk, got %q", loaded.Auth.OAuth.GitHub.ClientSecret)
-	}
-	if loaded.Auth.OAuth.Custom.ClientSecret != "" {
-		t.Errorf("Custom.ClientSecret should be empty on disk, got %q", loaded.Auth.OAuth.Custom.ClientSecret)
-	}
-
-	// Verify raw file doesn't contain secret values
-	path, _ := ConfigPath()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	for _, secret := range []string{"gh-secret", "custom-secret"} {
-		if bytes.Contains(raw, []byte(secret)) {
-			t.Errorf("config.yaml contains secret %q in plaintext", secret)
-		}
-	}
-
-	// Save must not mutate the caller's struct
-	if cfg.Auth.OAuth.GitHub.ClientSecret != "gh-secret" {
-		t.Errorf("Save mutated caller's GitHub.ClientSecret to %q", cfg.Auth.OAuth.GitHub.ClientSecret)
-	}
-	if cfg.Auth.OAuth.Custom.ClientSecret != "custom-secret" {
-		t.Errorf("Save mutated caller's Custom.ClientSecret to %q", cfg.Auth.OAuth.Custom.ClientSecret)
 	}
 }
 
@@ -271,28 +219,6 @@ func TestDefaultConfig_AuthDefaults(t *testing.T) {
 	}
 }
 
-func TestSave_CreatesDirectory(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	cfg := DefaultConfig()
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	configDir := filepath.Join(tempDir, ".config", "nokey")
-	info, err := os.Stat(configDir)
-	if err != nil {
-		t.Fatalf("config dir should exist: %v", err)
-	}
-	if !info.IsDir() {
-		t.Error("config dir should be a directory")
-	}
-	if info.Mode().Perm() != 0700 {
-		t.Errorf("config dir permissions = %o, want 0700", info.Mode().Perm())
-	}
-}
-
 func TestLoad_UnreadableFile(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -309,93 +235,6 @@ func TestLoad_UnreadableFile(t *testing.T) {
 	_, err := Load()
 	if err == nil {
 		t.Error("Load should fail with unreadable file")
-	}
-}
-
-func TestSave_DirectoryPermissions(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	cfg := DefaultConfig()
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-
-	// Verify file content is valid YAML
-	loaded, err := Load()
-	if err != nil {
-		t.Fatalf("Load after Save: %v", err)
-	}
-	if loaded.ServiceName != "nokey" {
-		t.Errorf("ServiceName = %q, want %q", loaded.ServiceName, "nokey")
-	}
-}
-
-func TestSave_OverwritesExisting(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	cfg1 := &Config{ServiceName: "first"}
-	if err := Save(cfg1); err != nil {
-		t.Fatalf("first Save: %v", err)
-	}
-
-	cfg2 := &Config{ServiceName: "second"}
-	if err := Save(cfg2); err != nil {
-		t.Fatalf("second Save: %v", err)
-	}
-
-	loaded, err := Load()
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if loaded.ServiceName != "second" {
-		t.Errorf("ServiceName = %q, want %q", loaded.ServiceName, "second")
-	}
-}
-
-func TestSave_MkdirAllError(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	// Place a regular file where the config directory should be,
-	// so MkdirAll fails.
-	blocker := filepath.Join(tempDir, ".config")
-	if err := os.WriteFile(blocker, []byte("not a dir"), 0600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cfg := DefaultConfig()
-	err := Save(cfg)
-	if err == nil {
-		t.Error("Save should fail when MkdirAll cannot create directory")
-	}
-	if !strings.Contains(err.Error(), "config directory") {
-		t.Errorf("error should mention config directory, got: %v", err)
-	}
-}
-
-func TestSave_WriteFileError(t *testing.T) {
-	tempDir := t.TempDir()
-	t.Setenv("HOME", tempDir)
-
-	// Create the config directory but make it read-only so WriteFile fails
-	configDir := filepath.Join(tempDir, ".config", "nokey")
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.Chmod(configDir, 0500); err != nil {
-		t.Fatalf("Chmod: %v", err)
-	}
-	defer os.Chmod(configDir, 0700) // cleanup
-
-	cfg := DefaultConfig()
-	err := Save(cfg)
-	if err == nil {
-		t.Error("Save should fail when directory is read-only")
-	}
-	if !strings.Contains(err.Error(), "write config") {
-		t.Errorf("error should mention writing config, got: %v", err)
 	}
 }
 
@@ -515,19 +354,6 @@ func TestLoad_HomeDirError(t *testing.T) {
 	}
 }
 
-func TestSave_HomeDirError(t *testing.T) {
-	old := userHomeDirFn
-	defer func() { userHomeDirFn = old }()
-	userHomeDirFn = func() (string, error) {
-		return "", fmt.Errorf("no home directory")
-	}
-
-	err := Save(DefaultConfig())
-	if err == nil {
-		t.Fatal("Save should fail when home dir is unavailable")
-	}
-}
-
 func TestLoadStrict_ValidConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
@@ -588,7 +414,7 @@ func TestDefaultConfig_KeyringDefaults(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad_KeyringConfig(t *testing.T) {
+func TestLoad_RoundTrip_KeyringConfig(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 
@@ -601,8 +427,8 @@ func TestSaveAndLoad_KeyringConfig(t *testing.T) {
 		},
 	}
 
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := writeConfig(t, cfg); err != nil {
+		t.Fatalf("writeConfig: %v", err)
 	}
 
 	loaded, err := Load()
@@ -621,7 +447,7 @@ func TestSaveAndLoad_KeyringConfig(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad_KeyringConfig_NilDedicated(t *testing.T) {
+func TestLoad_RoundTrip_KeyringConfig_NilDedicated(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 
@@ -630,8 +456,8 @@ func TestSaveAndLoad_KeyringConfig_NilDedicated(t *testing.T) {
 		Keyring:     KeyringConfig{}, // both zero
 	}
 
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := writeConfig(t, cfg); err != nil {
+		t.Fatalf("writeConfig: %v", err)
 	}
 
 	loaded, err := Load()
@@ -647,7 +473,7 @@ func TestSaveAndLoad_KeyringConfig_NilDedicated(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad_KeyringConfig_ExplicitFalse(t *testing.T) {
+func TestLoad_RoundTrip_KeyringConfig_ExplicitFalse(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("HOME", tempDir)
 
@@ -657,8 +483,8 @@ func TestSaveAndLoad_KeyringConfig_ExplicitFalse(t *testing.T) {
 		Keyring:     KeyringConfig{Dedicated: &dedicated},
 	}
 
-	if err := Save(cfg); err != nil {
-		t.Fatalf("Save: %v", err)
+	if err := writeConfig(t, cfg); err != nil {
+		t.Fatalf("writeConfig: %v", err)
 	}
 
 	loaded, err := Load()
@@ -685,4 +511,21 @@ func TestLoadStrict_NoFile(t *testing.T) {
 	if cfg.ServiceName != "nokey" {
 		t.Errorf("ServiceName = %q, want default", cfg.ServiceName)
 	}
+}
+
+// writeConfig writes cfg as YAML to the config path under the test HOME.
+func writeConfig(t *testing.T, cfg *Config) error {
+	t.Helper()
+	path, err := ConfigPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return err
+	}
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0600)
 }

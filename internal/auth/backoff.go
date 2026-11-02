@@ -54,7 +54,7 @@ func backoffStore() BackoffStore {
 // checkBackoff returns an error if the caller must wait before another attempt.
 func checkBackoff(store BackoffStore) error {
 	rec, err := loadFailureRecord(store)
-	if err != nil || rec == nil {
+	if err != nil {
 		return nil // no record or error reading — allow attempt
 	}
 
@@ -76,7 +76,7 @@ func checkBackoff(store BackoffStore) error {
 // recordFailure increments the failure counter.
 func recordFailure(store BackoffStore) {
 	rec, err := loadFailureRecord(store)
-	if err != nil || rec == nil {
+	if err != nil {
 		rec = &FailureRecord{}
 	}
 	rec.Count++

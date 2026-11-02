@@ -48,7 +48,6 @@ var autoMintPromptTimeout = 3 * time.Minute
 // SecretStore is the subset of keyring functionality that MCP handlers need.
 type SecretStore interface {
 	Get(name string) (string, error)
-	GetAll() (map[string]string, error)
 	List() ([]string, error)
 	Rename(oldName, newName string) error
 }
@@ -629,7 +628,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	timeoutSecs, clamped := timeoutParam(request)
 
 	// Extract referenced secret names from args
-	secretNames := placeholder.Extract("", args)
+	secretNames := placeholder.Extract(args)
 
 	// Enforce scoped policy before touching the keyring
 	if err := h.getPolicy().Check(command, secretNames); err != nil {

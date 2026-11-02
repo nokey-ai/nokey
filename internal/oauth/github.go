@@ -13,10 +13,8 @@ import (
 
 // GitHubProvider implements OAuth for GitHub
 type GitHubProvider struct {
-	ClientID     string
-	ClientSecret string
-	Scopes       []string
-	config       *oauth2.Config
+	Scopes []string
+	config *oauth2.Config
 	// apiURL overrides the GitHub API base URL; empty uses the real endpoint.
 	apiURL string
 }
@@ -34,10 +32,8 @@ func NewGitHubProvider(clientID, clientSecret string, redirectURL string) *GitHu
 	}
 
 	return &GitHubProvider{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Scopes:       scopes,
-		config:       config,
+		Scopes: scopes,
+		config: config,
 	}
 }
 
@@ -104,9 +100,4 @@ func (p *GitHubProvider) ValidateToken(ctx context.Context, token *Token) error 
 	}
 
 	return nil
-}
-
-// GetProviderName returns "github"
-func (p *GitHubProvider) GetProviderName() string {
-	return "github"
 }
