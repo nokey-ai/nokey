@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next compaction; it now means no age limit (`max_entries` still
   applies). The README now says that old entries are pruned when the log
   is compacted (at twice `max_entries`), not continuously.
+- `nokey keychain to-dedicated` now prints its one-time note about the
+  "aws-vault" passphrase prompt with the default config. It was only
+  shown when `keyring.name` was set explicitly.
 
 ## [0.7.0] - 2026-11-01
 

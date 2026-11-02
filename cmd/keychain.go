@@ -541,7 +541,7 @@ If you no longer use that keychain, delete the item and re-run:
 		return fmt.Errorf("open login keychain: %w", err)
 	}
 
-	printDedicatedSetupBannerIfFresh(nkeyring.DedicatedKeychainPath(cfg.Keyring.Name), os.Stderr)
+	printDedicatedSetupBannerIfFresh(nkeyring.DedicatedKeychainPath(effectiveKeychainName()), os.Stderr)
 
 	dstStore, err := openKeyringForFn(true)
 	if err != nil {

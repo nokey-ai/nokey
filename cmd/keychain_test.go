@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -616,6 +617,38 @@ func TestKeychainToDedicated_Success(t *testing.T) {
 	}
 	if len(entries) == 0 {
 		t.Error("expected at least one backup file")
+	}
+}
+
+// With the default config (no keyring.name) the setup banner must still
+// print before the dedicated keychain is created for the first time.
+func TestKeychainToDedicated_DefaultNamePrintsSetupBanner(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("dedicated keychain path is only defined on macOS")
+	}
+	t.Setenv("HOME", t.TempDir())
+
+	src, _ := newTestStore()
+	dst, _ := newTestStore()
+	src.Set("A", "1")
+
+	withTestKeyring(t, src)
+	withDedicatedConfig(t)
+	withTestBackupGlobals(t)
+	withTwoStoreOpener(t, src, dst)
+
+	toDedicatedYes = true
+	var errOut string
+	_ = captureStdout(t, func() {
+		errOut = captureStderr(t, func() {
+			rootCmd.SetArgs([]string{"keychain", "to-dedicated", "--yes"})
+			if err := rootCmd.Execute(); err != nil {
+				t.Fatalf("to-dedicated: %v", err)
+			}
+		})
+	})
+	if !strings.Contains(errOut, "nokey dedicated keychain") {
+		t.Errorf("expected setup banner on stderr, got: %q", errOut)
 	}
 }
 
