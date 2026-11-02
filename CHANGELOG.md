@@ -43,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), like `nokey proxy start` always did.
 
 ### Removed
+- `nokey init --with-auth`. Run `nokey auth setup` after `nokey init`;
+  `init` now says so. **Breaking** for scripts passing the flag.
 - `nokey doctor`. Its checks and fix-it hints are now part of
   `nokey status`, which lists any problems under the usual output and
   adds a `checks` array to `--json`. **Breaking:** scripts that relied

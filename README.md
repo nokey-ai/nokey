@@ -104,8 +104,8 @@ nokey init
 # Overwrite existing files
 nokey init --force
 
-# Also set up PIN authentication
-nokey init --with-auth
+# Then require a PIN before secrets are read
+nokey auth setup
 ```
 
 ### Shell Completions

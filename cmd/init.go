@@ -9,10 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	initForce    bool
-	initWithAuth bool
-)
+var initForce bool
 
 var initCmd = &cobra.Command{
 	Use:   "init",
@@ -20,14 +17,13 @@ var initCmd = &cobra.Command{
 	Long: `Create starter config.yaml and policies.yaml in the nokey config directory
 with explanatory comments. Existing files are not overwritten unless --force is used.
 
-Use --with-auth to also run PIN setup after generating configuration files.`,
+Run 'nokey auth setup' afterwards to require a PIN.`,
 	RunE: runInit,
 }
 
 func init() {
 	rootCmd.AddCommand(initCmd)
 	initCmd.Flags().BoolVar(&initForce, "force", false, "Overwrite existing configuration files")
-	initCmd.Flags().BoolVar(&initWithAuth, "with-auth", false, "Run PIN setup after generating config")
 }
 
 // writeInitFile writes content to path, creating parent dirs as needed.
@@ -76,15 +72,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Skipped %s (already exists, use --force to overwrite)\n", policiesPath)
 	}
 
-	if initWithAuth {
-		fmt.Println("\nSetting up PIN authentication...")
-		if err := runAuthSetup(cmd, nil); err != nil {
-			return fmt.Errorf("PIN setup failed: %w", err)
-		}
-	}
-
 	fmt.Printf("\nConfiguration directory: %s\n", configDir)
 	fmt.Println("Edit the files above to customize nokey for your workflow.")
+	fmt.Println("Run 'nokey auth setup' to require a PIN before secrets are read.")
 	return nil
 }
 
