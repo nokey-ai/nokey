@@ -346,9 +346,7 @@ func runAuthOAuthSetup(cmd *cobra.Command, args []string) error {
 	provider = newOAuthProviderFn(providerName, creds, redirectURL)
 
 	// Start callback server.
-	if err := callbackServer.Start(); err != nil {
-		return fmt.Errorf("failed to start callback server: %w", err)
-	}
+	callbackServer.Start()
 
 	// Browser-based authorization flow.
 	authURL := provider.GetAuthURL(callbackServer.GetState())

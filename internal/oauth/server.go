@@ -72,13 +72,12 @@ func (cs *CallbackServer) GetState() string {
 }
 
 // Start starts the callback server
-func (cs *CallbackServer) Start() error {
+func (cs *CallbackServer) Start() {
 	go func() {
 		if err := cs.server.Serve(cs.listener); err != nil && err != http.ErrServerClosed {
 			cs.errChan <- err
 		}
 	}()
-	return nil
 }
 
 // WaitForCode waits for the OAuth callback with a timeout
@@ -147,11 +146,9 @@ func (cs *CallbackServer) handleCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Send code to channel
-	select {
-	case cs.codeChan <- code:
-	default:
-	}
+	// Send code to channel. The CAS above makes this the only send, and the
+	// channel holds one value, so it never blocks.
+	cs.codeChan <- code
 
 	// Render success page
 	cs.renderSuccess(w)

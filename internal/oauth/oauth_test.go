@@ -273,9 +273,7 @@ func TestCallbackServer_SuccessfulCallback(t *testing.T) {
 	}
 	defer cs.Shutdown(context.Background())
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	// Make callback request with correct state
 	url := fmt.Sprintf("%s?code=test-auth-code&state=%s", cs.GetRedirectURL(), cs.GetState())
@@ -305,9 +303,7 @@ func TestCallbackServer_InvalidState(t *testing.T) {
 	}
 	defer cs.Shutdown(context.Background())
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	url := fmt.Sprintf("%s?code=test-code&state=wrong-state", cs.GetRedirectURL())
 	resp, err := http.Get(url)
@@ -333,9 +329,7 @@ func TestCallbackServer_OAuthError(t *testing.T) {
 	}
 	defer cs.Shutdown(context.Background())
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	url := fmt.Sprintf("%s?error=access_denied&error_description=user+denied", cs.GetRedirectURL())
 	resp, err := http.Get(url)
@@ -360,9 +354,7 @@ func TestCallbackServer_MissingCode(t *testing.T) {
 	}
 	defer cs.Shutdown(context.Background())
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	url := fmt.Sprintf("%s?state=%s", cs.GetRedirectURL(), cs.GetState())
 	resp, err := http.Get(url)
@@ -384,9 +376,7 @@ func TestCallbackServer_Timeout(t *testing.T) {
 	}
 	defer cs.Shutdown(context.Background())
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	_, err = cs.WaitForCode(100 * time.Millisecond)
 	if err == nil {
@@ -993,9 +983,7 @@ func TestCallbackServer_RejectsSecondCallback(t *testing.T) {
 	}
 	defer func() { _ = cs.Shutdown(context.Background()) }()
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	callbackURL := cs.GetRedirectURL()
 	state := cs.GetState()
@@ -1048,9 +1036,7 @@ func TestCallbackServer_RepeatedBadRequestsDoNotBlock(t *testing.T) {
 	}
 	defer func() { _ = cs.Shutdown(context.Background()) }()
 
-	if err := cs.Start(); err != nil {
-		t.Fatalf("Start: %v", err)
-	}
+	cs.Start()
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	url := fmt.Sprintf("%s?code=x&state=wrong-state", cs.GetRedirectURL())
