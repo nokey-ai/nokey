@@ -43,6 +43,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   requests), like `nokey proxy start` always did.
 
 ### Removed
+- OAuth authentication: the `oauth` and `both` auth methods, the
+  `nokey auth oauth` commands (`setup`, `status`, `refresh`, `logout`),
+  and the `auth.oauth` config section. The OAuth check only confirmed
+  that a token sat in the keyring the PIN already protects, never
+  contacting the provider, so a revoked token still passed and `both`
+  added almost nothing over the PIN. **Breaking:** a config or
+  `--auth-method` that still names `oauth` or `both` now fails with an
+  error saying it was removed (it does not fall back to a weaker
+  method), and `nokey config validate` reports it; set
+  `auth.default_method` to `pin` or `none`. Tokens and client
+  credentials saved by `auth oauth setup` stay in the keyring; remove
+  them with `nokey delete __nokey_oauth_token_<provider>__` and
+  `nokey delete __nokey_oauth_creds_<provider>__` (provider `github` or
+  `generic`).
 - The MCP `start_proxy` and `stop_proxy` tools. `start_proxy` loaded
   every proxy-rule secret with no approval and kept serving them until
   stopped, the one MCP path to secrets with no per-call gate. Agents can

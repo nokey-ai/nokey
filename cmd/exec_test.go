@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,7 +16,6 @@ import (
 	"github.com/nokey-ai/nokey/internal/config"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
-	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -554,43 +552,37 @@ func TestRunExec_PINAuthNoPIN(t *testing.T) {
 	}
 }
 
-func TestRunExec_OAuthAuthNoToken(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "oauth"
-	withTestConfig(t, c)
+// A config or flag naming a removed auth method fails with an error that
+// says so, rather than falling back to a weaker method.
+func TestRunExec_RemovedAuthMethods(t *testing.T) {
+	for _, tc := range []struct{ configured, flag, want string }{
+		{"oauth", "", "auth method 'oauth' in config was removed in nokey v0.9.0"},
+		{"both", "", "auth method 'both' in config was removed in nokey v0.9.0"},
+		{"none", "oauth", "auth method 'oauth' was removed in nokey v0.9.0"},
+		{"pin", "both", "auth method 'both' was removed in nokey v0.9.0"},
+	} {
+		t.Run(tc.configured+"/"+tc.flag, func(t *testing.T) {
+			store, _ := newTestStore()
+			store.Set("KEY", "val")
+			withTestKeyring(t, store)
+			c := config.DefaultConfig()
+			c.Auth.DefaultMethod = tc.configured
+			withTestConfig(t, c)
 
-	oldMethod := authMethod
-	t.Cleanup(func() { authMethod = oldMethod })
-	authMethod = "oauth"
+			withExecGlobals(t)
+			execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+				t.Error("command must not run with a removed auth method")
+				return 0, nil
+			}
+			authMethod = tc.flag
 
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err == nil || !strings.Contains(err.Error(), "OAuth authentication failed") {
-		t.Errorf("expected 'OAuth authentication failed' error, got: %v", err)
-	}
-}
-
-func TestRunExec_BothAuthNoToken(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "both"
-	withTestConfig(t, c)
-
-	oldMethod := authMethod
-	t.Cleanup(func() { authMethod = oldMethod })
-	authMethod = "both"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err == nil || !strings.Contains(err.Error(), "OAuth authentication failed") {
-		t.Errorf("expected 'OAuth authentication failed' error, got: %v", err)
+			cmd := &cobra.Command{}
+			cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+			err := runExec(cmd, []string{"echo"})
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("err = %v, want %q", err, tc.want)
+			}
+		})
 	}
 }
 
@@ -695,350 +687,6 @@ func TestRunExec_FilterExcept(t *testing.T) {
 	}
 }
 
-// --- validateOAuthToken ---
-
-func TestValidateOAuthToken_NoProvider(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	err := validateOAuthToken(store)
-	if err == nil || !strings.Contains(err.Error(), "no OAuth token found") {
-		t.Errorf("expected 'no OAuth token found' error, got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_GitHubEnabled(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	c.Auth.OAuth.GitHub.Enabled = true
-	withTestConfig(t, c)
-
-	err := validateOAuthToken(store)
-	if err == nil || !strings.Contains(err.Error(), "no OAuth token found") {
-		t.Errorf("expected 'no OAuth token found' error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "github") {
-		t.Errorf("error should mention 'github', got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_CustomEnabled(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	c.Auth.OAuth.Custom.Enabled = true
-	withTestConfig(t, c)
-
-	err := validateOAuthToken(store)
-	if err == nil || !strings.Contains(err.Error(), "no OAuth token found") {
-		t.Errorf("expected 'no OAuth token found' error, got: %v", err)
-	}
-	if !strings.Contains(err.Error(), "generic") {
-		t.Errorf("error should mention 'generic', got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_ExpiredNoRefresh(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	// Store an expired token with no refresh token
-	expiredToken := &oauth.Token{
-		AccessToken:  "expired-access-token",
-		TokenType:    "Bearer",
-		RefreshToken: "",
-		Expiry:       time.Now().Add(-1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", expiredToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	err := validateOAuthToken(store)
-	if err == nil || !strings.Contains(err.Error(), "expired and no refresh token") {
-		t.Errorf("expected 'expired and no refresh token' error, got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_ExpiredWithRefreshNoCreds(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	// Store an expired token WITH refresh token but no client credentials
-	expiredToken := &oauth.Token{
-		AccessToken:  "expired-access-token",
-		TokenType:    "Bearer",
-		RefreshToken: "refresh-token",
-		Expiry:       time.Now().Add(-1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", expiredToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	err := validateOAuthToken(store)
-	if err == nil || !strings.Contains(err.Error(), "client credentials not found") {
-		t.Errorf("expected 'client credentials not found' error, got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_ValidToken(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	// Store a valid (not expired) token
-	validToken := &oauth.Token{
-		AccessToken:  "valid-access-token",
-		TokenType:    "Bearer",
-		RefreshToken: "",
-		Expiry:       time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", validToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	err := validateOAuthToken(store)
-	if err != nil {
-		t.Errorf("expected no error for valid token, got: %v", err)
-	}
-}
-
-func TestValidateOAuthToken_RefreshSuccess(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	// Store an expired token WITH refresh token
-	expiredToken := &oauth.Token{
-		AccessToken:  "expired-token",
-		TokenType:    "Bearer",
-		RefreshToken: "refresh-me",
-		Expiry:       time.Now().Add(-1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", expiredToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	// Store client credentials
-	creds := &oauth.ClientCredentials{ClientID: "cid", ClientSecret: "csec"}
-	if err := oauth.SaveClientCredentials(store, "github", creds); err != nil {
-		t.Fatalf("SaveClientCredentials: %v", err)
-	}
-
-	newToken := &oauth.Token{
-		AccessToken:  "fresh-token",
-		TokenType:    "Bearer",
-		RefreshToken: "new-refresh",
-		Expiry:       time.Now().Add(1 * time.Hour),
-	}
-	withMockOAuthProvider(t, &mockOAuthProvider{
-		refreshFn: func(ctx context.Context, rt string) (*oauth.Token, error) {
-			if rt != "refresh-me" {
-				t.Errorf("refresh token = %q, want 'refresh-me'", rt)
-			}
-			return newToken, nil
-		},
-	})
-
-	_ = captureStderr(t, func() {
-		err := validateOAuthToken(store)
-		if err != nil {
-			t.Fatalf("expected no error, got: %v", err)
-		}
-	})
-
-	// Verify the new token was saved
-	saved, err := oauth.LoadToken(store, "github")
-	if err != nil {
-		t.Fatalf("LoadToken: %v", err)
-	}
-	if saved.AccessToken != "fresh-token" {
-		t.Errorf("saved token = %q, want 'fresh-token'", saved.AccessToken)
-	}
-}
-
-func TestValidateOAuthToken_RefreshError(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	expiredToken := &oauth.Token{
-		AccessToken:  "expired-token",
-		TokenType:    "Bearer",
-		RefreshToken: "refresh-me",
-		Expiry:       time.Now().Add(-1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", expiredToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	creds := &oauth.ClientCredentials{ClientID: "cid", ClientSecret: "csec"}
-	if err := oauth.SaveClientCredentials(store, "github", creds); err != nil {
-		t.Fatalf("SaveClientCredentials: %v", err)
-	}
-
-	withMockOAuthProvider(t, &mockOAuthProvider{
-		refreshFn: func(ctx context.Context, rt string) (*oauth.Token, error) {
-			return nil, fmt.Errorf("refresh failed")
-		},
-	})
-
-	_ = captureStderr(t, func() {
-		err := validateOAuthToken(store)
-		if err == nil || !strings.Contains(err.Error(), "failed to refresh") {
-			t.Errorf("expected 'failed to refresh' error, got: %v", err)
-		}
-	})
-}
-
-func TestValidateOAuthToken_ValidateAfterRefreshError(t *testing.T) {
-	store, _ := newTestStore()
-	c := config.DefaultConfig()
-	withTestConfig(t, c)
-
-	expiredToken := &oauth.Token{
-		AccessToken:  "expired-token",
-		TokenType:    "Bearer",
-		RefreshToken: "refresh-me",
-		Expiry:       time.Now().Add(-1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", expiredToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	creds := &oauth.ClientCredentials{ClientID: "cid", ClientSecret: "csec"}
-	if err := oauth.SaveClientCredentials(store, "github", creds); err != nil {
-		t.Fatalf("SaveClientCredentials: %v", err)
-	}
-
-	newToken := &oauth.Token{
-		AccessToken: "bad-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	withMockOAuthProvider(t, &mockOAuthProvider{
-		refreshFn: func(ctx context.Context, rt string) (*oauth.Token, error) {
-			return newToken, nil
-		},
-		validateFn: func(ctx context.Context, token *oauth.Token) error {
-			return fmt.Errorf("token invalid")
-		},
-	})
-
-	_ = captureStderr(t, func() {
-		err := validateOAuthToken(store)
-		if err == nil || !strings.Contains(err.Error(), "validation failed") {
-			t.Errorf("expected 'validation failed' error, got: %v", err)
-		}
-	})
-}
-
-func TestRunExec_OAuthAuthValid(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	c.Auth.DefaultMethod = "oauth"
-	withTestConfig(t, c)
-
-	store.Set("KEY", "val")
-
-	// Store a valid token
-	validToken := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", validToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	oldExec := execRunFn
-	oldExit := osExitFn
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		execRunFn = oldExec
-		osExitFn = oldExit
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-
-	osExitFn = func(_ int) {}
-	execRunFn = func(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
-		if secrets["KEY"] != "val" {
-			t.Errorf("secret not injected")
-		}
-		return 0, nil
-	}
-	skipConfirm = true
-	authMethod = "oauth"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err != nil {
-		t.Fatalf("runExec with oauth: %v", err)
-	}
-}
-
-func TestRunExec_BothAuthValid(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Audit.Enabled = false
-	c.Auth.DefaultMethod = "both"
-	c.Auth.SessionTTL = "5m"
-	withTestConfig(t, c)
-
-	store.Set("KEY", "val")
-	store.SetPINHash("hash")
-
-	// Store a valid token
-	validToken := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", validToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	// Create a valid session so we don't need interactive PIN entry
-	_ = session.Create("hash")
-
-	oldExec := execRunFn
-	oldExit := osExitFn
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		execRunFn = oldExec
-		osExitFn = oldExit
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-
-	osExitFn = func(_ int) {}
-	execRunFn = func(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
-		if secrets["KEY"] != "val" {
-			t.Errorf("secret not injected")
-		}
-		return 0, nil
-	}
-	skipConfirm = true
-	authMethod = "both"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err != nil {
-		t.Fatalf("runExec with both: %v", err)
-	}
-}
-
 func TestRunExec_PINAuthWithSession(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
@@ -1136,38 +784,6 @@ func TestRunExec_MigrateTipSuppressedInDedicatedMode(t *testing.T) {
 				t.Errorf("dedicated=%v: tip shown=%v, stderr: %q", dedicated, gotTip, errOut)
 			}
 		})
-	}
-}
-
-func TestRunExec_BothAuthPINFailed(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "both"
-	withTestConfig(t, c)
-
-	store.Set("KEY", "val")
-
-	// Store a valid token but NO PIN hash
-	validToken := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", validToken); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	oldMethod := authMethod
-	t.Cleanup(func() { authMethod = oldMethod })
-	authMethod = "both"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err == nil || !strings.Contains(err.Error(), "PIN authentication failed") {
-		t.Errorf("expected 'PIN authentication failed' error, got: %v", err)
 	}
 }
 
@@ -1353,109 +969,6 @@ func TestRunExec_WithRedactFlag(t *testing.T) {
 	}
 	if !redactCalled {
 		t.Error("redactRunFn should have been called")
-	}
-}
-
-func TestRunExec_OAuthAuthWithValidToken(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "oauth"
-	withTestConfig(t, c)
-
-	store.Set("KEY", "val")
-
-	// Store a valid (not expired) OAuth token
-	tok := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", tok); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	oldExec := execRunFn
-	oldExit := osExitFn
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		execRunFn = oldExec
-		osExitFn = oldExit
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-
-	osExitFn = func(_ int) {}
-	execRunFn = func(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
-		if secrets["KEY"] != "val" {
-			t.Errorf("expected KEY=val, got %v", secrets)
-		}
-		return 0, nil
-	}
-	skipConfirm = true
-	authMethod = "" // Use config default
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err != nil {
-		t.Fatalf("runExec: %v", err)
-	}
-}
-
-func TestRunExec_BothAuthWithValidSession(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "both"
-	c.Auth.SessionTTL = "15m"
-	withTestConfig(t, c)
-
-	store.Set("KEY", "val")
-	store.SetPINHash("both-hash")
-
-	// Create a valid session for PIN
-	if err := session.Create("both-hash"); err != nil {
-		t.Fatalf("session.Create: %v", err)
-	}
-	t.Cleanup(func() { _ = session.Clear() })
-
-	// Store a valid OAuth token
-	tok := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", tok); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	oldExec := execRunFn
-	oldExit := osExitFn
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		execRunFn = oldExec
-		osExitFn = oldExit
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-
-	osExitFn = func(_ int) {}
-	execRunFn = func(command string, args []string, secrets map[string]string, extraEnv ...string) (int, error) {
-		return 0, nil
-	}
-	skipConfirm = true
-	authMethod = "" // Use config default
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err != nil {
-		t.Fatalf("runExec: %v", err)
 	}
 }
 
@@ -1691,29 +1204,6 @@ func TestRunExec_NonZeroExitCode(t *testing.T) {
 	}
 }
 
-func TestValidateOAuthToken_NotExpired(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-
-	c := config.DefaultConfig()
-	c.Auth.OAuth.GitHub.Enabled = true
-	withTestConfig(t, c)
-
-	tok := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", tok); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	err := validateOAuthToken(store)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	dir := t.TempDir()
 	oldHome := os.Getenv("HOME")
@@ -1908,56 +1398,6 @@ func TestSetupIsolationProxy_NoRules(t *testing.T) {
 	}
 }
 
-func TestRunExec_BothAuthWithPINSession(t *testing.T) {
-	store, _ := newTestStore()
-	withTestKeyring(t, store)
-	store.Set("S", "val")
-
-	c := config.DefaultConfig()
-	c.Auth.OAuth.GitHub.Enabled = true
-	withTestConfig(t, c)
-
-	// Set up PIN + valid session
-	store.SetPINHash("pin-hash")
-	session.Create("pin-hash")
-
-	// Save valid OAuth token
-	tok := &oauth.Token{
-		AccessToken: "valid-token",
-		TokenType:   "Bearer",
-		Expiry:      time.Now().Add(1 * time.Hour),
-	}
-	if err := oauth.SaveToken(store, "github", tok); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
-
-	oldMethod := authMethod
-	t.Cleanup(func() { authMethod = oldMethod })
-	authMethod = "both"
-
-	oldExec := execRunFn
-	t.Cleanup(func() { execRunFn = oldExec })
-	execRunFn = func(name string, args []string, env map[string]string, extra ...string) (int, error) {
-		return 0, nil
-	}
-
-	oldExit := osExitFn
-	t.Cleanup(func() { osExitFn = oldExit })
-	osExitFn = func(code int) {}
-
-	oldConfirm := skipConfirm
-	t.Cleanup(func() { skipConfirm = oldConfirm })
-	skipConfirm = true
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 func TestRunExec_ExecFnError(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
@@ -2064,45 +1504,6 @@ func TestRunExec_NoneAuthGetAllError(t *testing.T) {
 	}
 }
 
-// --- exec "oauth" auth GetAll error ---
-
-func TestRunExec_OAuthAuthGetAllError(t *testing.T) {
-	// Need a ring that supports Get (for OAuth token) but fails on Keys (for GetAll)
-	ring := newMockRing()
-	// Store a valid (non-expired) OAuth token so validateOAuthToken succeeds
-	tokenData := `{"access_token":"tok","token_type":"bearer","expiry":"2099-01-01T00:00:00Z"}`
-	ring.items["__nokey_oauth_token_github__"] = kring.Item{
-		Key:  "__nokey_oauth_token_github__",
-		Data: []byte(tokenData),
-	}
-	store := nkeyring.NewWithRing(&errorKeysRing{mockRing: ring}, "nokey-test")
-	withTestKeyring(t, store)
-
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "oauth"
-	withTestConfig(t, c)
-
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-	skipConfirm = true
-	authMethod = "oauth"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err == nil {
-		t.Fatal("expected error when GetAll fails after OAuth")
-	}
-	if !strings.Contains(err.Error(), "keys failed") {
-		t.Errorf("error = %v, want 'keys failed'", err)
-	}
-}
-
 // --- exec GetAll error with export (for export.go coverage) ---
 
 func TestRunExec_GetKeyringError(t *testing.T) {
@@ -2121,39 +1522,6 @@ func TestRunExec_GetKeyringError(t *testing.T) {
 	err := runExec(cmd, []string{"echo"})
 	if err == nil || !strings.Contains(err.Error(), "keyring locked") {
 		t.Errorf("expected 'keyring locked' error, got: %v", err)
-	}
-}
-
-// --- exec "both" auth mode, OAuth fails ---
-
-func TestRunExec_BothAuthOAuthFails(t *testing.T) {
-	// "both" mode requires OAuth + PIN; with no OAuth token, validateOAuthToken fails
-	store, _ := newTestStore()
-	store.Set("SECRET", "val")
-	withTestKeyring(t, store)
-
-	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "both"
-	withTestConfig(t, c)
-
-	oldSkip := skipConfirm
-	oldMethod := authMethod
-	t.Cleanup(func() {
-		skipConfirm = oldSkip
-		authMethod = oldMethod
-	})
-	skipConfirm = true
-	authMethod = "both"
-
-	cmd := &cobra.Command{}
-	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
-
-	err := runExec(cmd, []string{"echo"})
-	if err == nil {
-		t.Fatal("expected error when OAuth fails in 'both' mode")
-	}
-	if !strings.Contains(err.Error(), "OAuth authentication failed") {
-		t.Errorf("error = %v, want 'OAuth authentication failed'", err)
 	}
 }
 
@@ -2338,30 +1706,20 @@ func TestResolveAuthMethod(t *testing.T) {
 		// Equal or stronger overrides are allowed.
 		{configured: "none", override: "none", want: "none"},
 		{configured: "none", override: "pin", want: "pin"},
-		{configured: "none", override: "oauth", want: "oauth"},
-		{configured: "none", override: "both", want: "both"},
 		{configured: "pin", override: "pin", want: "pin"},
-		{configured: "pin", override: "both", want: "both"},
-		{configured: "oauth", override: "oauth", want: "oauth"},
-		{configured: "oauth", override: "both", want: "both"},
-		{configured: "both", override: "both", want: "both"},
 		{configured: "", hasPIN: true, override: "pin", want: "pin"},
-		{configured: "", hasPIN: true, override: "both", want: "both"},
 
-		// Every downgrade is refused.
+		// A downgrade is refused.
 		{configured: "pin", override: "none", wantErr: "--auth-method none would skip pin required by config"},
-		{configured: "pin", override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
-		{configured: "oauth", override: "none", wantErr: "--auth-method none would skip oauth required by config"},
-		{configured: "oauth", override: "pin", wantErr: "--auth-method pin would skip oauth required by config"},
-		{configured: "both", override: "none", wantErr: "--auth-method none would skip pin required by config"},
-		{configured: "both", override: "pin", wantErr: "--auth-method pin would skip oauth required by config"},
-		{configured: "both", override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
 		{configured: "", hasPIN: true, override: "none", wantErr: "--auth-method none would skip pin required by config"},
-		{configured: "", hasPIN: true, override: "oauth", wantErr: "--auth-method oauth would skip pin required by config"},
 
-		// Unknown methods are rejected.
+		// Unknown and removed methods are rejected, with or without a flag.
 		{configured: "none", override: "bogus", wantErr: "invalid auth method 'bogus'"},
-		{configured: "bogus", override: "both", wantErr: "invalid auth method 'bogus' in config"},
+		{configured: "bogus", wantErr: "invalid auth method 'bogus' in config"},
+		{configured: "bogus", override: "pin", wantErr: "invalid auth method 'bogus' in config"},
+		{configured: "oauth", wantErr: "auth method 'oauth' in config was removed in nokey v0.9.0"},
+		{configured: "both", override: "pin", wantErr: "auth method 'both' in config was removed in nokey v0.9.0"},
+		{configured: "none", override: "oauth", wantErr: "auth method 'oauth' was removed in nokey v0.9.0"},
 	}
 
 	for _, tt := range tests {

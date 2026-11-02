@@ -60,7 +60,7 @@ type AuditEntry struct {
 	Timestamp    time.Time `json:"timestamp"`       // UTC timestamp
 	SecretNames  []string  `json:"secret_names"`    // Names of secrets accessed (never values)
 	Command      string    `json:"command"`         // Command executed
-	AuthMethod   string    `json:"auth_method"`     // "pin", "oauth", "both", "none"
+	AuthMethod   string    `json:"auth_method"`     // "pin" or "none"
 	Success      bool      `json:"success"`         // Whether operation succeeded
 	User         string    `json:"user"`            // OS username
 	Hostname     string    `json:"hostname"`        // Machine hostname

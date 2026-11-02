@@ -165,12 +165,12 @@ func TestRunStatus_AuthMethodFromConfig(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
-	c.Auth.DefaultMethod = "oauth"
+	c.Auth.DefaultMethod = "none"
 	withTestConfig(t, c)
 
 	got := runStatusJSON(t)
-	if got["auth_method"] != "oauth" {
-		t.Errorf("auth_method = %v, want oauth", got["auth_method"])
+	if got["auth_method"] != "none" {
+		t.Errorf("auth_method = %v, want none", got["auth_method"])
 	}
 	if got["ca_present"] != false {
 		t.Errorf("ca_present = %v, want false", got["ca_present"])

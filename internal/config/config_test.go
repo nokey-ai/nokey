@@ -157,10 +157,6 @@ func TestLoad_RoundTrip_FullConfig(t *testing.T) {
 			DefaultMethod: "pin",
 			SessionTTL:    "10m",
 			AutoMintToken: true,
-			OAuth: OAuthConfig{
-				GitHub: OAuthGitHubConfig{Enabled: true},
-				Custom: OAuthCustomConfig{Enabled: true},
-			},
 		},
 	}
 
@@ -190,9 +186,6 @@ func TestLoad_RoundTrip_FullConfig(t *testing.T) {
 	}
 	if !loaded.Auth.AutoMintToken {
 		t.Error("Auth.AutoMintToken should be true")
-	}
-	if !loaded.Auth.OAuth.GitHub.Enabled || !loaded.Auth.OAuth.Custom.Enabled {
-		t.Error("OAuth GitHub and Custom should both be enabled")
 	}
 	if loaded.RequireAuth != true {
 		t.Error("RequireAuth should be true")
@@ -376,6 +369,39 @@ redact_by_default: true
 	}
 	if cfg.ServiceName != "test" {
 		t.Errorf("ServiceName = %q, want %q", cfg.ServiceName, "test")
+	}
+}
+
+func TestLoadStrict_DefaultMethod(t *testing.T) {
+	for _, tc := range []struct{ method, wantErr string }{
+		{"pin", ""},
+		{"none", ""},
+		{"oauth", "was removed in nokey v0.9.0"},
+		{"both", "was removed in nokey v0.9.0"},
+		{"bogus", "is invalid (supported: pin, none)"},
+	} {
+		t.Run(tc.method, func(t *testing.T) {
+			tempDir := t.TempDir()
+			t.Setenv("HOME", tempDir)
+			configDir := filepath.Join(tempDir, ".config", "nokey")
+			if err := os.MkdirAll(configDir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			content := "auth:\n  default_method: " + tc.method + "\n"
+			if err := os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadStrict()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want %q", err, tc.wantErr)
+			}
+		})
 	}
 }
 

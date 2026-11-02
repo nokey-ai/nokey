@@ -3,13 +3,11 @@ package cmd
 import (
 	"strings"
 	"testing"
-	"time"
 
 	kring "github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
-	"github.com/nokey-ai/nokey/internal/oauth"
 	"github.com/nokey-ai/nokey/internal/session"
 )
 
@@ -205,9 +203,9 @@ func TestRunExport_FilterLeavesNothing(t *testing.T) {
 // --- export authenticates like exec ---
 
 // exportAuthSetup prepares a store with secret A=1 under the given
-// default_method. pin stores a PIN hash with a valid session, so no
-// prompt is needed; token stores a valid GitHub OAuth token.
-func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin, token bool) {
+// default_method. pin stores a PIN hash with a valid session, so a prompt
+// is only reached when export ignores the session.
+func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin bool) {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir()) // keep the session ticket out of the real home
 	withTestKeyring(t, store)
@@ -225,49 +223,29 @@ func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin, to
 			t.Fatalf("session.Create: %v", err)
 		}
 	}
-	if token {
-		tok := &oauth.Token{AccessToken: "valid", TokenType: "Bearer", Expiry: time.Now().Add(time.Hour)}
-		if err := oauth.SaveToken(store, "github", tok); err != nil {
-			t.Fatalf("SaveToken: %v", err)
-		}
-	}
 
 	oldOnly, oldExcept, oldShell := exportOnly, exportExcept, shellType
 	t.Cleanup(func() { exportOnly, exportExcept, shellType = oldOnly, oldExcept, oldShell })
 	exportOnly, exportExcept = "", ""
 }
 
-func TestRunExport_AuthMethods(t *testing.T) {
-	tests := []struct {
-		name      string
-		method    string
-		token     bool
-		wantAudit string
-	}{
-		{name: "none", method: "none", wantAudit: "none"},
-		{name: "oauth", method: "oauth", token: true, wantAudit: "oauth"},
+func TestRunExport_NoAuthRecordsMethod(t *testing.T) {
+	store, _ := newTestStore()
+	exportAuthSetup(t, store, "none", false)
+
+	if got := runExportWith(t, "bash"); got != "export A='1'\n" {
+		t.Errorf("output = %q", got)
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			store, _ := newTestStore()
-			exportAuthSetup(t, store, tt.method, false, tt.token)
-
-			if got := runExportWith(t, "bash"); got != "export A='1'\n" {
-				t.Errorf("output = %q", got)
-			}
-
-			log, err := audit.Load(store)
-			if err != nil {
-				t.Fatalf("audit.Load: %v", err)
-			}
-			if len(log.Entries) == 0 {
-				t.Fatal("no audit entry recorded")
-			}
-			last := log.Entries[len(log.Entries)-1]
-			if last.Operation != "export" || last.AuthMethod != tt.wantAudit {
-				t.Errorf("audit entry = %s/%s, want export/%s", last.Operation, last.AuthMethod, tt.wantAudit)
-			}
-		})
+	log, err := audit.Load(store)
+	if err != nil {
+		t.Fatalf("audit.Load: %v", err)
+	}
+	if len(log.Entries) == 0 {
+		t.Fatal("no audit entry recorded")
+	}
+	last := log.Entries[len(log.Entries)-1]
+	if last.Operation != "export" || last.AuthMethod != "none" {
+		t.Errorf("audit entry = %s/%s, want export/none", last.Operation, last.AuthMethod)
 	}
 }
 
@@ -275,21 +253,10 @@ func TestRunExport_AuthMethods(t *testing.T) {
 // valid PIN session never skips the prompt. The test setup creates a valid
 // session; with no terminal the prompt fails, which shows it was reached.
 func TestRunExport_PINAlwaysPrompts(t *testing.T) {
-	tests := []struct {
-		name   string
-		method string
-		token  bool
-	}{
-		{name: "pin", method: "pin"},
-		{name: "both", method: "both", token: true},
-		{name: "legacy stored PIN", method: ""},
-		{name: "none is raised to pin", method: "none"},
-		{name: "oauth is raised to both", method: "oauth", token: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, method := range []string{"pin", "", "none"} {
+		t.Run("method="+method, func(t *testing.T) {
 			store, _ := newTestStore()
-			exportAuthSetup(t, store, tt.method, true, tt.token)
+			exportAuthSetup(t, store, method, true)
 			shellType = "bash"
 
 			var err error
@@ -308,8 +275,7 @@ func TestExportAuthMethod(t *testing.T) {
 	for _, tt := range []struct{ method, withPIN, withoutPIN string }{
 		{"none", "pin", "none"},
 		{"pin", "pin", "pin"},
-		{"oauth", "both", "oauth"},
-		{"both", "both", "both"},
+		{"oauth", "oauth", "oauth"}, // passes through so it fails as removed
 	} {
 		noPIN, _ := newTestStore()
 		if got := exportAuthMethod(noPIN, tt.method); got != tt.withoutPIN {
@@ -325,21 +291,21 @@ func TestExportAuthMethod(t *testing.T) {
 
 func TestRunExport_AuthFailures(t *testing.T) {
 	tests := []struct {
-		name       string
-		method     string
-		pin, token bool
-		wantErr    string
+		name    string
+		method  string
+		pin     bool
+		wantErr string
 	}{
-		// OAuth configured without a PIN used to export unauthenticated.
-		{name: "oauth without token", method: "oauth", wantErr: "OAuth authentication failed"},
-		// both used to check only the PIN.
-		{name: "both without token", method: "both", pin: true, wantErr: "OAuth authentication failed"},
 		{name: "pin without PIN set", method: "pin", wantErr: "PIN authentication failed"},
+		// A config still naming a removed method fails, with or without a PIN.
+		{name: "oauth removed", method: "oauth", wantErr: "was removed in nokey v0.9.0"},
+		{name: "oauth removed with PIN", method: "oauth", pin: true, wantErr: "was removed in nokey v0.9.0"},
+		{name: "both removed", method: "both", pin: true, wantErr: "was removed in nokey v0.9.0"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			store, _ := newTestStore()
-			exportAuthSetup(t, store, tt.method, tt.pin, tt.token)
+			exportAuthSetup(t, store, tt.method, tt.pin)
 			shellType = "bash"
 
 			var err error

@@ -6,7 +6,7 @@
 
 **Zero-trust secret management for AI coding assistants**
 
-`nokey` stores credentials in OS-native secure storage (macOS Keychain, Windows Credential Manager, Linux keyrings) and provides zero-trust access control with PIN/OAuth authentication and comprehensive audit logging. AI coding assistants can use your secrets without ever seeing the actual values, and you maintain complete control over when and how secrets are accessed.
+`nokey` stores credentials in OS-native secure storage (macOS Keychain, Windows Credential Manager, Linux keyrings) and provides zero-trust access control with PIN authentication and comprehensive audit logging. AI coding assistants can use your secrets without ever seeing the actual values, and you maintain complete control over when and how secrets are accessed.
 
 ## Why nokey?
 
@@ -20,7 +20,7 @@ When you use AI coding assistants, you often need to provide API keys, tokens, a
 `nokey` solves this with a **zero-trust security model**:
 
 1. **Secrets stored in OS-native secure storage** (encrypted, protected by OS)
-2. **PIN or OAuth authentication required** before any secret access
+2. **PIN authentication required** before any secret access
 3. **Comprehensive audit logging** of all secret access (encrypted)
 4. **Selective secret injection** (only expose what's needed)
 5. **Output redaction** to prevent accidental logging
@@ -235,59 +235,22 @@ nokey exec --yes -- command
 # Still prompts for PIN when configured
 ```
 
-### 2. OAuth Authentication
+#### Per-command auth method
 
-Authenticate with OAuth providers (GitHub, custom) as an alternative or addition to PIN.
-
-```bash
-# Set up GitHub OAuth (opens browser for authorization)
-nokey auth oauth setup --provider github \
-  --client-id YOUR_GITHUB_CLIENT_ID \
-  --client-secret YOUR_GITHUB_CLIENT_SECRET
-
-# Set up custom OAuth provider (--provider generic or --provider custom)
-nokey auth oauth setup --provider generic \
-  --auth-url https://provider.com/oauth/authorize \
-  --token-url https://provider.com/oauth/token \
-  --userinfo-url https://provider.com/oauth/userinfo \
-  --client-id YOUR_CLIENT_ID \
-  --client-secret YOUR_CLIENT_SECRET \
-  --scopes openid,profile,email
-
-# Check OAuth token status and expiry
-nokey auth oauth status
-
-# Manually refresh OAuth token (happens automatically on exec if expired)
-nokey auth oauth refresh --provider github
-
-# Logout (removes both token and credentials)
-nokey auth oauth logout --provider github
-```
-
-**Flexible authentication modes:**
-- **PIN only** - Traditional PIN authentication
-- **OAuth only** - Use GitHub or custom OAuth provider
-- **Both (2FA)** - Require both PIN and OAuth
-- **Per-command** - Strengthen the auth method for one execution
-
-`--auth-method` can only add factors to the configured method, never
-remove them: with `default_method: pin`, `--auth-method both` works but
-`--auth-method none` or `--auth-method oauth` is refused because it would
-skip the PIN. With no `default_method`, setting a PIN (or `require_auth`)
-counts as configuring `pin`.
+`--auth-method pin` requires the PIN for one run even when the config does
+not; `--auth-method none` is refused when the config requires a PIN. The
+flag can add the PIN, never skip it. With no `default_method`, setting a
+PIN (or `require_auth`) counts as configuring `pin`.
 
 ```bash
 # Use default auth method from config
 nokey exec -- command
 
-# Require OAuth for this run (when config doesn't already require a PIN)
-nokey exec --auth-method oauth -- command
-
-# Require both PIN and OAuth (2FA)
-nokey exec --auth-method both -- command
+# Require the PIN for this run
+nokey exec --auth-method pin -- command
 ```
 
-### 3. Confirmation Prompts
+### 2. Confirmation Prompts
 
 By default, nokey shows what secrets will be exposed and asks for confirmation:
 
@@ -309,7 +272,7 @@ Continue? [y/N]:
 **Skip confirmation:**
 - Use `--yes` flag to skip the confirmation prompt
 
-### 4. Selective Secret Injection
+### 3. Selective Secret Injection
 
 ```bash
 # Only inject what's needed (most secure)
@@ -319,7 +282,7 @@ nokey exec --only OPENAI_API_KEY,GITHUB_TOKEN -- command
 nokey exec --except DATABASE_PASSWORD,PROD_AWS_KEY -- command
 ```
 
-### 5. Output Redaction
+### 4. Output Redaction
 
 ```bash
 # Redact secret values from output
@@ -394,7 +357,7 @@ Each audit entry contains:
 - **Timestamp** (UTC)
 - **Secret names accessed** (never values)
 - **Command executed**
-- **Authentication method used** (PIN, OAuth, both, none)
+- **Authentication method used** (PIN or none)
 - **Success/failure status**
 - **User and system info** (username, hostname, process ID)
 - **Error message** (if failed)
@@ -456,7 +419,7 @@ audit:
 
 # Authentication configuration
 auth:
-  default_method: "pin"  # pin, oauth, both, or none
+  default_method: "pin"  # pin or none
 
   # How long a successful PIN entry stays valid before re-prompting.
   # Duration string (e.g. "15m", "1h"). Default 15m, max 8h.
@@ -507,17 +470,6 @@ keyring:
   # Dedicated keychain file name. Defaults to "nokey". Only meaningful
   # when dedicated: true.
   name: nokey
-
-  # OAuth provider selection
-  # Note: OAuth tokens and credentials are stored in OS keyring after running
-  # 'nokey auth oauth setup --provider <name> --client-id ... --client-secret ...'
-  # This config just tracks which provider is enabled
-  oauth:
-    github:
-      enabled: true  # Use GitHub OAuth when auth_method is "oauth"
-
-    custom:
-      enabled: false  # Use custom OAuth provider when auth_method is "oauth"
 
 # Legacy: use auth.default_method instead
 require_auth: false  # Deprecated, kept for backward compatibility
@@ -978,7 +930,6 @@ always checked and reported as `{"config": {...}, "policy": {...}}`, each with
 #### Unauthorized automated access
 - PIN authentication cannot be bypassed programmatically
 - AI assistants cannot access secrets without human PIN entry
-- OAuth tokens require browser interaction
 
 #### Unaudited secret access
 - Comprehensive audit logging (if enabled)
@@ -1128,20 +1079,10 @@ Uses [`99designs/keyring`](https://github.com/99designs/keyring) library to inte
 5. Must run in interactive terminal (cannot be automated)
 6. Legacy SHA-256 hashes are detected and users are prompted to upgrade
 
-**OAuth Authentication:**
-1. Local HTTP server started on random port
-2. Browser opened to OAuth provider
-3. User authenticates and approves
-4. OAuth callback received with authorization code
-5. Code exchanged for access token
-6. Token and client credentials encrypted and stored in keyring
-7. Token validated on each secret access (auto-refresh if expired)
-8. CSRF protection with state tokens
-
 ### 3. Secret Injection
 
 When you run `nokey exec`:
-1. Authenticate (PIN or OAuth if required)
+1. Authenticate (PIN if required)
 2. Retrieve secrets from keyring
 3. Filter secrets based on `--only` or `--except` flags
 4. Show confirmation prompt (unless `--yes`)
@@ -1190,7 +1131,6 @@ All audit data is encrypted before storage, so even system administrators cannot
 │  ┌─────────────────────────────────────────────┐ │
 │  │ Authentication Layer                        │ │
 │  │  • PIN: Prompt for PIN (interactive only)   │ │
-│  │  • OAuth: Validate token, refresh if needed │ │
 │  │  • Cannot be bypassed programmatically      │ │
 │  └─────────────────────────────────────────────┘ │
 └───────────┬───────────────────────────────────────┘
@@ -1202,7 +1142,6 @@ All audit data is encrypted before storage, so even system administrators cannot
 │  • Secrets stored encrypted                      │
 │  • Protected by OS security (Touch ID, password) │
 │  • Audit log stored encrypted                    │
-│  • OAuth tokens stored encrypted                 │
 └───────────┬───────────────────────────────────────┘
             │
             │ 3. Inject secrets as env vars
@@ -1252,7 +1191,7 @@ nokey/
 ├── main.go                    # Entry point
 ├── cmd/                       # Cobra commands
 │   ├── root.go               # Root command setup
-│   ├── auth.go               # PIN/OAuth authentication commands
+│   ├── auth.go               # PIN authentication commands
 │   ├── audit.go              # Audit log commands
 │   ├── set.go                # Store secrets
 │   ├── delete.go             # Delete secrets
@@ -1285,12 +1224,7 @@ nokey/
 │   ├── token/                # Session token store
 │   ├── mcpserver/            # MCP tool handlers (served by cmd/mcp.go)
 │   ├── placeholder/          # ${{NOKEY:...}} resolution
-│   ├── update/               # Release download, checksum check, binary swap
-│   └── oauth/
-│       ├── oauth.go          # OAuth interface, token management
-│       ├── github.go         # GitHub OAuth provider
-│       ├── generic.go        # Generic OAuth 2.0 provider
-│       └── server.go         # Local callback server with CSRF protection
+│   └── update/               # Release download, checksum check, binary swap
 ├── README.md
 ├── LICENSE
 └── go.mod
@@ -1304,7 +1238,6 @@ Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for developmen
 
 ### Areas for Contribution
 
-- OAuth provider implementations (GitHub, Google, Azure AD, etc.)
 - Additional audit export formats
 - Integration examples with other tools
 - Documentation improvements
@@ -1332,7 +1265,6 @@ Built with:
 - [mark3labs/mcp-go](https://github.com/mark3labs/mcp-go) - Model Context Protocol server
 - [creack/pty](https://github.com/creack/pty) - PTY interface for output redaction
 - [golang.org/x/crypto](https://pkg.go.dev/golang.org/x/crypto) - Cryptography (NaCl secretbox)
-- [golang.org/x/oauth2](https://pkg.go.dev/golang.org/x/oauth2) - OAuth 2.0 client
 
 Inspired by the need to safely use AI coding assistants without exposing credentials.
 
@@ -1380,34 +1312,6 @@ Audit logs are:
 4. Double-encrypted: once by nokey, once by OS
 
 Even system administrators cannot read your audit logs without the nokey encryption key.
-
-### What's the difference between PIN and OAuth?
-
-- **PIN**: Simple, local, no external dependencies, you remember a PIN
-- **OAuth**: Uses external provider (GitHub), browser-based, can leverage existing auth
-- **Both**: Maximum security (2-factor authentication)
-
-Choose based on your threat model and convenience preferences.
-
-### How are OAuth credentials stored?
-
-When you run `nokey auth oauth setup`, nokey stores:
-1. **OAuth access token** - encrypted and stored in OS keyring
-2. **OAuth refresh token** - encrypted and stored in OS keyring
-3. **Client credentials** (client_id & client_secret) - encrypted and stored in OS keyring
-
-**Why store client credentials?**
-- Enables automatic token refresh when tokens expire
-- Allows `nokey auth oauth refresh` to work without re-entering credentials
-- Prevents need to re-authenticate via browser for token refresh
-
-**Security:**
-- All stored in OS-native encrypted keyring (same as your secrets)
-- Protected by macOS Keychain, Windows Credential Manager, or Linux Secret Service
-- Only accessible by your user account
-- Removed when you run `nokey auth oauth logout`
-
-**Note:** Client credentials are stored separately from your secrets and are only used for OAuth token management.
 
 ### Can I use nokey with Docker?
 

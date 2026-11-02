@@ -79,21 +79,16 @@ func registerFlagCompletions() {
 		fixed := func(values ...string) cobra.CompletionFunc {
 			return cobra.FixedCompletions(values, cobra.ShellCompDirectiveNoFileComp)
 		}
-		providers := fixed("github", "custom", "generic")
-
 		for _, r := range []struct {
 			cmd  *cobra.Command
 			flag string
 			fn   cobra.CompletionFunc
 		}{
 			{exportCmd, "shell", fixed("bash", "zsh", "fish", "powershell")},
-			{execCmd, "auth-method", fixed("pin", "oauth", "both", "none")},
+			{execCmd, "auth-method", fixed("pin", "none")},
 			{auditExportCmd, "format", fixed("json", "csv")},
 			{auditListCmd, "operation", fixed(auditOperations...)},
 			{auditExportCmd, "operation", fixed(auditOperations...)},
-			{authOAuthSetupCmd, "provider", providers},
-			{authOAuthRefreshCmd, "provider", providers},
-			{authOAuthLogoutCmd, "provider", providers},
 		} {
 			_ = r.cmd.RegisterFlagCompletionFunc(r.flag, r.fn)
 		}

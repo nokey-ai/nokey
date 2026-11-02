@@ -103,7 +103,7 @@ const starterConfig = `# nokey configuration
 
 # Authentication settings
 auth:
-  # Default method: pin, oauth, both, or none (auto-detect if empty)
+  # Default method: pin or none (auto-detect if empty)
   # default_method: ""
 
   # Session TTL — how long a PIN entry remains valid (max 8h)

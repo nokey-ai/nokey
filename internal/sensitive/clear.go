@@ -10,7 +10,7 @@
 //  1. Strings copied by os/exec at execve time live in child process memory.
 //  2. fmt.Sprintf intermediates (e.g. "KEY=value") create unreachable copies.
 //  3. Freed memory is not zeroed by the GC — data persists until pages are reused.
-//  4. Third-party libraries (keyring, argon2, oauth2) create their own copies.
+//  4. Third-party libraries (keyring, argon2) create their own copies.
 //  5. Strings shorter than 8 bytes are skipped to avoid corrupting Go-interned strings.
 //  6. The GC may theoretically move an object between our StringData call and
 //     our zeroing, though this is extremely unlikely in practice.

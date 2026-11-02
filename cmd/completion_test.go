@@ -100,13 +100,10 @@ func TestFlagCompletions(t *testing.T) {
 		want []string
 	}{
 		{[]string{"export", "--shell", ""}, []string{"bash", "zsh", "fish", "powershell"}},
-		{[]string{"exec", "--auth-method", ""}, []string{"pin", "oauth", "both", "none"}},
+		{[]string{"exec", "--auth-method", ""}, []string{"pin", "none"}},
 		{[]string{"audit", "export", "--format", ""}, []string{"json", "csv"}},
 		{[]string{"audit", "list", "--operation", ""}, []string{"exec", "set", "delete", "import", "export", "mcp:exec"}},
 		{[]string{"audit", "export", "--operation", ""}, []string{"exec", "mcp:exec_with_secrets"}},
-		{[]string{"auth", "oauth", "setup", "--provider", ""}, []string{"github", "custom"}},
-		{[]string{"auth", "oauth", "refresh", "--provider", ""}, []string{"github", "custom"}},
-		{[]string{"auth", "oauth", "logout", "--provider", ""}, []string{"github", "custom"}},
 	}
 	for _, tt := range tests {
 		got := strings.Join(completeArgs(t, tt.args...), " ")
