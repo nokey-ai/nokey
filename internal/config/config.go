@@ -19,19 +19,12 @@ type AuditConfig struct {
 
 // OAuthGitHubConfig contains GitHub OAuth configuration
 type OAuthGitHubConfig struct {
-	Enabled      bool   `yaml:"enabled,omitempty"`
-	ClientID     string `yaml:"client_id,omitempty"`
-	ClientSecret string `yaml:"client_secret,omitempty"`
+	Enabled bool `yaml:"enabled,omitempty"`
 }
 
 // OAuthCustomConfig contains custom OAuth 2.0 provider configuration
 type OAuthCustomConfig struct {
-	Enabled      bool   `yaml:"enabled,omitempty"`
-	ProviderName string `yaml:"provider_name,omitempty"`
-	AuthURL      string `yaml:"auth_url,omitempty"`
-	TokenURL     string `yaml:"token_url,omitempty"`
-	ClientID     string `yaml:"client_id,omitempty"`
-	ClientSecret string `yaml:"client_secret,omitempty"`
+	Enabled bool `yaml:"enabled,omitempty"`
 }
 
 // OAuthConfig contains OAuth configuration for all providers
@@ -191,34 +184,4 @@ func LoadStrict() (*Config, error) {
 	}
 
 	return cfg, nil
-}
-
-// Save writes the config to disk
-func Save(cfg *Config) error {
-	path, err := ConfigPath()
-	if err != nil {
-		return err
-	}
-
-	// Create config directory if it doesn't exist
-	configDir := filepath.Dir(path)
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %w", err)
-	}
-
-	// Don't persist secrets — they belong in the keyring, not config.yaml
-	saved := *cfg
-	saved.Auth.OAuth.GitHub.ClientSecret = ""
-	saved.Auth.OAuth.Custom.ClientSecret = ""
-
-	data, err := yaml.Marshal(&saved)
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
-	}
-
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
 }

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- The `auth.oauth.github.client_id` / `client_secret` and
+  `auth.oauth.custom.provider_name` / `auth_url` / `token_url` /
+  `client_id` / `client_secret` config options. They were read from
+  `config.yaml` but never used: OAuth client credentials have always
+  come from the keyring (`nokey auth oauth setup`). Existing config
+  files still load; `nokey config validate` now reports these keys as
+  unknown so they can be deleted.
+
 ### Added
 - `nokey rename OLD NEW` (alias `mv`) renames a secret and keeps its
   value. The value is copied to the new name, read back and compared,
