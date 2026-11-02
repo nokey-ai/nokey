@@ -128,7 +128,7 @@ func TestValidateExhausted(t *testing.T) {
 	tok, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MaxUses: 1})
 
 	// Use up the single use
-	s.Use(tok.ID, []string{"A"})
+	s.UseFor(tok.ID, "*", []string{"A"})
 
 	// Token should be auto-removed
 	result := s.Validate(tok.ID, []string{"A"})
@@ -163,14 +163,14 @@ func TestUseDecrementsCounter(t *testing.T) {
 	tok, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MaxUses: 3})
 
 	for i := 0; i < 3; i++ {
-		result := s.Use(tok.ID, []string{"A"})
+		result := s.UseFor(tok.ID, "*", []string{"A"})
 		if !result.Valid {
 			t.Fatalf("use %d: expected valid, got %+v", i+1, result)
 		}
 	}
 
 	// 4th use should fail (token auto-removed after 3rd)
-	result := s.Use(tok.ID, []string{"A"})
+	result := s.UseFor(tok.ID, "*", []string{"A"})
 	if result.Valid || result.Reason != "not_found" {
 		t.Errorf("expected not_found after exhaustion, got %+v", result)
 	}
@@ -183,7 +183,7 @@ func TestUseUnlimited(t *testing.T) {
 
 	// Should succeed many times without exhausting
 	for i := 0; i < 100; i++ {
-		result := s.Use(tok.ID, []string{"A"})
+		result := s.UseFor(tok.ID, "*", []string{"A"})
 		if !result.Valid {
 			t.Fatalf("use %d: expected valid, got %+v", i+1, result)
 		}
@@ -193,7 +193,7 @@ func TestUseUnlimited(t *testing.T) {
 func TestUseInvalidToken(t *testing.T) {
 	s := newTestStore(time.Now())
 
-	result := s.Use("nonexistent", []string{"A"})
+	result := s.UseFor("nonexistent", "*", []string{"A"})
 	if result.Valid || result.Reason != "not_found" {
 		t.Errorf("expected not_found, got %+v", result)
 	}
@@ -233,19 +233,6 @@ func TestUseForEnforcesMintedFor(t *testing.T) {
 				t.Error("rejected use consumed the token")
 			}
 		})
-	}
-}
-
-func TestUseIsUnscopedUseFor(t *testing.T) {
-	s := newTestStore(time.Now())
-
-	unscoped, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60})
-	if r := s.Use(unscoped.ID, []string{"A"}); !r.Valid {
-		t.Errorf("Use on a '*' token: %+v, want valid", r)
-	}
-	scoped, _ := s.Mint(MintRequest{Secrets: []string{"A"}, TTLSecs: 60, MintedFor: "gh"})
-	if r := s.Use(scoped.ID, []string{"A"}); r.Reason != "wrong_command" {
-		t.Errorf("Use on a scoped token: %+v, want wrong_command", r)
 	}
 }
 
@@ -356,7 +343,7 @@ func TestConcurrency(t *testing.T) {
 		}(tok.ID)
 		go func(id string) {
 			defer wg2.Done()
-			s.Use(id, []string{"S"})
+			s.UseFor(id, "*", []string{"S"})
 		}(tok.ID)
 	}
 	wg2.Wait()

@@ -20,7 +20,7 @@ func (m *mockRequester) RequestElicitation(_ context.Context, _ mcp.ElicitationR
 	return m.result, m.err
 }
 
-func TestRequest(t *testing.T) {
+func TestRequestWithDetail_NoDetail(t *testing.T) {
 	tests := []struct {
 		name    string
 		result  *mcp.ElicitationResult
@@ -73,7 +73,7 @@ func TestRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &mockRequester{result: tt.result, err: tt.err}
-			err := Request(context.Background(), mock, "gh", []string{"GITHUB_TOKEN"})
+			err := RequestWithDetail(context.Background(), mock, "gh", []string{"GITHUB_TOKEN"}, "")
 
 			if tt.wantErr == "" {
 				if err != nil {
@@ -115,11 +115,11 @@ func TestRequestWithDetail_ShowsDetail(t *testing.T) {
 	}
 }
 
-// Request must keep its exact prompt so existing callers see no change.
-func TestRequest_UnchangedPrompt(t *testing.T) {
+// An empty detail adds no extra line to the prompt.
+func TestRequestWithDetail_EmptyDetailPrompt(t *testing.T) {
 	c := &capturingRequester{}
-	if err := Request(context.Background(), c, "gh", []string{"A", "B"}); err != nil {
-		t.Fatalf("Request: %v", err)
+	if err := RequestWithDetail(context.Background(), c, "gh", []string{"A", "B"}, ""); err != nil {
+		t.Fatalf("RequestWithDetail: %v", err)
 	}
 	want := "nokey: \"gh\" wants to access secret(s): A, B\n\nDo you approve?"
 	if c.msg != want {
