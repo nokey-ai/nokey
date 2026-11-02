@@ -311,7 +311,7 @@ func runKeychainMigrate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	count, err := store.MigrateAllItems(false)
+	count, err := store.MigrateAllItems()
 	if err != nil {
 		return fmt.Errorf("migration failed: %w", err)
 	}

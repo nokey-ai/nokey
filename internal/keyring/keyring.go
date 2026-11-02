@@ -83,8 +83,9 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 
 	fileDir := getFileBackendDir()
 	// Migrate any legacy file-backend entries from the parent config dir
-	// (where they used to live) into the dedicated subdirectory. No-op on
-	// non-file backends, on already-migrated installs, and on first runs.
+	// (where they used to live) into the dedicated subdirectory. This runs
+	// whatever the backend; it is a no-op on already-migrated installs and
+	// on first runs.
 	if oldDir := legacyFileBackendDir(); oldDir != "" && oldDir != fileDir {
 		if err := migrateFileBackendDir(oldDir, fileDir); err != nil {
 			return nil, fmt.Errorf("migrate legacy file-backend layout: %w", err)
@@ -481,7 +482,7 @@ func (s *Store) AllKeys() ([]string, error) {
 // MigrateAllItems re-creates all keychain items so they pick up the current
 // keyring.Config (notably KeychainTrustApplication). On non-macOS platforms
 // this is a no-op.
-func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
+func (s *Store) MigrateAllItems() (int, error) {
 	if runtime.GOOS != "darwin" {
 		return 0, nil
 	}
@@ -506,10 +507,6 @@ func (s *Store) MigrateAllItems(dryRun bool) (int, error) {
 			continue
 		}
 		entries = append(entries, entry{key: k, item: item})
-	}
-
-	if dryRun {
-		return len(entries), nil
 	}
 
 	// Deep-copy Data so zeroing entries doesn't corrupt the backend's storage
