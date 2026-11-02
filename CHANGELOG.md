@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   custom` now find the token. `setup` accepted `custom` as an alias and
   stored the token as `generic`, but the other subcommands looked it up
   under `custom` and failed.
+- `audit.retention_days: 0` no longer deletes the whole audit log at the
+  next compaction; it now means no age limit (`max_entries` still
+  applies). The README now says that old entries are pruned when the log
+  is compacted (at twice `max_entries`), not continuously.
 
 ## [0.7.0] - 2026-11-01
 

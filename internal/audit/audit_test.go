@@ -243,6 +243,26 @@ func TestApplyRetentionPolicy_AgeLimit(t *testing.T) {
 	}
 }
 
+func TestApplyRetentionPolicy_ZeroDaysKeepsAll(t *testing.T) {
+	log := &AuditLog{}
+	now := time.Now().UTC()
+	log.Entries = []AuditEntry{
+		{Timestamp: now.AddDate(-5, 0, 0)},
+		{Timestamp: now.AddDate(0, 0, -1)},
+		{Timestamp: now},
+	}
+
+	log.ApplyRetentionPolicy(2, 0)
+
+	// No age limit: only the count limit applies, keeping the newest 2.
+	if len(log.Entries) != 2 {
+		t.Fatalf("expected 2 entries with retention_days 0, got %d", len(log.Entries))
+	}
+	if !log.Entries[1].Timestamp.Equal(now) {
+		t.Error("should retain the most recent entries")
+	}
+}
+
 func TestApplyRetentionPolicy_Empty(t *testing.T) {
 	log := &AuditLog{}
 	log.ApplyRetentionPolicy(1000, 90) // Should not panic.

@@ -567,12 +567,16 @@ func (a *AuditLog) ApplyRetentionPolicy(maxEntries int, retentionDays int) {
 		return a.Entries[i].Timestamp.Before(a.Entries[j].Timestamp)
 	})
 
-	// Remove entries older than retention period
-	cutoffDate := time.Now().UTC().AddDate(0, 0, -retentionDays)
-	validEntries := make([]AuditEntry, 0, len(a.Entries))
-	for _, entry := range a.Entries {
-		if entry.Timestamp.After(cutoffDate) {
-			validEntries = append(validEntries, entry)
+	// Remove entries older than retention period; retentionDays <= 0 means
+	// no age limit (a cutoff of "now" would otherwise delete everything).
+	validEntries := a.Entries
+	if retentionDays > 0 {
+		cutoffDate := time.Now().UTC().AddDate(0, 0, -retentionDays)
+		validEntries = make([]AuditEntry, 0, len(a.Entries))
+		for _, entry := range a.Entries {
+			if entry.Timestamp.After(cutoffDate) {
+				validEntries = append(validEntries, entry)
+			}
 		}
 	}
 
