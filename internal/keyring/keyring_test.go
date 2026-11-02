@@ -1280,3 +1280,206 @@ func TestTouchIDLabelMatchesLibrary(t *testing.T) {
 		t.Errorf("touchIDLabel(nokey) = %q, want %q", got, want)
 	}
 }
+
+// --- Rename ---
+
+// renameErrRing fails Get, Set or Remove for chosen keys, so each step of
+// Rename can be broken on its own.
+type renameErrRing struct {
+	mockRing
+	getErr    map[string]error
+	setErr    map[string]error
+	removeErr map[string]error
+	corrupt   bool // store a different value than asked for
+}
+
+func newRenameErrRing() *renameErrRing {
+	return &renameErrRing{
+		mockRing:  *newMockRing(),
+		getErr:    map[string]error{},
+		setErr:    map[string]error{},
+		removeErr: map[string]error{},
+	}
+}
+
+func (m *renameErrRing) Get(key string) (keyring.Item, error) {
+	if err := m.getErr[key]; err != nil {
+		return keyring.Item{}, err
+	}
+	return m.mockRing.Get(key)
+}
+
+func (m *renameErrRing) Set(item keyring.Item) error {
+	if err := m.setErr[item.Key]; err != nil {
+		return err
+	}
+	if m.corrupt {
+		item.Data = []byte("corrupted")
+	}
+	return m.mockRing.Set(item)
+}
+
+func (m *renameErrRing) Remove(key string) error {
+	if err := m.removeErr[key]; err != nil {
+		return err
+	}
+	return m.mockRing.Remove(key)
+}
+
+func TestStore_Rename(t *testing.T) {
+	ring := newMockRing()
+	s := NewWithRing(ring, "test")
+	if err := s.Set("OLD", "secret-value"); err != nil {
+		t.Fatalf("Set: %v", err)
+	}
+	if err := s.Rename("OLD", "NEW"); err != nil {
+		t.Fatalf("Rename: %v", err)
+	}
+	if _, err := s.Get("OLD"); err == nil {
+		t.Error("OLD should be gone after Rename")
+	}
+	got, err := s.Get("NEW")
+	if err != nil || got != "secret-value" {
+		t.Errorf("Get(NEW) = %q, %v; want secret-value", got, err)
+	}
+	if label := ring.items["NEW"].Label; label != "nokey: NEW" {
+		t.Errorf("label = %q, want %q", label, "nokey: NEW")
+	}
+	// The cache must not keep serving the old name.
+	if _, ok := s.cache["OLD"]; ok {
+		t.Error("cache still holds OLD")
+	}
+}
+
+func TestStore_Rename_Rejects(t *testing.T) {
+	tests := []struct {
+		name, old, new, want string
+	}{
+		{"empty old", "", "NEW", "cannot be empty"},
+		{"empty new", "OLD", "", "cannot be empty"},
+		{"internal old", "__nokey_pin_hash", "NEW", "reserved prefix"},
+		{"internal new", "OLD", "__nokey_pin_hash", "reserved prefix"},
+		{"invalid new", "OLD", "bad name", "invalid secret name"},
+		{"same name", "OLD", "OLD", "same"},
+		{"missing old", "MISSING", "NEW", "secret not found"},
+		{"existing new", "OLD", "TAKEN", "already exists"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := newTestStore()
+			_ = s.Set("OLD", "v1")
+			_ = s.Set("TAKEN", "v2")
+			_ = s.Set("__nokey_pin_hash", "h")
+			err := s.Rename(tt.old, tt.new)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Rename(%q, %q) error = %v, want it to contain %q", tt.old, tt.new, err, tt.want)
+			}
+			// Nothing may change on a rejected rename.
+			for k, v := range map[string]string{"OLD": "v1", "TAKEN": "v2", "__nokey_pin_hash": "h"} {
+				if got, _ := s.Get(k); got != v {
+					t.Errorf("%s = %q after rejected rename, want %q", k, got, v)
+				}
+			}
+		})
+	}
+}
+
+func TestStore_Rename_KeysError(t *testing.T) {
+	ring := &errorRing{mockRing: *newMockRing()}
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.keysErr = errors.New("keys failed")
+	if err := s.Rename("OLD", "NEW"); err == nil || !strings.Contains(err.Error(), "failed to list") {
+		t.Errorf("error = %v, want 'failed to list'", err)
+	}
+}
+
+func TestStore_Rename_GetError(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = ring.mockRing.Set(keyring.Item{Key: "OLD", Data: []byte("v")})
+	ring.getErr["OLD"] = errors.New("read failed")
+	if err := s.Rename("OLD", "NEW"); err == nil || !strings.Contains(err.Error(), "failed to retrieve") {
+		t.Errorf("error = %v, want 'failed to retrieve'", err)
+	}
+	if _, ok := ring.items["NEW"]; ok {
+		t.Error("NEW should not exist after a failed read")
+	}
+}
+
+func TestStore_Rename_SetError(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.setErr["NEW"] = errors.New("write failed")
+	if err := s.Rename("OLD", "NEW"); err == nil || !strings.Contains(err.Error(), "failed to store") {
+		t.Errorf("error = %v, want 'failed to store'", err)
+	}
+	if _, ok := ring.items["OLD"]; !ok {
+		t.Error("OLD must survive a failed write")
+	}
+}
+
+func TestStore_Rename_VerifyMismatchRollsBack(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.corrupt = true
+	if err := s.Rename("OLD", "NEW"); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("error = %v, want 'does not match'", err)
+	}
+	if _, ok := ring.items["NEW"]; ok {
+		t.Error("mismatched copy at NEW should be removed")
+	}
+	if string(ring.items["OLD"].Data) != "v" {
+		t.Error("OLD must be untouched when verification fails")
+	}
+}
+
+func TestStore_Rename_VerifyReadErrorRollsBack(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.getErr["NEW"] = errors.New("read back failed")
+	if err := s.Rename("OLD", "NEW"); err == nil || !strings.Contains(err.Error(), "failed to verify") {
+		t.Errorf("error = %v, want 'failed to verify'", err)
+	}
+	if _, ok := ring.items["NEW"]; ok {
+		t.Error("unverified copy at NEW should be removed")
+	}
+	if _, ok := ring.items["OLD"]; !ok {
+		t.Error("OLD must survive a failed verification")
+	}
+}
+
+func TestStore_Rename_RemoveOldErrorRollsBack(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.removeErr["OLD"] = errors.New("remove failed")
+	err := s.Rename("OLD", "NEW")
+	if err == nil || !strings.Contains(err.Error(), "failed to delete old secret") {
+		t.Fatalf("error = %v, want 'failed to delete old secret'", err)
+	}
+	if strings.Contains(err.Error(), "could not be removed") {
+		t.Errorf("rollback succeeded, error should not mention it failing: %v", err)
+	}
+	if _, ok := ring.items["NEW"]; ok {
+		t.Error("copy at NEW should be rolled back")
+	}
+	if got, _ := s.Get("OLD"); got != "v" {
+		t.Errorf("OLD = %q, want v", got)
+	}
+}
+
+func TestStore_Rename_RollbackFailureIsReported(t *testing.T) {
+	ring := newRenameErrRing()
+	s := NewWithRing(ring, "test")
+	_ = s.Set("OLD", "v")
+	ring.removeErr["OLD"] = errors.New("remove failed")
+	ring.removeErr["NEW"] = errors.New("remove new failed")
+	err := s.Rename("OLD", "NEW")
+	if err == nil || !strings.Contains(err.Error(), "could not be removed") {
+		t.Errorf("error = %v, want it to report the leftover copy", err)
+	}
+}

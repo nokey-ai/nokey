@@ -137,6 +137,9 @@ op read "op://Private/OpenAI/key" | nokey set OPENAI_API_KEY --stdin
 # List stored secret names (never values)
 nokey list
 
+# Rename a secret, keeping its value (refuses to overwrite an existing name)
+nokey rename OPENAI_KEY OPENAI_API_KEY
+
 # Delete a secret
 nokey delete OPENAI_API_KEY
 
@@ -387,7 +390,7 @@ Each audit entry contains:
 - **Success/failure status**
 - **User and system info** (username, hostname, process ID)
 - **Error message** (if failed)
-- **Operation type** (exec, set, delete, import, auth)
+- **Operation type** (exec, set, delete, rename, import, auth)
 
 ### Example Audit Output
 
@@ -689,6 +692,7 @@ Other MCP clients take the same command and arguments in their own MCP configura
 | Tool | Description |
 |------|-------------|
 | `list_secrets` | List stored secret key names (not values) |
+| `rename_secret` | Rename a secret, keeping its value — always asks the user to approve |
 | `exec` | Execute a command with secrets as environment variables |
 | `exec_with_secrets` | Execute with `${{NOKEY:SECRET_NAME}}` placeholder injection |
 | `mint_token` | Create a short-lived access lease token |
@@ -698,6 +702,8 @@ Other MCP clients take the same command and arguments in their own MCP configura
 | `stop_proxy` | Stop the running proxy |
 
 All output from `exec` and `exec_with_secrets` is automatically redacted — secret values are replaced with `[REDACTED:KEY_NAME]`.
+
+`rename_secret` always prompts for approval, even when a policy rule says `approval: never` or a session token is in use. Policy rules match secret names, so renaming a secret can change which commands may read it. It refuses to overwrite an existing secret, and if the MCP client can't show approval prompts, renames are denied.
 
 ### Session Tokens
 
