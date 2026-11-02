@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name already taken, invalid name) are refused before any prompt.
   Audited as `mcp:rename_secret` and `mcp:rename_secret:approval`.
 
+### Security
+- MCP approval prompts now honour the user's answer. Previously any
+  "accept" response granted access, even one with `approve: false`.
+  Access is now granted only when the response carries `approve: true`;
+  clients that accept without sending `approve: true` are denied.
+
 ## [0.7.0] - 2026-11-01
 
 ### Removed

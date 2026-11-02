@@ -28,12 +28,62 @@ func TestRequestWithDetail_NoDetail(t *testing.T) {
 		wantErr string // empty = no error expected
 	}{
 		{
-			name: "user accepts",
+			name: "user accepts with approve true",
+			result: &mcp.ElicitationResult{
+				ElicitationResponse: mcp.ElicitationResponse{
+					Action:  mcp.ElicitationResponseActionAccept,
+					Content: map[string]any{"approve": true},
+				},
+			},
+		},
+		{
+			name: "user accepts with approve false",
+			result: &mcp.ElicitationResult{
+				ElicitationResponse: mcp.ElicitationResponse{
+					Action:  mcp.ElicitationResponseActionAccept,
+					Content: map[string]any{"approve": false},
+				},
+			},
+			wantErr: `user did not approve secret access for "gh"`,
+		},
+		{
+			name: "user accepts without content",
 			result: &mcp.ElicitationResult{
 				ElicitationResponse: mcp.ElicitationResponse{
 					Action: mcp.ElicitationResponseActionAccept,
 				},
 			},
+			wantErr: "user did not approve secret access",
+		},
+		{
+			name: "user accepts without approve field",
+			result: &mcp.ElicitationResult{
+				ElicitationResponse: mcp.ElicitationResponse{
+					Action:  mcp.ElicitationResponseActionAccept,
+					Content: map[string]any{"other": true},
+				},
+			},
+			wantErr: "user did not approve secret access",
+		},
+		{
+			name: "user accepts with non-boolean approve",
+			result: &mcp.ElicitationResult{
+				ElicitationResponse: mcp.ElicitationResponse{
+					Action:  mcp.ElicitationResponseActionAccept,
+					Content: map[string]any{"approve": "true"},
+				},
+			},
+			wantErr: "user did not approve secret access",
+		},
+		{
+			name: "user accepts with non-object content",
+			result: &mcp.ElicitationResult{
+				ElicitationResponse: mcp.ElicitationResponse{
+					Action:  mcp.ElicitationResponseActionAccept,
+					Content: true,
+				},
+			},
+			wantErr: "user did not approve secret access",
 		},
 		{
 			name: "user declines",
@@ -98,7 +148,10 @@ type capturingRequester struct {
 func (c *capturingRequester) RequestElicitation(_ context.Context, req mcp.ElicitationRequest) (*mcp.ElicitationResult, error) {
 	c.msg = req.Params.Message
 	return &mcp.ElicitationResult{
-		ElicitationResponse: mcp.ElicitationResponse{Action: mcp.ElicitationResponseActionAccept},
+		ElicitationResponse: mcp.ElicitationResponse{
+			Action:  mcp.ElicitationResponseActionAccept,
+			Content: map[string]any{"approve": true},
+		},
 	}, nil
 }
 

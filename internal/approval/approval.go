@@ -69,6 +69,11 @@ func RequestWithDetail(ctx context.Context, requester Requester, command string,
 
 	switch result.Action {
 	case mcp.ElicitationResponseActionAccept:
+		// Accept only means the client submitted the form; the user's
+		// answer is the approve field. Anything but approve: true denies.
+		if !approved(result.Content) {
+			return fmt.Errorf("user did not approve secret access for %q", command)
+		}
 		return nil
 	case mcp.ElicitationResponseActionDecline:
 		return fmt.Errorf("user declined secret access for %q", command)
@@ -77,6 +82,18 @@ func RequestWithDetail(ctx context.Context, requester Requester, command string,
 	default:
 		return fmt.Errorf("unexpected elicitation response: %s", result.Action)
 	}
+}
+
+// approved reports whether elicitation content carries approve: true. The
+// transport decodes content from JSON, so it is a map[string]any; a
+// non-object, a missing field or a non-boolean value is not approval.
+func approved(content any) bool {
+	c, ok := content.(map[string]any)
+	if !ok {
+		return false
+	}
+	approve, ok := c["approve"].(bool)
+	return ok && approve
 }
 
 // Quote renders a model-supplied value for an approval prompt: %q-quoted,
