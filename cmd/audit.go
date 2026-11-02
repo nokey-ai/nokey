@@ -28,7 +28,8 @@ var auditCmd = &cobra.Command{
 	Long: `View and export audit logs of secret access and operations.
 
 Audit logs track when secrets are accessed, by whom, and with what authentication method.
-All logs are encrypted and stored securely in your OS keyring.
+Entries are encrypted and written to the audit.log file in the nokey config
+directory; the encryption key is kept in your OS keyring.
 
 Examples:
   nokey audit list
@@ -73,7 +74,7 @@ Examples:
 var auditClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Clear all audit log entries",
-	Long:  `Clear all audit log entries. This requires authentication.`,
+	Long:  `Clear all audit log entries. Requires PIN authentication when a PIN is configured.`,
 	RunE:  runAuditClear,
 }
 

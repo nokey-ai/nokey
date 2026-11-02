@@ -203,7 +203,8 @@ func runAuthSetup(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nTo use PIN authentication with exec:")
 	fmt.Println("  nokey exec -- command")
 	fmt.Println("\nOr enable it by default in ~/.config/nokey/config.yaml:")
-	fmt.Println("  require_auth: true")
+	fmt.Println("  auth:")
+	fmt.Println("    default_method: pin")
 
 	return nil
 }
