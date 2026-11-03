@@ -54,8 +54,7 @@ make lint
 The release workflow signs the macOS binaries with the certificate in the
 `MACOS_SIGN_P12` secret, so the keychain keeps trusting nokey across
 upgrades. A self-signed certificate is enough; what matters is using the
-same one for every release. Replacing it makes every user's keychain
-prompt once more. To create one:
+same one for every release. To create one, or to rotate it:
 
 ```bash
 cat > sign.cnf <<'CNF'
@@ -77,8 +76,11 @@ base64 -i sign.p12 | gh secret set MACOS_SIGN_P12 -R nokey-ai/nokey
 gh secret set MACOS_SIGN_P12_PASSWORD -R nokey-ai/nokey
 ```
 
-Keep `sign.p12` and its password somewhere safe offline, then delete the
-working files. Without the secret, releases fall back to ad-hoc signing.
+Then delete the working files. The secrets are the only copy, and that's
+fine: if the certificate is lost or needs changing, create a new one the
+same way. The only cost is one more round of keychain prompts for users
+after the next release. Without the secret, releases fall back to ad-hoc
+signing.
 
 ## Reporting Bugs
 
