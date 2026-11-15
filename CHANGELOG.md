@@ -81,6 +81,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The proxy's upstream connections ignore `HTTP(S)_PROXY` in its own
   environment, which could send requests with injected headers through
   a proxy chosen by whoever started nokey.
+- MCP output is redacted for every secret value the server has read in
+  the session, not only the current call's, so a value one command left
+  in a file can't come back through the next. Redaction also catches
+  reversed values, and applies whole-value encodings (base64, URL, JSON,
+  hex) to secrets of 4 bytes or more instead of 8. MCP `exec` and
+  `exec_with_secrets` refuse to inject a value under 4 bytes, which
+  can't be redacted reliably. Redaction remains defense in depth; the
+  README lists what it does not catch.
 - `auth.cli_enforce_policy: false` is ignored: `nokey exec` always applies
   `policies.yaml`. Like `default_method`, it let an edit to `config.yaml`
   switch policy off. **Breaking** for configs that set it.

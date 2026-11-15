@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/rand"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,10 +90,22 @@ func TestRedactBytes(t *testing.T) {
 			want:    "h=[REDACTED:API_KEY]",
 		},
 		{
-			name:    "short secret skips variants",
+			name:    "secret under MinRedactableLen skips variants",
+			data:    []byte("raw=abc b64=" + base64.StdEncoding.EncodeToString([]byte("abc"))),
+			secrets: map[string]string{"S": "abc"},
+			want:    "raw=[REDACTED:S] b64=" + base64.StdEncoding.EncodeToString([]byte("abc")),
+		},
+		{
+			name:    "short secret still gets whole-value variants",
 			data:    []byte("raw=short b64=" + base64.StdEncoding.EncodeToString([]byte("short"))),
 			secrets: map[string]string{"S": "short"},
-			want:    "raw=[REDACTED:S] b64=" + base64.StdEncoding.EncodeToString([]byte("short")),
+			want:    "raw=[REDACTED:S] b64=[REDACTED:S]",
+		},
+		{
+			name:    "reversed secret",
+			data:    []byte("r=eulav-yek-terces-ym"),
+			secrets: map[string]string{"API_KEY": "my-secret-key-value"},
+			want:    "r=[REDACTED:API_KEY]",
 		},
 		{
 			name: "longest match wins",
@@ -268,11 +281,24 @@ func TestEncodingVariants_ProducesVariants(t *testing.T) {
 }
 
 func TestNewRedactor_ShortSecretSkipsVariants(t *testing.T) {
-	// Short secrets (< 8 chars) should only have the literal, no encoding variants
-	r := newRedactor(map[string]string{"S": "short"})
-	// Only the literal "short" → "[REDACTED:S]" should be present
+	// Secrets under MinRedactableLen get only the literal, no variants.
+	r := newRedactor(map[string]string{"S": "abc"})
 	if len(r.replacements) != 1 {
 		t.Errorf("short secret should have 1 replacement, got %d", len(r.replacements))
+	}
+}
+
+// Secrets under minSecretLenForVariants get whole-value variants but no
+// offset base64 forms, whose dropped edges would leave too few characters
+// to be specific.
+func TestEncodingVariants_NoMiddlesForShortSecrets(t *testing.T) {
+	value := strings.Repeat("s", minSecretLenForVariants-1)
+	variants := encodingVariants(value)
+	for offset := 0; offset < 3; offset++ {
+		middle := base64Middle(base64.StdEncoding, []byte(value), offset)
+		if slices.Contains(variants, middle) && middle != base64.StdEncoding.EncodeToString([]byte(value)) {
+			t.Errorf("offset %d middle %q generated for a %d-byte secret", offset, middle, len(value))
+		}
 	}
 }
 
@@ -585,8 +611,10 @@ func TestRedactingReader_WithholdsOnlyPossiblePrefix(t *testing.T) {
 	if got := r.pendingLen([]byte("token: sk-live-01")); got != len("sk-live-01") {
 		t.Errorf("pendingLen for a partial secret = %d, want %d", got, len("sk-live-01"))
 	}
-	if got := r.pendingLen([]byte("done " + secret)); got != 0 {
-		t.Errorf("pendingLen after a complete secret = %d, want 0", got)
+	// The secret's last byte opens its reversed form, so only that byte
+	// may be held after it.
+	if got := r.pendingLen([]byte("done " + secret)); got != 1 {
+		t.Errorf("pendingLen after a complete secret = %d, want 1", got)
 	}
 }
 

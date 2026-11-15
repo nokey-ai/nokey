@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	osexec "os/exec"
 	"path/filepath"
@@ -108,6 +109,13 @@ type Handler struct {
 	// only, so they end with the MCP server process.
 	grantsMu sync.Mutex
 	grants   map[string]map[string]bool
+
+	// readMu guards read: every secret value this server has read, by
+	// name. Output is redacted for all of them, not only the call's own:
+	// a value read for one call can come back in a later one, from a file
+	// the first command wrote, say.
+	readMu sync.Mutex
+	read   map[string]string
 }
 
 // mintCall is one in-flight auto-mint. done is closed once err is set.
@@ -139,7 +147,29 @@ func New(deps Deps) *Handler {
 		getConfigDir:       deps.GetConfigDir,
 		tokenStore:         token.NewStore(),
 		grants:             map[string]map[string]bool{},
+		read:               map[string]string{},
 	}
+}
+
+// redactionSet records secrets as read and returns every value read so
+// far, the set a command's output is redacted for.
+func (h *Handler) redactionSet(secrets map[string]string) map[string]string {
+	h.readMu.Lock()
+	defer h.readMu.Unlock()
+	maps.Copy(h.read, secrets)
+	return maps.Clone(h.read)
+}
+
+// checkRedactable refuses values too short to redact: they turn up in
+// unrelated output too often to hide, and a few lines of output would
+// give them away.
+func checkRedactable(secrets map[string]string) error {
+	for _, name := range slices.Sorted(maps.Keys(secrets)) {
+		if n := len(secrets[name]); n < redact.MinRedactableLen {
+			return fmt.Errorf("secret %q is %d bytes; values under %d bytes can't be redacted from output reliably, so nokey won't inject it", name, n, redact.MinRedactableLen)
+		}
+	}
+	return nil
 }
 
 // RegisterTools adds all MCP tool handlers to the server.
@@ -494,12 +524,16 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		secrets[name] = val
 	}
 	defer sensitive.ClearMap(secrets)
+	if err := checkRedactable(secrets); err != nil {
+		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	res := runRedacted(ctx, runSpec{
 		command: command,
 		args:    args,
 		env:     env.MergeEnvironment(env.MergeEnvironment(os.Environ(), opts.env), secrets),
-		secrets: secrets,
+		secrets: h.redactionSet(secrets),
 		timeout: time.Duration(timeoutSecs) * time.Second,
 		opts:    opts,
 	})
@@ -584,6 +618,10 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		secrets[name] = val
 	}
 	defer sensitive.ClearMap(secrets)
+	if err := checkRedactable(secrets); err != nil {
+		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 
 	// Resolve placeholders in args
 	resolvedArgs, err := placeholder.Resolve(args, secrets)
@@ -597,7 +635,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 		command: command,
 		args:    resolvedArgs,
 		env:     env.MergeEnvironment(os.Environ(), opts.env),
-		secrets: secrets,
+		secrets: h.redactionSet(secrets),
 		timeout: time.Duration(timeoutSecs) * time.Second,
 		opts:    opts,
 	})

@@ -8,14 +8,22 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/sensitive"
 )
 
-// minSecretLenForVariants is the minimum secret length to generate encoding
-// variants. Shorter secrets produce too many false positives.
+// MinRedactableLen is the shortest value redaction can catch reliably. A
+// shorter one turns up in unrelated output too often to hide, and is short
+// enough to read back from a few lines of output, so the MCP server refuses
+// to inject it.
+const MinRedactableLen = 4
+
+// minSecretLenForVariants is the minimum secret length for the offset
+// base64 forms (base64Middle). Their edges drop characters, so a shorter
+// secret leaves a middle short enough to turn up by chance.
 const minSecretLenForVariants = 8
 
 // minBase64MiddleLen is the shortest offset base64 form worth matching. Eight
@@ -63,7 +71,7 @@ func newRedactor(secrets map[string]string) *redactor {
 
 	for _, key := range names {
 		value := secrets[key]
-		if len(value) < minSecretLenForVariants {
+		if len(value) < MinRedactableLen {
 			continue
 		}
 		label := fmt.Sprintf("[REDACTED:%s]", key)
@@ -118,6 +126,7 @@ func encodingVariants(value string) []string {
 		}
 	}
 
+	add(reverse(value))
 	add(base64.StdEncoding.EncodeToString(raw))
 	add(base64.URLEncoding.EncodeToString(raw))
 	add(base64.RawStdEncoding.EncodeToString(raw))
@@ -125,12 +134,14 @@ func encodingVariants(value string) []string {
 	// A secret embedded in a longer value — the password in a Basic auth
 	// "user:pass" — lands 0, 1 or 2 bytes into a base64 group, and the
 	// characters at either edge mix in bits from its neighbours.
-	for _, enc := range []*base64.Encoding{
-		base64.StdEncoding, base64.URLEncoding,
-		base64.RawStdEncoding, base64.RawURLEncoding,
-	} {
-		for offset := 0; offset < 3; offset++ {
-			add(base64Middle(enc, raw, offset))
+	if len(raw) >= minSecretLenForVariants {
+		for _, enc := range []*base64.Encoding{
+			base64.StdEncoding, base64.URLEncoding,
+			base64.RawStdEncoding, base64.RawURLEncoding,
+		} {
+			for offset := 0; offset < 3; offset++ {
+				add(base64Middle(enc, raw, offset))
+			}
 		}
 	}
 	add(url.QueryEscape(value))
@@ -143,6 +154,14 @@ func encodingVariants(value string) []string {
 	add(hexUpper)
 
 	return out
+}
+
+// reverse returns value with its bytes in reverse order, the cheapest
+// transform that gets a secret past matching on its literal form.
+func reverse(value string) string {
+	b := []byte(value)
+	slices.Reverse(b)
+	return string(b)
 }
 
 // base64Middle returns the characters of raw's base64 encoding that depend on

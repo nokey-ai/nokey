@@ -818,7 +818,7 @@ func TestHandleListTokens_UnlimitedUses(t *testing.T) {
 
 func TestHandleExec_WithAudit(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{
-		"KEY": "val",
+		"KEY": "value-1",
 	}}
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
@@ -1981,7 +1981,7 @@ func TestHandleExec_TokenScopedToOtherCommand(t *testing.T) {
 }
 
 func TestHandleExecWithSecrets_TokenScopedToCommand(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{"KEY": "val"}}
+	store := &mapStore{secrets: map[string]string{"KEY": "value-1"}}
 	h := newTestHandler(t, store, nil, nil)
 
 	tok, err := h.tokenStore.Mint(token.MintRequest{
@@ -2596,10 +2596,13 @@ func withSecretRef(args map[string]any) map[string]any {
 func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.CallToolResult {
 	t.Helper()
 	out := map[string]*mcp.CallToolResult{}
-	for name, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
-		"exec":              h.HandleExec,
-		"exec_with_secrets": h.HandleExecWithSecrets,
-	} {
+	// exec runs first, always: the handler redacts every value it has read
+	// so far, so the order decides what the second call redacts.
+	for _, tool := range []struct {
+		name string
+		fn   func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	}{{"exec", h.HandleExec}, {"exec_with_secrets", h.HandleExecWithSecrets}} {
+		name, fn := tool.name, tool.fn
 		req := args
 		if name == "exec_with_secrets" {
 			req = withSecretRef(args)
@@ -2800,11 +2803,9 @@ func TestExecTools_SeparateStderr(t *testing.T) {
 		"separate_stderr": true,
 	}
 	for name, result := range execBoth(t, h, args) {
+		// exec_with_secrets doesn't fetch K, but exec read it earlier in
+		// the session, so its output is redacted too.
 		want := "out\n[stderr]\nerr [REDACTED:K]\n"
-		if name == "exec_with_secrets" {
-			// No placeholder, so K is not fetched and not redacted.
-			want = "out\n[stderr]\nerr secret-value\n"
-		}
 		if got := getResultText(t, result); got != want {
 			t.Errorf("%s: output = %q, want %q", name, got, want)
 		}
@@ -3365,5 +3366,45 @@ func TestHandleExec_RefusesSteeringSecretName(t *testing.T) {
 	}
 	if _, err := os.Stat(ran); err == nil {
 		t.Error("the command ran")
+	}
+}
+
+// A value read for one call is redacted from later calls' output too: the
+// first command can leave it in a file the second prints.
+func TestHandleExec_RedactsValuesReadEarlierInSession(t *testing.T) {
+	skipOnWindows(t)
+	file := filepath.Join(t.TempDir(), "leak")
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"A": "value-a-123", "B": "value-b-456"}}, nil, nil)
+
+	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "sh", "args": []any{"-c", `printf %s "$A" > "$0"`, file}, "only": "A",
+	}))
+	if result.IsError {
+		t.Fatalf("first call: %q", getResultText(t, result))
+	}
+	result, _ = h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "cat", "args": []any{file}, "only": "B",
+	}))
+	if got := getResultText(t, result); got != "[REDACTED:A]" {
+		t.Errorf("second call output = %q, want A redacted", got)
+	}
+}
+
+func TestHandleExec_RefusesUnredactableValue(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"PIN": "123"}}, nil, nil)
+	for name, call := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+		"exec":              h.HandleExec,
+		"exec_with_secrets": h.HandleExecWithSecrets,
+	} {
+		result, _ := call(context.Background(), makeCallToolRequest(map[string]any{
+			"command": "touch", "args": []any{ran, "${{NOKEY:PIN}}"},
+		}))
+		if !result.IsError || !strings.Contains(getResultText(t, result), "can't be redacted") {
+			t.Errorf("%s: result = %q, want a refusal", name, getResultText(t, result))
+		}
+		if _, err := os.Stat(ran); err == nil {
+			t.Errorf("%s: the command ran", name)
+		}
 	}
 }
