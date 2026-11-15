@@ -39,7 +39,10 @@ func (m *mapStore) Get(name string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("secret not found: %s", name)
 	}
-	return v, nil
+	// A heap copy, as the real Store returns: sensitive.ClearMap zeros
+	// heap strings but skips literals, so returning a literal would hide
+	// code that keeps a value past the call that read it.
+	return strings.Clone(v), nil
 }
 
 func (m *mapStore) List() ([]string, error) {

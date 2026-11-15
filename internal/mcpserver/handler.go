@@ -152,11 +152,14 @@ func New(deps Deps) *Handler {
 }
 
 // redactionSet records secrets as read and returns every value read so
-// far, the set a command's output is redacted for.
+// far, the set a command's output is redacted for. It keeps copies:
+// callers zero their own values with sensitive.ClearMap once the call ends.
 func (h *Handler) redactionSet(secrets map[string]string) map[string]string {
 	h.readMu.Lock()
 	defer h.readMu.Unlock()
-	maps.Copy(h.read, secrets)
+	for name, value := range secrets {
+		h.read[name] = strings.Clone(value)
+	}
 	return maps.Clone(h.read)
 }
 
