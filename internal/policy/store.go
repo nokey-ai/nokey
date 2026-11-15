@@ -119,6 +119,8 @@ func (s *Store) load() error {
 
 	digest, err := s.approved()
 	if err != nil {
+		// Try again on the next call rather than wait for another edit.
+		s.pending = true
 		return fmt.Errorf("failed to read the approved policy digest: %w", err)
 	}
 	pol, err := LoadApproved(s.configDir, digest)
