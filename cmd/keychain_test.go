@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,9 +15,11 @@ import (
 )
 
 // withTestBackupGlobals saves and restores all backup/restore flag globals
-// and the password prompt hook so tests can scrub state between runs.
+// and the password prompt hook so tests can scrub state between runs. The
+// presence check passes; tests of the gate itself call withPresence again.
 func withTestBackupGlobals(t *testing.T) {
 	t.Helper()
+	withPresence(t, nil)
 	oldOut, oldBPin := backupOut, backupPasswordIn
 	oldIn, oldRPin, oldDry := restoreIn, restorePasswordIn, restoreDryRun
 	oldPrompt := promptPasswordFn
@@ -1104,5 +1107,24 @@ func TestKeychainPruneOrphan_NotOrphanWhenKeychainExists(t *testing.T) {
 	}
 	if deleted {
 		t.Error("should not delete stash when dedicated keychain still exists")
+	}
+}
+
+// A backup holds every secret under a password the caller picks, so it
+// needs the person at the machine.
+func TestKeychainBackup_NeedsPresence(t *testing.T) {
+	withTestBackupGlobals(t)
+	withPresence(t, errors.New("not confirmed: cancelled"))
+	store, _ := newTestStore()
+	_ = store.Set("K", "v")
+	withTestKeyring(t, store)
+	withTestConfig(t, config.DefaultConfig())
+	backupOut = filepath.Join(t.TempDir(), "out.nkbk")
+
+	if err := runKeychainBackup(nil, nil); err == nil || !strings.Contains(err.Error(), "not confirmed") {
+		t.Fatalf("runKeychainBackup error = %v, want the presence refusal", err)
+	}
+	if _, err := os.Stat(backupOut); !os.IsNotExist(err) {
+		t.Errorf("backup file written without approval (stat err %v)", err)
 	}
 }

@@ -35,9 +35,9 @@ type AuthConfig struct {
 	// BiometricsOnlyWhenLocked skips Touch ID while the dedicated keychain
 	// is already unlocked, so Touch ID is only asked for to unlock it.
 	BiometricsOnlyWhenLocked bool `yaml:"biometrics_only_when_locked,omitempty"`
-	// CLIEnforcePolicy controls whether policies.yaml rules are applied to
-	// `nokey exec` invocations. Defaults to true. Set false to bypass policy
-	// for the local CLI while still enforcing it for MCP and the proxy.
+	// CLIEnforcePolicy is ignored: `nokey exec` always applies
+	// policies.yaml. Kept so configs that set it still load under
+	// `nokey config validate`.
 	CLIEnforcePolicy *bool `yaml:"cli_enforce_policy,omitempty"`
 }
 

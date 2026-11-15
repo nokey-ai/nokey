@@ -86,6 +86,11 @@ func runExport(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// The values end up in the shell, so the person at the machine must
+	// approve, whatever the auth method.
+	if err := confirmHuman(cmdContext(cmd), store, "print secrets for the shell", authMethod == "pin"); err != nil {
+		return err
+	}
 	if names == nil {
 		// nil would mean "every secret" to getSecretsForMethod
 		names = []string{}

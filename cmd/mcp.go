@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/mcpserver"
 	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/version"
@@ -68,8 +67,8 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 		GetStore:           func() (mcpserver.SecretStore, error) { return getKeyring() },
 		GetPolicy:          polStore.Current,
 		Config:             cfg,
-		ApprovalFn:         approval.RequestWithDetail,
-		RememberApprovalFn: approval.RequestRememberable,
+		ApprovalFn:         mcpApprovalFn,
+		RememberApprovalFn: mcpRememberApprovalFn,
 		AuditFn:            recordAudit,
 		GetConfigDir:       getConfigDir,
 	})

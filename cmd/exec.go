@@ -128,35 +128,42 @@ func runExec(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Enforce policy rules from policies.yaml (defaults on; opt out with
-	// auth.cli_enforce_policy: false). The MCP server and proxy enforce
-	// the same rules — applying them here keeps the CLI consistent with
-	// what the policy file actually promises.
-	if cfg.Auth.CLIEnforcePolicy == nil || *cfg.Auth.CLIEnforcePolicy {
-		configDir, dirErr := getConfigDir()
-		if dirErr != nil {
-			return fmt.Errorf("failed to resolve config dir for policy check: %w", dirErr)
-		}
-		pol, polErr := policy.Load(configDir)
-		if polErr != nil {
-			return fmt.Errorf("failed to load policy: %w", polErr)
-		}
-		secretNames := make([]string, 0, len(secrets))
-		for name := range secrets {
-			secretNames = append(secretNames, name)
-		}
-		sort.Strings(secretNames)
-		if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
-			AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
-			return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this, or set auth.cli_enforce_policy: false in config.yaml to bypass policy for CLI exec", checkErr, configDir)
-		}
-		// token_required rules exist to stop an agent reaching a secret
-		// without a minted session token. Tokens only exist inside the MCP
-		// server, so the CLI must refuse rather than quietly skip the rule.
-		if pol.RequiresToken(args[0], secretNames) {
-			msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
-			AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
-			return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command, or set auth.cli_enforce_policy: false in config.yaml to bypass policy for CLI exec", msg, configDir)
+	// Enforce policy rules from policies.yaml, as the MCP server and proxy
+	// do. auth.cli_enforce_policy: false used to switch this off, but
+	// config.yaml is writable by any process running as the user, so it no
+	// longer can.
+	configDir, err := getConfigDir()
+	if err != nil {
+		return fmt.Errorf("failed to resolve config dir for policy check: %w", err)
+	}
+	pol, err := policy.Load(configDir)
+	if err != nil {
+		return fmt.Errorf("failed to load policy: %w", err)
+	}
+	secretNames := make([]string, 0, len(secrets))
+	for name := range secrets {
+		secretNames = append(secretNames, name)
+	}
+	sort.Strings(secretNames)
+	if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
+		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
+		return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this", checkErr, configDir)
+	}
+	// token_required rules exist to stop an agent reaching a secret
+	// without a minted session token. Tokens only exist inside the MCP
+	// server, so the CLI must refuse rather than quietly skip the rule.
+	if pol.RequiresToken(args[0], secretNames) {
+		msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
+		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
+		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command", msg, configDir)
+	}
+	// approval: always needs the person at the machine: the presence
+	// dialog, or a fresh PIN where there is none. The PIN session ticket
+	// doesn't count, and neither does the y/N prompt below.
+	if pol.RequiresApproval(args[0], secretNames) {
+		if err := confirmHuman(cmdContext(cmd), store, presenceReason(args[0], secretNames), false); err != nil {
+			AppFromCmd(cmd).RecordAudit(store, "exec:approval_denied", args[0], authMethodUsed, secretNames, false, err.Error())
+			return fmt.Errorf("approval denied: %w", err)
 		}
 	}
 
@@ -227,7 +234,10 @@ func runExec(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// confirmSecrets shows a confirmation prompt asking the user to approve secret injection
+// confirmSecrets shows a confirmation prompt asking the user to approve
+// secret injection. It reads stdin, which any caller can answer, so it
+// guards against mistakes, not against a program running nokey: policy
+// approval goes through confirmHuman.
 func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 	if len(secrets) == 0 {
 		return true, nil
