@@ -1638,15 +1638,19 @@ func TestRunExec_CleansUpBeforeExit(t *testing.T) {
 func TestResolveAuthMethod(t *testing.T) {
 	tests := []struct {
 		configured string // auth.default_method
-		hasPIN     bool   // legacy: a PIN set with no default_method
+		hasPIN     bool   // a PIN is stored
 		override   string
 		want       string
 		wantErr    string // non-empty = error expected
 	}{
-		// No override: the configured method is used as-is.
+		// No override: the configured method is used, raised to pin when a
+		// PIN is stored.
 		{configured: "pin", want: "pin"},
 		{configured: "", want: "none"},
 		{configured: "", hasPIN: true, want: "pin"},
+		{configured: "none", hasPIN: true, want: "pin"},
+		{configured: "none", hasPIN: true, override: "none", wantErr: "--auth-method none would skip pin required by config"},
+		{configured: "oauth", hasPIN: true, wantErr: "auth method 'oauth' in config was removed in nokey v0.9.0"},
 
 		// Equal or stronger overrides are allowed.
 		{configured: "none", override: "none", want: "none"},

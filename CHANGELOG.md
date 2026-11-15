@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `nokey set`, `delete` and `import` refuse the reserved `__nokey_` names.
+  `nokey delete __nokey_pin_hash__` used to switch the PIN off, and
+  `nokey set __nokey_pin_hash__` could replace it, with no PIN prompt, for
+  any process that can run nokey. The same applied to the failed-attempt
+  counter and the audit keys.
+- A legacy SHA-256 PIN hash is no longer accepted, except by
+  `nokey auth change`, which upgrades it to Argon2id. The legacy hash is
+  unsalted, so anyone able to write one could choose its PIN.
+  **Breaking** for a PIN set before Argon2id hashing: run
+  `nokey auth change` once.
+- A stored PIN now always applies to `nokey exec`. `auth.default_method:
+  none` in `config.yaml` used to skip it, and any process running as the
+  user can edit that file. The setting still applies when no PIN is set.
+
 ## [0.9.1] - 2026-11-02
 
 ### Added

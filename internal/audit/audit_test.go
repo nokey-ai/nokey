@@ -814,10 +814,10 @@ func TestReadAndVerify_KeyLoss_SingleWarning(t *testing.T) {
 	for i := range newKey {
 		newKey[i] = byte(i + 100)
 	}
-	_ = store.Set(AuditEncryptionKeyKey, "")
-	_ = store.Delete(AuditEncryptionKeyKey)
+	_ = store.SetInternal(AuditEncryptionKeyKey, "")
+	_ = store.DeleteInternal(AuditEncryptionKeyKey)
 	// Force a new key to be created
-	_ = store.Delete(AuditChainHeadKey)
+	_ = store.DeleteInternal(AuditChainHeadKey)
 	// Clear the in-process cache so a fresh key is generated
 	cachedEncKeyMu.Lock()
 	cachedEncKey = nil
@@ -924,7 +924,7 @@ func TestMigrateFromKeyring_WithData(t *testing.T) {
 	}
 	data, _ := json.Marshal(oldLog)
 	encrypted, _ := encrypt(data, encKey)
-	_ = store.Set(AuditLogKey, string(encrypted))
+	_ = store.SetInternal(AuditLogKey, string(encrypted))
 
 	// Load triggers migration
 	log, err := Load(store)
@@ -942,7 +942,7 @@ func TestMigrateFromKeyring_WithData(t *testing.T) {
 	}
 
 	// Old key should be deleted
-	if _, err := store.Get(AuditLogKey); err == nil {
+	if _, err := store.GetInternal(AuditLogKey); err == nil {
 		t.Error("old AuditLogKey should be deleted after migration")
 	}
 
@@ -992,7 +992,7 @@ func TestMigrateFromKeyring_FileAlreadyExists(t *testing.T) {
 	}
 	data, _ := json.Marshal(oldLog)
 	encrypted, _ := encrypt(data, encKey)
-	_ = store.Set(AuditLogKey, string(encrypted))
+	_ = store.SetInternal(AuditLogKey, string(encrypted))
 
 	// Write a file-format entry first
 	entry := NewAuditEntry("exec", "new-cmd", "pin", nil, true, "")
@@ -1135,12 +1135,12 @@ func TestGetOrCreateEncryptionKey_RawKeyRejected(t *testing.T) {
 	resetEncKeyCache(t)
 	store := newTestStore()
 	raw32 := strings.Repeat("A", 32)
-	_ = store.Set(AuditEncryptionKeyKey, raw32)
+	_ = store.SetInternal(AuditEncryptionKeyKey, raw32)
 
 	if _, err := getOrCreateEncryptionKey(store); err == nil || !strings.Contains(err.Error(), "invalid encryption key length") {
 		t.Fatalf("err = %v, want invalid key length", err)
 	}
-	if val, _ := store.Get(AuditEncryptionKeyKey); val != raw32 {
+	if val, _ := store.GetInternal(AuditEncryptionKeyKey); val != raw32 {
 		t.Error("a rejected key must be left untouched")
 	}
 }
@@ -1149,7 +1149,7 @@ func TestGetOrCreateEncryptionKey_InvalidLength(t *testing.T) {
 	resetEncKeyCache(t)
 	store := newTestStore()
 	// Store an invalid key (not 32 bytes, not valid base64 of 32 bytes)
-	_ = store.Set(AuditEncryptionKeyKey, "too-short")
+	_ = store.SetInternal(AuditEncryptionKeyKey, "too-short")
 
 	_, err := getOrCreateEncryptionKey(store)
 	if err == nil {

@@ -15,7 +15,7 @@ func newMemStore() *memStore {
 	return &memStore{data: make(map[string]string)}
 }
 
-func (m *memStore) Get(key string) (string, error) {
+func (m *memStore) GetInternal(key string) (string, error) {
 	v, ok := m.data[key]
 	if !ok {
 		return "", &notFoundErr{key}
@@ -23,12 +23,12 @@ func (m *memStore) Get(key string) (string, error) {
 	return v, nil
 }
 
-func (m *memStore) Set(key, value string) error {
+func (m *memStore) SetInternal(key, value string) error {
 	m.data[key] = value
 	return nil
 }
 
-func (m *memStore) Delete(key string) error {
+func (m *memStore) DeleteInternal(key string) error {
 	delete(m.data, key)
 	return nil
 }

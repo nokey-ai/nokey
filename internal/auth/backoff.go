@@ -24,9 +24,9 @@ type FailureRecord struct {
 // by *keyring.Store, which this package cannot reference directly because
 // internal/keyring imports internal/auth.
 type BackoffStore interface {
-	Get(key string) (string, error)
-	Set(key, value string) error
-	Delete(key string) error
+	GetInternal(key string) (string, error)
+	SetInternal(key, value string) error
+	DeleteInternal(key string) error
 }
 
 var (
@@ -86,11 +86,11 @@ func recordFailure(store BackoffStore) {
 
 // clearFailures resets the counter on successful auth.
 func clearFailures(store BackoffStore) {
-	_ = store.Delete(failureKey)
+	_ = store.DeleteInternal(failureKey)
 }
 
 func loadFailureRecord(store BackoffStore) (*FailureRecord, error) {
-	data, err := store.Get(failureKey)
+	data, err := store.GetInternal(failureKey)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func saveFailureRecord(store BackoffStore, rec *FailureRecord) {
 	if err != nil {
 		return
 	}
-	_ = store.Set(failureKey, string(data))
+	_ = store.SetInternal(failureKey, string(data))
 }
 
 // nowFn is the clock used by backoff, overridable for testing.

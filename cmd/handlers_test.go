@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	kring "github.com/byteness/keyring"
+	"github.com/nokey-ai/nokey/internal/auth"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
 )
@@ -139,6 +140,41 @@ func TestRunDelete_NotFound(t *testing.T) {
 	err := runDelete(nil, []string{"NONEXISTENT"})
 	if err == nil {
 		t.Fatal("expected error for nonexistent key")
+	}
+}
+
+// set, delete and import must not reach the PIN hash: replacing it with a
+// hash of a known PIN, or deleting it, would switch the PIN off for any
+// process that can run nokey.
+func TestReservedKeys_RefusedByCLI(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	withTestConfig(t, c)
+	if err := store.SetPINHash("original"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runDelete(nil, []string{auth.PINHashKey}); err == nil {
+		t.Error("delete removed the PIN hash")
+	}
+
+	oldUseStdin := useStdin
+	t.Cleanup(func() { useStdin = oldUseStdin })
+	useStdin = true
+	withStdin(t, "planted\n")
+	if err := runSet(nil, []string{auth.PINHashKey}); err == nil {
+		t.Error("set replaced the PIN hash")
+	}
+
+	envFile := writeEnvFile(t, auth.PINHashKey+"=planted\n")
+	_ = captureStdout(t, func() {
+		_ = captureStderr(t, func() { _ = runImport(nil, []string{envFile}) })
+	})
+
+	if got, err := store.GetPINHash(); err != nil || got != "original" {
+		t.Errorf("PIN hash = %q, %v; want it unchanged", got, err)
 	}
 }
 

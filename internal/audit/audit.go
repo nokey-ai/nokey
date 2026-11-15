@@ -348,8 +348,8 @@ func Clear(store *nokeyKeyring.Store) error {
 	}
 
 	// Clean up legacy keyring keys if present
-	_ = store.Delete(AuditChainHeadKey)
-	_ = store.Delete(AuditLogKey)
+	_ = store.DeleteInternal(AuditChainHeadKey)
+	_ = store.DeleteInternal(AuditLogKey)
 
 	return nil
 }
@@ -364,7 +364,7 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 	}
 
 	// Check if old keyring blob exists
-	oldData, err := store.Get(AuditLogKey)
+	oldData, err := store.GetInternal(AuditLogKey)
 	if err != nil {
 		if nokeyKeyring.IsNotFound(err) {
 			return nil // Nothing to migrate
@@ -387,7 +387,7 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 
 	if len(oldLog.Entries) == 0 {
 		// Nothing to write, just delete old key
-		_ = store.Delete(AuditLogKey)
+		_ = store.DeleteInternal(AuditLogKey)
 		return nil
 	}
 
@@ -437,7 +437,7 @@ func migrateFromKeyring(store *nokeyKeyring.Store, encKey *[32]byte, hmacKey []b
 	}
 
 	// Delete old keyring blob
-	_ = store.Delete(AuditLogKey)
+	_ = store.DeleteInternal(AuditLogKey)
 
 	return nil
 }
@@ -827,7 +827,7 @@ func migrateChainHeadFromKeyring(store *nokeyKeyring.Store, chainHeadPath string
 	if _, err := os.Stat(chainHeadPath); err == nil {
 		return nil // already migrated
 	}
-	data, err := store.Get(AuditChainHeadKey)
+	data, err := store.GetInternal(AuditChainHeadKey)
 	if err != nil {
 		if nokeyKeyring.IsNotFound(err) {
 			return nil // nothing to migrate
@@ -842,7 +842,7 @@ func migrateChainHeadFromKeyring(store *nokeyKeyring.Store, chainHeadPath string
 	if err := saveChainHead(chainHeadPath, &head); err != nil {
 		return err
 	}
-	_ = store.Delete(AuditChainHeadKey)
+	_ = store.DeleteInternal(AuditChainHeadKey)
 	return nil
 }
 
@@ -889,7 +889,7 @@ func encryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byte, error) {
 
 func loadOrCreateEncryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byte, error) {
 	// Try to load existing key
-	keyStr, err := store.Get(AuditEncryptionKeyKey)
+	keyStr, err := store.GetInternal(AuditEncryptionKeyKey)
 	if err == nil {
 		decoded, decErr := base64.StdEncoding.DecodeString(keyStr)
 		if decErr == nil && len(decoded) == 32 {
@@ -911,7 +911,7 @@ func loadOrCreateEncryptionKey(store *nokeyKeyring.Store, create bool) (*[32]byt
 	}
 
 	// Store as base64 to prevent null-byte truncation
-	if err := store.Set(AuditEncryptionKeyKey, base64.StdEncoding.EncodeToString(key[:])); err != nil {
+	if err := store.SetInternal(AuditEncryptionKeyKey, base64.StdEncoding.EncodeToString(key[:])); err != nil {
 		return nil, fmt.Errorf("failed to store encryption key: %w", err)
 	}
 

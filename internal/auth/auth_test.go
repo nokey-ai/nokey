@@ -69,28 +69,19 @@ func TestVerifyPIN_Argon2id(t *testing.T) {
 	}
 }
 
-func TestVerifyPIN_LegacySHA256(t *testing.T) {
+func TestVerifyPIN_LegacySHA256Refused(t *testing.T) {
 	pin := "testpin"
-	// Compute the correct SHA-256 hex hash
 	h := sha256.Sum256([]byte(pin))
 	legacyHash := hex.EncodeToString(h[:])
 
-	// Correct PIN should verify against legacy hash
+	// An unsalted SHA-256 hash is trivial to forge, so even the right PIN
+	// is refused.
 	ok, err := VerifyPIN(pin, legacyHash)
-	if err != nil {
-		t.Fatalf("VerifyPIN with legacy hash should not error: %v", err)
+	if err == nil || ok {
+		t.Fatalf("VerifyPIN(legacy) = %v, %v; want false and an error", ok, err)
 	}
-	if !ok {
-		t.Error("VerifyPIN should return true for correct PIN with legacy hash")
-	}
-
-	// Wrong PIN should not verify
-	ok, err = VerifyPIN("wrongpin", legacyHash)
-	if err != nil {
-		t.Fatalf("VerifyPIN failed: %v", err)
-	}
-	if ok {
-		t.Error("VerifyPIN should return false for wrong PIN with legacy hash")
+	if !strings.Contains(err.Error(), "nokey auth change") {
+		t.Errorf("error should say how to upgrade, got: %v", err)
 	}
 }
 
@@ -176,15 +167,15 @@ func TestAuthenticate_NotTerminal(t *testing.T) {
 	}
 }
 
-func TestAuthenticate_LegacySHA256(t *testing.T) {
+func TestAuthenticate_LegacySHA256Refused(t *testing.T) {
 	pin := "legacypin"
 	h := sha256.Sum256([]byte(pin))
 	legacyHash := hex.EncodeToString(h[:])
 
 	stubTerminal(t, true, []byte(pin))
 
-	if err := Authenticate(legacyHash); err != nil {
-		t.Errorf("Authenticate with legacy hash should succeed: %v", err)
+	if err := Authenticate(legacyHash); err == nil {
+		t.Error("Authenticate accepted a legacy SHA-256 hash")
 	}
 }
 
@@ -273,6 +264,32 @@ func TestChangePIN_Success(t *testing.T) {
 	}
 	if !ok {
 		t.Error("new hash should verify with new PIN")
+	}
+}
+
+func TestChangePIN_UpgradesLegacyHash(t *testing.T) {
+	oldPIN := "legacypin"
+	h := sha256.Sum256([]byte(oldPIN))
+	legacyHash := hex.EncodeToString(h[:])
+	newPIN := "newpin5678"
+
+	stubTerminal(t, true, []byte(oldPIN), []byte(newPIN), []byte(newPIN))
+
+	newHash, err := ChangePIN(legacyHash)
+	if err != nil {
+		t.Fatalf("ChangePIN from a legacy hash: %v", err)
+	}
+	if IsLegacyHash(newHash) {
+		t.Errorf("new hash is still legacy: %s", newHash)
+	}
+}
+
+func TestChangePIN_LegacyWrongOldPIN(t *testing.T) {
+	h := sha256.Sum256([]byte("legacypin"))
+	stubTerminal(t, true, []byte("wrongold"))
+
+	if _, err := ChangePIN(hex.EncodeToString(h[:])); err == nil {
+		t.Fatal("ChangePIN should fail with the wrong legacy PIN")
 	}
 }
 

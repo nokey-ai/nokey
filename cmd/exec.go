@@ -330,25 +330,25 @@ var authMethodFactors = map[string][]string{
 	"pin":  {"pin"},
 }
 
-// resolveAuthMethod returns the auth method to use: the configured one
-// (auth.default_method, else pin when a PIN is required or set, else
-// none), or override when it is set. An override must require every
-// factor the configured method does, so a flag can add authentication
-// but never skip what config demands.
+// resolveAuthMethod returns the auth method to use: pin when a PIN is
+// required or set, else the configured one (auth.default_method, default
+// none), or override when it is set. Config can only add authentication:
+// default_method none does not switch off a stored PIN, because config.yaml
+// is a file any process running as the user can rewrite. An override must
+// require every factor the resolved method does, so a flag can add
+// authentication but never skip it either.
 func resolveAuthMethod(store *keyring.Store, override string) (string, error) {
 	configured := cfg.Auth.DefaultMethod
 	if configured == "" {
-		// Legacy behavior: use PIN if configured, otherwise none
-		if cfg.RequireAuth || store.HasPIN() {
-			configured = "pin"
-		} else {
-			configured = "none"
-		}
+		configured = "none"
 	}
-	configuredFactors, ok := authMethodFactors[configured]
-	if !ok {
+	if _, ok := authMethodFactors[configured]; !ok {
 		return "", invalidAuthMethod(configured, " in config")
 	}
+	if cfg.RequireAuth || store.HasPIN() {
+		configured = "pin"
+	}
+	configuredFactors := authMethodFactors[configured]
 	if override == "" {
 		return configured, nil
 	}
