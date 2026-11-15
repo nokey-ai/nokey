@@ -103,7 +103,7 @@ type Handler struct {
 	// it and share its outcome instead of each raising a prompt.
 	minting *mintCall
 
-	// grantsMu guards grants: per command base name, the secrets the user
+	// grantsMu guards grants: per command (policy.CommandKey), the secrets the user
 	// approved with "don't ask again this session". They live in memory
 	// only, so they end with the MCP server process.
 	grantsMu sync.Mutex
@@ -215,7 +215,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 				mcp.Description("Text written to the command's standard input (default: none)"),
 			),
 			mcp.WithObject("env",
-				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, ...)."),
+				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs or where it connects (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, HTTPS_PROXY, SSL_CERT_FILE, ...)."),
 				mcp.AdditionalProperties(map[string]any{"type": "string"}),
 			),
 			mcp.WithBoolean("separate_stderr",
@@ -260,7 +260,7 @@ func (h *Handler) RegisterTools(s *server.MCPServer) {
 				mcp.Description("Text written to the command's standard input (default: none)"),
 			),
 			mcp.WithObject("env",
-				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, ...)."),
+				mcp.Description("Extra non-secret environment variables, as {\"NAME\": \"value\"}. Rejected: names of stored secrets, and variables that change what code runs or where it connects (PATH, LD_*, DYLD_*, BASH_ENV, NODE_OPTIONS, PYTHON*, GIT_SSH*, HTTPS_PROXY, SSL_CERT_FILE, ...)."),
 				mcp.AdditionalProperties(map[string]any{"type": "string"}),
 			),
 			mcp.WithBoolean("separate_stderr",
@@ -458,6 +458,13 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 
 	if len(secretNames) == 0 {
 		return mcp.NewToolResultError(errNoSecrets.Error()), nil
+	}
+	// exec injects secrets as environment variables, so one stored under a
+	// name such as BASH_ENV would steer the command.
+	for _, name := range secretNames {
+		if env.ReservedSecretName(name) {
+			return mcp.NewToolResultError(nokeyKeyring.ReservedNameError(name).Error()), nil
+		}
 	}
 
 	// Enforce scoped policy before reading any secret values. One snapshot
@@ -727,8 +734,8 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, pol *policy.Policy, 
 	// caller's snapshot, the one its policy check used.
 	if pol.RequiresToken(command, secretNames) {
 		names, _ := json.Marshal(secretNames)
-		base := filepath.Base(command)
-		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", base, names, base)
+		key := policy.CommandKey(command)
+		return fmt.Errorf("token required by policy for %q: call mint_token with secrets %s and for %q, then pass the returned ID as the token parameter", key, names, key)
 	}
 
 	// With no policy file there are no rules to say approval: never, so
@@ -784,7 +791,7 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, pol *policy.Policy, 
 func (h *Handler) granted(command string, secretNames []string) bool {
 	h.grantsMu.Lock()
 	defer h.grantsMu.Unlock()
-	approved := h.grants[filepath.Base(command)]
+	approved := h.grants[policy.CommandKey(command)]
 	if approved == nil {
 		return false
 	}
@@ -801,12 +808,12 @@ func (h *Handler) granted(command string, secretNames []string) bool {
 func (h *Handler) grant(command string, secretNames []string) {
 	h.grantsMu.Lock()
 	defer h.grantsMu.Unlock()
-	base := filepath.Base(command)
-	if h.grants[base] == nil {
-		h.grants[base] = map[string]bool{}
+	key := policy.CommandKey(command)
+	if h.grants[key] == nil {
+		h.grants[key] = map[string]bool{}
 	}
 	for _, name := range secretNames {
-		h.grants[base][name] = true
+		h.grants[key][name] = true
 	}
 }
 
@@ -814,7 +821,7 @@ func (h *Handler) grant(command string, secretNames []string) {
 func tokenInvalid(result token.ValidationResult, command string) error {
 	if result.Reason == "wrong_command" {
 		return fmt.Errorf("token invalid: wrong_command: it was minted for %q, which does not match %q",
-			result.MintedFor, filepath.Base(command))
+			result.MintedFor, policy.CommandKey(command))
 	}
 	return fmt.Errorf("token invalid: %s", result.Reason)
 }
@@ -972,37 +979,6 @@ var errNoSecrets = errors.New("no secrets to inject: exec needs at least one sec
 // envNameRe is a portable environment variable name.
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// Environment variables that make a program load, run or look up other
-// code. Approving a command means approving that program, so the caller
-// may not set these. Matched case-insensitively, since Windows names are.
-var (
-	reservedEnvNames = []string{
-		"PATH", "BASH_ENV", "ENV", "IFS", "NODE_OPTIONS", "NODE_PATH",
-		"GIT_EXEC_PATH", "GIT_ASKPASS", "GIT_PROXY_COMMAND", "GIT_PAGER",
-		"SHELLOPTS", "BASHOPTS", "PS4", "PROMPT_COMMAND",
-		"PAGER", "EDITOR", "VISUAL", "SSH_ASKPASS", "LESSOPEN", "LESSCLOSE",
-		"GOFLAGS", "CLASSPATH", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS",
-	}
-	reservedEnvPrefixes = []string{
-		"LD_", "DYLD_", "PYTHON", "PERL5", "RUBY", "GIT_SSH", "GIT_CONFIG",
-		"DOTNET_", "NPM_CONFIG_",
-	}
-)
-
-// reservedEnvName reports whether name is one the caller may not set.
-func reservedEnvName(name string) bool {
-	upper := strings.ToUpper(name)
-	if slices.Contains(reservedEnvNames, upper) {
-		return true
-	}
-	for _, prefix := range reservedEnvPrefixes {
-		if strings.HasPrefix(upper, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 // execOptionsParam reads and validates cwd, stdin, env and separate_stderr.
 // command is the command being run, which cwd must not change the meaning
 // of.
@@ -1040,7 +1016,7 @@ func execOptionsParam(request mcp.CallToolRequest, command string) (execOptions,
 			if !envNameRe.MatchString(name) {
 				return opts, fmt.Errorf("parameter 'env' has an invalid variable name %q", name)
 			}
-			if reservedEnvName(name) {
+			if env.Reserved(name) {
 				return opts, fmt.Errorf("parameter 'env' must not set %q: it changes which code the command loads or runs", name)
 			}
 			value, ok := v.(string)

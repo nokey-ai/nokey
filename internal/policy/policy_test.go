@@ -226,11 +226,41 @@ func TestCheck(t *testing.T) {
 			wantSecret:  "AWS_KEY",
 		},
 		{
-			name: "full path stripped to base",
+			// Anything can be put at a path named gh, so a path is not
+			// reduced to its base name.
+			name: "path does not match a bare-name rule",
 			policy: &Policy{Rules: []Rule{
 				{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
 			}},
+			command:     "/tmp/evil/gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			wantErr:     true,
+			wantSecret:  "GITHUB_TOKEN",
+		},
+		{
+			name: "path matches a path rule",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"/usr/local/bin/*"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
 			command:     "/usr/local/bin/gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+		},
+		{
+			name: "bare name does not match a path rule",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"/usr/local/bin/gh"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "gh",
+			secretNames: []string{"GITHUB_TOKEN"},
+			wantErr:     true,
+			wantSecret:  "GITHUB_TOKEN",
+		},
+		{
+			name: "star matches a path",
+			policy: &Policy{Rules: []Rule{
+				{Commands: []string{"*"}, Secrets: []string{"GITHUB_TOKEN"}},
+			}},
+			command:     "/tmp/evil/gh",
 			secretNames: []string{"GITHUB_TOKEN"},
 		},
 		{
@@ -398,9 +428,10 @@ func TestRequiresApproval(t *testing.T) {
 			want:        false,
 		},
 		{
-			name: "full path stripped to base",
+			// No rule matches the path, so approval fails closed.
+			name: "path does not match a bare-name rule",
 			policy: &Policy{
-				Approval: ApprovalAlways,
+				Approval: ApprovalNever,
 				Rules: []Rule{
 					{Commands: []string{"gh"}, Secrets: []string{"GITHUB_TOKEN"}},
 				},

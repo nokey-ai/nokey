@@ -8,6 +8,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -212,10 +213,10 @@ func (p *Policy) RequiresApproval(command string, secretNames []string) bool {
 		return false
 	}
 
-	base := filepath.Base(command)
+	key := CommandKey(command)
 
 	for _, secret := range secretNames {
-		if p.secretRequiresApproval(base, secret) {
+		if p.secretRequiresApproval(key, secret) {
 			return true
 		}
 	}
@@ -227,7 +228,7 @@ func (p *Policy) RequiresApproval(command string, secretNames []string) bool {
 // Fail-closed: if no matching rule is found, returns true.
 func (p *Policy) secretRequiresApproval(command, secret string) bool {
 	for _, rule := range p.Rules {
-		if matchesAny(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+		if matchesCommand(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
 			mode := rule.Approval
 			if mode == "" {
 				mode = p.Approval
@@ -249,10 +250,10 @@ func (p *Policy) RequiresToken(command string, secretNames []string) bool {
 		return false
 	}
 
-	base := filepath.Base(command)
+	key := CommandKey(command)
 
 	for _, secret := range secretNames {
-		if p.secretRequiresToken(base, secret) {
+		if p.secretRequiresToken(key, secret) {
 			return true
 		}
 	}
@@ -264,7 +265,7 @@ func (p *Policy) RequiresToken(command string, secretNames []string) bool {
 // No matching rule returns false (backward compatible — tokens are opt-in).
 func (p *Policy) secretRequiresToken(command, secret string) bool {
 	for _, rule := range p.Rules {
-		if matchesAny(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+		if matchesCommand(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
 			return rule.TokenRequired
 		}
 	}
@@ -281,12 +282,11 @@ func (p *Policy) Check(command string, secretNames []string) error {
 		return nil
 	}
 
-	// Strip to base binary name so full paths work
-	base := filepath.Base(command)
+	key := CommandKey(command)
 
 	for _, secret := range secretNames {
-		if !p.allowed(base, secret) {
-			return &Denial{Command: base, Secret: secret}
+		if !p.allowed(key, secret) {
+			return &Denial{Command: key, Secret: secret}
 		}
 	}
 	return nil
@@ -295,7 +295,51 @@ func (p *Policy) Check(command string, secretNames []string) error {
 // allowed returns true if any rule permits the command+secret pair.
 func (p *Policy) allowed(command, secret string) bool {
 	for _, rule := range p.Rules {
-		if matchesAny(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+		if matchesCommand(command, rule.Commands) && matchesAny(secret, rule.Secrets) {
+			return true
+		}
+	}
+	return false
+}
+
+// CommandKey is how rules, tokens and grants identify a command: a bare
+// name as given, or a path made absolute and cleaned. A path is never
+// reduced to its last element, so /tmp/evil/gh is not "gh": any program
+// can be put at a path with a trusted name.
+func CommandKey(command string) string {
+	if !isPath(command) {
+		return command
+	}
+	if abs, err := filepath.Abs(command); err == nil {
+		return abs
+	}
+	return filepath.Clean(command)
+}
+
+// MatchCommand reports whether a command pattern covers key, a CommandKey.
+// "*" covers every command. Otherwise a pattern with no path separator
+// covers commands given by bare name, which run from the PATH of the
+// process running nokey, and a pattern with one covers commands given as
+// a matching path. Malformed patterns match nothing.
+func MatchCommand(pattern, key string) bool {
+	if pattern == "*" {
+		return true
+	}
+	if isPath(pattern) != isPath(key) {
+		return false
+	}
+	matched, err := path.Match(filepath.ToSlash(pattern), filepath.ToSlash(key))
+	return err == nil && matched
+}
+
+func isPath(s string) bool {
+	return strings.ContainsRune(s, '/') || strings.ContainsRune(s, filepath.Separator)
+}
+
+// matchesCommand reports whether key matches any of the command patterns.
+func matchesCommand(key string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if MatchCommand(pattern, key) {
 			return true
 		}
 	}

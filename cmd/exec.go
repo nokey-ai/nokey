@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -127,6 +126,13 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Secrets are injected as environment variables, so one stored under a
+	// name such as BASH_ENV would steer the command.
+	for name := range secrets {
+		if env.ReservedSecretName(name) {
+			return keyring.ReservedNameError(name)
+		}
+	}
 
 	// Enforce policy rules from policies.yaml, as the MCP server and proxy
 	// do. auth.cli_enforce_policy: false used to switch this off, but
@@ -153,7 +159,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// without a minted session token. Tokens only exist inside the MCP
 	// server, so the CLI must refuse rather than quietly skip the rule.
 	if pol.RequiresToken(args[0], secretNames) {
-		msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
+		msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", policy.CommandKey(args[0]))
 		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
 		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command", msg, configDir)
 	}
