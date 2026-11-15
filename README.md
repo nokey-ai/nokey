@@ -690,7 +690,7 @@ nokey proxy init-ca
 # 2. Trust the CA (prints OS-specific instructions)
 nokey proxy trust-ca
 
-# 3. Start the proxy
+# 3. Start the proxy (asks for Touch ID, the login password or your PIN)
 nokey proxy start
 ```
 
@@ -713,16 +713,25 @@ proxy:
       headers:
         Authorization: "token $GITHUB_TOKEN"
       approval: never  # optional: proxy rules never prompt
+
+    - hosts: ["dev.internal.example.com"]
+      headers:
+        Authorization: "Bearer $DEV_TOKEN"
+      ports: [8443]    # optional: ports to inject on (default 443 only)
 ```
+
+Headers are injected only into HTTPS requests, which the proxy decrypts with its local CA, and only on port 443 unless the rule lists `ports`. A plain `http://` request to a host that has a rule is refused rather than sent without its header, because a secret sent over plain HTTP can be read by anyone on the path. The proxy connects upstream directly: it ignores `HTTP(S)_PROXY` in its own environment, so injected headers only go to the host the rule names.
 
 Proxy rules never prompt. `approval: always` is rejected when the policy loads, both on the `proxy:` section and on its rules, and the top-level `approval` setting does not apply to proxy rules. Blocked and forwarded requests are recorded in the audit log.
 
 ### Using the Proxy
 
+Each run of the proxy has its own password, and clients without it get `407 Proxy Authentication Required`: any local process can reach a loopback port, but only the ones you give the URL to can use it.
+
 ```bash
-# Set environment variables (printed by `proxy start`)
-export http_proxy=http://127.0.0.1:<port>
-export https_proxy=http://127.0.0.1:<port>
+# Set environment variables (printed by `proxy start`, password included)
+export http_proxy=http://nokey:<password>@127.0.0.1:<port>
+export https_proxy=http://nokey:<password>@127.0.0.1:<port>
 
 # Now any HTTP client routes through the proxy
 curl https://api.openai.com/v1/models  # Authorization header injected automatically

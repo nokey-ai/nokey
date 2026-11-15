@@ -3,6 +3,7 @@ package policy
 import (
 	"fmt"
 	"regexp"
+	"slices"
 )
 
 // secretRefRe matches $SECRET_NAME references in header values.
@@ -19,6 +20,10 @@ type ProxyPolicy struct {
 type ProxyRule struct {
 	Hosts   []string          `yaml:"hosts"`
 	Headers map[string]string `yaml:"headers"`
+	// Ports are the ports headers are injected on, inside HTTPS. Empty
+	// means 443 only, so a rule doesn't hand its secret to whatever else
+	// listens on the host.
+	Ports []int `yaml:"ports,omitempty"`
 	// Approval may only be "never" or empty: the proxy cannot prompt, and
 	// the top-level approval mode does not apply to proxy rules.
 	Approval ApprovalMode `yaml:"approval,omitempty"`
@@ -51,6 +56,11 @@ func ValidateProxyRules(pp *ProxyPolicy) error {
 		}
 		if err := validateApproval(rule.Approval, fmt.Sprintf("proxy rule %d", i)); err != nil {
 			return err
+		}
+		for _, port := range rule.Ports {
+			if port < 1 || port > 65535 {
+				return fmt.Errorf("proxy rule %d: port %d is out of range (1-65535)", i, port)
+			}
 		}
 		if rule.Approval == ApprovalAlways {
 			return fmt.Errorf("proxy rule %d: approval: always is not supported — the proxy cannot prompt, so use approval: never or omit it", i)
@@ -88,4 +98,13 @@ func (p *Policy) ProxyRules() []ProxyRule {
 // malformed patterns are treated as non-matching.
 func (r ProxyRule) MatchesHost(host string) bool {
 	return matchesAny(host, r.Hosts)
+}
+
+// AllowsPort reports whether the rule injects on port: one of its Ports,
+// or 443 when it lists none.
+func (r ProxyRule) AllowsPort(port int) bool {
+	if len(r.Ports) == 0 {
+		return port == 443
+	}
+	return slices.Contains(r.Ports, port)
 }

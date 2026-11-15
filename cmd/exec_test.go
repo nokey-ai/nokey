@@ -1603,8 +1603,10 @@ proxy:
 	execRunFn = func(_ string, _ []string, secrets map[string]string, extraEnv ...string) (int, error) {
 		injected = secrets
 		for _, ev := range extraEnv {
-			if v, ok := strings.CutPrefix(ev, "http_proxy=http://"); ok {
-				proxyAddr = v
+			if v, ok := strings.CutPrefix(ev, "http_proxy="); ok {
+				if u, err := url.Parse(v); err == nil {
+					proxyAddr = u.Host
+				}
 			}
 		}
 		return 3, nil

@@ -274,3 +274,24 @@ func TestProxyRules(t *testing.T) {
 		t.Errorf("ProxyRules() = %d rules, want 1", len(rules))
 	}
 }
+
+func TestValidateProxyRules_Ports(t *testing.T) {
+	rule := func(ports ...int) *ProxyPolicy {
+		return &ProxyPolicy{Rules: []ProxyRule{{
+			Hosts:   []string{"api.example.com"},
+			Headers: map[string]string{"Authorization": "Bearer $T"},
+			Ports:   ports,
+		}}}
+	}
+	if err := ValidateProxyRules(rule(443, 8443)); err != nil {
+		t.Errorf("valid ports refused: %v", err)
+	}
+	for _, port := range []int{0, -1, 65536} {
+		if err := ValidateProxyRules(rule(port)); err == nil {
+			t.Errorf("port %d accepted", port)
+		}
+	}
+	if (ProxyRule{}).AllowsPort(80) || !(ProxyRule{}).AllowsPort(443) {
+		t.Error("a rule without ports must allow 443 only")
+	}
+}

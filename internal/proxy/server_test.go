@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -29,76 +30,53 @@ func newTestCA(t *testing.T) *CA {
 	return ca
 }
 
-func proxyTransport(proxyAddr string) *http.Transport {
-	proxyURL, _ := url.Parse("http://" + proxyAddr)
+// proxyTransport sends requests through the proxy at rawURL, a URL from
+// Server.URL with the credential in it.
+func proxyTransport(rawURL string) *http.Transport {
+	proxyURL, _ := url.Parse(rawURL)
 	return &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 	}
 }
 
-func TestHTTPProxyForwardsAndInjectsHeaders(t *testing.T) {
-	// Upstream server that echoes back request headers.
-	var receivedHeaders http.Header
+// proxyAuthLine is the Proxy-Authorization header line for srv, for tests
+// that write CONNECT by hand.
+func proxyAuthLine(srv *Server) string {
+	return "Proxy-Authorization: Basic " + base64.StdEncoding.EncodeToString([]byte(proxyUser+":"+srv.credential)) + "\r\n"
+}
+
+// upstreamPort is the port of a test server's host:port.
+func upstreamPort(hostPort string) int {
+	return portOf(hostPort, 0)
+}
+
+// Plain HTTP is never injected into: anyone on the path could read the
+// secret. A request to a host with a rule is refused, not sent without it.
+func TestHTTPProxyRefusesRuleHostOverHTTP(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedHeaders = r.Header.Clone()
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
+		t.Errorf("request reached upstream with Authorization %q", r.Header.Get("Authorization"))
 	}))
 	defer upstream.Close()
 
-	// Extract upstream host.
-	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
-
 	ca := newTestCA(t)
-	rules := []policy.ProxyRule{
-		{
-			Hosts:   []string{stripPort(upstreamHost)},
-			Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
-			Secrets: []string{"TOKEN"},
-		},
-	}
-	secrets := map[string]string{"TOKEN": "sk-test-123"}
-
-	var audits []auditEntry
-	var auditMu sync.Mutex
-	auditFn := func(op, host, secrets string, ok bool, errMsg string) {
-		auditMu.Lock()
-		defer auditMu.Unlock()
-		audits = append(audits, auditEntry{op, host, secrets, ok, errMsg})
-	}
-
-	srv := NewServer(ca, rules, secrets, auditFn)
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
+	rules := []policy.ProxyRule{{
+		Hosts:   []string{stripPort(strings.TrimPrefix(upstream.URL, "http://"))},
+		Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
+		Secrets: []string{"TOKEN"},
+	}}
+	srv := NewServer(ca, rules, map[string]string{"TOKEN": "sk-test-123"}, nil)
+	if _, err := srv.Start("127.0.0.1:0"); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	client := &http.Client{Transport: proxyTransport(addr)}
-
-	resp, err := client.Get(upstream.URL + "/test")
+	resp, err := (&http.Client{Transport: proxyTransport(srv.URL())}).Get(upstream.URL + "/test")
 	if err != nil {
 		t.Fatalf("GET: %v", err)
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "ok" {
-		t.Errorf("body = %q, want %q", body, "ok")
-	}
-
-	// Verify header was injected.
-	if got := receivedHeaders.Get("Authorization"); got != "Bearer sk-test-123" {
-		t.Errorf("Authorization = %q, want %q", got, "Bearer sk-test-123")
-	}
-
-	// Verify audit was called.
-	auditMu.Lock()
-	defer auditMu.Unlock()
-	if len(audits) == 0 {
-		t.Error("expected at least one audit entry")
-	} else if !audits[0].ok {
-		t.Errorf("audit entry ok = false, errMsg = %q", audits[0].errMsg)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -122,13 +100,13 @@ func TestHTTPProxyNoMatchPassesThrough(t *testing.T) {
 	secrets := map[string]string{"TOKEN": "sk-test-123"}
 
 	srv := NewServer(ca, rules, secrets, nil)
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	client := &http.Client{Transport: proxyTransport(addr)}
+	client := &http.Client{Transport: proxyTransport(srv.URL())}
 
 	resp, err := client.Get(upstream.URL + "/test")
 	if err != nil {
@@ -158,6 +136,7 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 			Hosts:   []string{host},
 			Headers: map[string]string{"X-Api-Key": "$KEY"},
 			Secrets: []string{"KEY"},
+			Ports:   []int{upstreamPort(upstreamHost)},
 		},
 	}
 	secrets := map[string]string{"KEY": "secret-value"}
@@ -171,7 +150,7 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 	}
 
 	srv := NewServer(ca, rules, secrets, auditFn)
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -196,7 +175,7 @@ func TestHTTPSConnectAndInject(t *testing.T) {
 	proxyPool := x509.NewCertPool()
 	proxyPool.AddCert(ca.Cert)
 
-	proxyURL, _ := url.Parse("http://" + addr)
+	proxyURL, _ := url.Parse(srv.URL())
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -272,9 +251,10 @@ func TestStopDrainsInflightCONNECT(t *testing.T) {
 		Hosts:   []string{host},
 		Headers: map[string]string{"X-Api-Key": "$KEY"},
 		Secrets: []string{"KEY"},
+		Ports:   []int{upstreamPort(upstreamHost)},
 	}}
 	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil)
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -292,7 +272,7 @@ func TestStopDrainsInflightCONNECT(t *testing.T) {
 	proxyPool := x509.NewCertPool()
 	proxyPool.AddCert(ca.Cert)
 
-	proxyURL, _ := url.Parse("http://" + addr)
+	proxyURL, _ := url.Parse(srv.URL())
 	clientTransport := &http.Transport{
 		Proxy: http.ProxyURL(proxyURL),
 		TLSClientConfig: &tls.Config{
@@ -376,6 +356,7 @@ func TestCONNECTRejectsHostMismatch(t *testing.T) {
 		Hosts:   []string{host},
 		Headers: map[string]string{"X-Api-Key": "$KEY"},
 		Secrets: []string{"KEY"},
+		Ports:   []int{upstreamPort(upstreamHost)},
 	}}
 	srv := NewServer(ca, rules, map[string]string{"KEY": "secret"}, nil)
 	addr, err := srv.Start("127.0.0.1:0")
@@ -406,7 +387,7 @@ func TestCONNECTRejectsHostMismatch(t *testing.T) {
 	}
 	defer rawConn.Close()
 
-	if _, err := fmt.Fprintf(rawConn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", upstreamHost, upstreamHost); err != nil {
+	if _, err := fmt.Fprintf(rawConn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n%s\r\n", upstreamHost, upstreamHost, proxyAuthLine(srv)); err != nil {
 		t.Fatalf("write CONNECT: %v", err)
 	}
 	br := bufio.NewReader(rawConn)
@@ -466,13 +447,13 @@ func TestBlockUnmatchedHTTP(t *testing.T) {
 	srv := NewServer(ca, rules, secrets, nil)
 	srv.SetBlockUnmatched(true)
 
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
-	client := &http.Client{Transport: proxyTransport(addr)}
+	client := &http.Client{Transport: proxyTransport(srv.URL())}
 
 	resp, err := client.Get(upstream.URL + "/test")
 	if err != nil {
@@ -481,52 +462,6 @@ func TestBlockUnmatchedHTTP(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("status = %d, want 403", resp.StatusCode)
-	}
-}
-
-func TestBlockUnmatchedAllowsMatchedHost(t *testing.T) {
-	var receivedHeaders http.Header
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedHeaders = r.Header.Clone()
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, "ok")
-	}))
-	defer upstream.Close()
-
-	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
-	ca := newTestCA(t)
-	rules := []policy.ProxyRule{
-		{
-			Hosts:   []string{stripPort(upstreamHost)},
-			Headers: map[string]string{"Authorization": "Bearer $TOKEN"},
-			Secrets: []string{"TOKEN"},
-		},
-	}
-	secrets := map[string]string{"TOKEN": "sk-test-123"}
-
-	srv := NewServer(ca, rules, secrets, nil)
-	srv.SetBlockUnmatched(true)
-
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() { _ = srv.Stop(context.Background()) }()
-
-	client := &http.Client{Transport: proxyTransport(addr)}
-
-	resp, err := client.Get(upstream.URL + "/test")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-	if string(body) != "ok" {
-		t.Errorf("body = %q, want %q", body, "ok")
-	}
-	if got := receivedHeaders.Get("Authorization"); got != "Bearer sk-test-123" {
-		t.Errorf("Authorization = %q, want %q", got, "Bearer sk-test-123")
 	}
 }
 
@@ -545,14 +480,14 @@ func TestBlockUnmatchedCONNECT(t *testing.T) {
 	srv := NewServer(ca, rules, map[string]string{"TOKEN": "sk-123"}, nil)
 	srv.SetBlockUnmatched(true)
 
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 	defer func() { _ = srv.Stop(context.Background()) }()
 
 	// CONNECT to an unmatched host via the proxy.
-	proxyURL, _ := url.Parse("http://" + addr)
+	proxyURL, _ := url.Parse(srv.URL())
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -740,42 +675,6 @@ func TestCopyHeaders(t *testing.T) {
 	}
 }
 
-func TestHTTPProxyHeaderResolveError(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		t.Error("should not reach upstream")
-	}))
-	defer upstream.Close()
-
-	upstreamHost := strings.TrimPrefix(upstream.URL, "http://")
-	ca := newTestCA(t)
-	rules := []policy.ProxyRule{
-		{
-			Hosts:   []string{stripPort(upstreamHost)},
-			Headers: map[string]string{"Authorization": "Bearer $MISSING_SECRET"},
-			Secrets: []string{"MISSING_SECRET"},
-		},
-	}
-	// secrets map is missing the required secret.
-	secrets := map[string]string{}
-
-	srv := NewServer(ca, rules, secrets, nil)
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("Start: %v", err)
-	}
-	defer func() { _ = srv.Stop(context.Background()) }()
-
-	client := &http.Client{Transport: proxyTransport(addr)}
-	resp, err := client.Get(upstream.URL + "/test")
-	if err != nil {
-		t.Fatalf("GET: %v", err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadGateway {
-		t.Errorf("status = %d, want 502", resp.StatusCode)
-	}
-}
-
 func TestGetOrCreateCert_Cache(t *testing.T) {
 	ca := newTestCA(t)
 	srv := NewServer(ca, nil, nil, nil)
@@ -808,13 +707,14 @@ func TestHTTPSConnectHeaderResolveError(t *testing.T) {
 			Hosts:   []string{host},
 			Headers: map[string]string{"Authorization": "Bearer $MISSING_SECRET"},
 			Secrets: []string{"MISSING_SECRET"},
+			Ports:   []int{upstreamPort(upstreamHost)},
 		},
 	}
 	// Secrets map is empty — resolve will fail.
 	secrets := map[string]string{}
 
 	srv := NewServer(ca, rules, secrets, nil)
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -838,7 +738,7 @@ func TestHTTPSConnectHeaderResolveError(t *testing.T) {
 	proxyPool := x509.NewCertPool()
 	proxyPool.AddCert(ca.Cert)
 
-	proxyURL, _ := url.Parse("http://" + addr)
+	proxyURL, _ := url.Parse(srv.URL())
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyURL(proxyURL),
@@ -905,7 +805,7 @@ func TestStopWithSilentCONNECTClient(t *testing.T) {
 		t.Fatalf("Dial: %v", err)
 	}
 	defer conn.Close()
-	fmt.Fprint(conn, "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n")
+	fmt.Fprint(conn, "CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n"+proxyAuthLine(srv)+"\r\n")
 	status, err := bufio.NewReader(conn).ReadString('\n')
 	if err != nil || !strings.Contains(status, "200") {
 		t.Fatalf("expected 200 Connection Established, got %q (%v)", status, err)
@@ -938,12 +838,12 @@ func TestStopAbortsSlowUpstream(t *testing.T) {
 
 	ca := newTestCA(t)
 	srv := NewServer(ca, nil, nil, nil)
-	addr, err := srv.Start("127.0.0.1:0")
+	_, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	client := &http.Client{Transport: proxyTransport(addr)}
+	client := &http.Client{Transport: proxyTransport(srv.URL())}
 	reqDone := make(chan struct{})
 	go func() {
 		defer close(reqDone)
@@ -1010,5 +910,120 @@ func TestGetOrCreateCert_CacheBounded(t *testing.T) {
 	srv.certMu.Unlock()
 	if n > maxCachedCerts {
 		t.Errorf("cert cache holds %d entries, want at most %d", n, maxCachedCerts)
+	}
+}
+
+// Only clients given the proxy URL may use the proxy: any local process
+// can reach a loopback port.
+func TestProxyRequiresCredential(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("request reached upstream without the proxy credential")
+	}))
+	defer upstream.Close()
+
+	srv := NewServer(newTestCA(t), nil, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	for name, proxy := range map[string]string{
+		"no credential":    "http://" + addr,
+		"wrong credential": "http://nokey:wrong@" + addr,
+	} {
+		resp, err := (&http.Client{Transport: proxyTransport(proxy)}).Get(upstream.URL)
+		if err != nil {
+			t.Fatalf("%s: GET: %v", name, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusProxyAuthRequired {
+			t.Errorf("%s: status = %d, want 407", name, resp.StatusCode)
+		}
+
+		resp, err = (&http.Client{Transport: proxyTransport(proxy)}).Get("https://api.example.com/")
+		if err == nil {
+			resp.Body.Close()
+		}
+		if err == nil || !strings.Contains(err.Error(), "Proxy Authentication Required") {
+			t.Errorf("%s: CONNECT error = %v, want 407", name, err)
+		}
+	}
+}
+
+// The credential is for the proxy only and must not reach upstream.
+func TestProxyStripsCredential(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Proxy-Authorization"); got != "" {
+			t.Errorf("upstream got Proxy-Authorization %q", got)
+		}
+	}))
+	defer upstream.Close()
+
+	srv := NewServer(newTestCA(t), nil, nil, nil)
+	if _, err := srv.Start("127.0.0.1:0"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	resp, err := (&http.Client{Transport: proxyTransport(srv.URL())}).Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+// A rule without ports injects only on 443, so its secret doesn't go to
+// whatever else listens on the host.
+func TestHTTPSNoInjectOnUnlistedPort(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("X-Api-Key"); got != "" {
+			t.Errorf("X-Api-Key = %q injected on port %s", got, r.Host)
+		}
+	}))
+	defer upstream.Close()
+	host := stripPort(strings.TrimPrefix(upstream.URL, "https://"))
+
+	ca := newTestCA(t)
+	rules := []policy.ProxyRule{{
+		Hosts:   []string{host},
+		Headers: map[string]string{"X-Api-Key": "$KEY"},
+		Secrets: []string{"KEY"},
+	}}
+	srv := NewServer(ca, rules, map[string]string{"KEY": "secret-value"}, nil)
+	if _, err := srv.Start("127.0.0.1:0"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	upstreamPool := x509.NewCertPool()
+	upstreamPool.AddCert(upstream.Certificate())
+	srv.SetTransport(&http.Transport{TLSClientConfig: &tls.Config{RootCAs: upstreamPool, MinVersion: tls.VersionTLS12}})
+	proxyPool := x509.NewCertPool()
+	proxyPool.AddCert(ca.Cert)
+	proxyURL, _ := url.Parse(srv.URL())
+	client := &http.Client{Transport: &http.Transport{
+		Proxy:           http.ProxyURL(proxyURL),
+		TLSClientConfig: &tls.Config{RootCAs: proxyPool, MinVersion: tls.VersionTLS12},
+	}}
+
+	resp, err := client.Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	resp.Body.Close()
+}
+
+// Injected headers go only to the host the rule names, never through a
+// proxy set in nokey's own environment.
+func TestUpstreamTransportIgnoresEnvironmentProxy(t *testing.T) {
+	if upstreamTransport().Proxy != nil {
+		t.Error("upstream transport uses a proxy; it must ignore HTTP(S)_PROXY")
+	}
+	if NewServer(newTestCA(t), nil, nil, nil).forwardTransport() != defaultUpstream {
+		t.Error("server does not use the proxy-less upstream transport by default")
 	}
 }
