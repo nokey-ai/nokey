@@ -75,7 +75,8 @@ func approvePolicy(cmd *cobra.Command, store *keyring.Store, configDir string) e
 	}
 	// Approve only a file that loads, and catch typos here, where the user
 	// is looking, rather than have the policy silently mean something else.
-	if _, err := policy.LoadStrict(configDir); err != nil {
+	// The bytes checked are the ones shown and digested.
+	if _, err := policy.ParseStrict(data); err != nil {
 		return err
 	}
 
