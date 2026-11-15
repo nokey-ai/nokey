@@ -10,6 +10,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/audit"
 	"github.com/nokey-ai/nokey/internal/config"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
+	"github.com/nokey-ai/nokey/internal/policy"
 )
 
 // --- mock keyring backend ---
@@ -179,4 +180,37 @@ func withExecGlobals(t *testing.T) {
 		skipConfirm = oldSkip
 		authMethod = oldMethod
 	})
+}
+
+// approveTestPolicy approves the policies.yaml in the config directory as
+// it is now, as `nokey policy approve` would, in the test keyring. It
+// installs a test keyring if the test has none. With no file it does
+// nothing.
+func approveTestPolicy(t *testing.T) *nkeyring.Store {
+	t.Helper()
+	store, err := getKeyring()
+	if err != nil {
+		store, _ = newTestStore()
+		withTestKeyring(t, store)
+	}
+	approveTestPolicyIn(t, store)
+	return store
+}
+
+func approveTestPolicyIn(t *testing.T, store *nkeyring.Store) {
+	t.Helper()
+	configDir, err := getConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(policy.Path(configDir))
+	if os.IsNotExist(err) {
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetInternal(policy.DigestKey, policy.Digest(data)); err != nil {
+		t.Fatal(err)
+	}
 }

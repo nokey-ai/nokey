@@ -68,12 +68,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	if wrote {
 		fmt.Printf("Created %s\n", policiesPath)
+		fmt.Println("  nokey applies it once you approve it: run 'nokey policy approve'")
 	} else {
 		fmt.Printf("Skipped %s (already exists, use --force to overwrite)\n", policiesPath)
 	}
 
 	fmt.Printf("\nConfiguration directory: %s\n", configDir)
-	fmt.Println("Edit the files above to customize nokey for your workflow.")
+	fmt.Println("Edit the files above to customize nokey for your workflow, and run")
+	fmt.Println("'nokey policy approve' after each edit to policies.yaml.")
 	fmt.Println("Run 'nokey auth setup' to require a PIN before secrets are read.")
 	return nil
 }

@@ -456,15 +456,22 @@ func (h *Handler) HandleExec(ctx context.Context, request mcp.CallToolRequest) (
 		return mcp.NewToolResultError(fmt.Sprintf("failed to filter secrets: %s", err)), nil
 	}
 
-	// Enforce scoped policy before reading any secret values.
-	if err := h.getPolicy().Check(command, secretNames); err != nil {
+	if len(secretNames) == 0 {
+		return mcp.NewToolResultError(errNoSecrets.Error()), nil
+	}
+
+	// Enforce scoped policy before reading any secret values. One snapshot
+	// serves the check and the approval decision, so a policy edit between
+	// them can't mix two versions.
+	pol := h.getPolicy()
+	if err := pol.Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
 
 	// Token or approval gateway
 	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
+	if err := h.checkTokenOrApproval(ctx, pol, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
 		h.recordAudit("mcp:exec:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -519,9 +526,14 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 
 	// Extract referenced secret names from args
 	secretNames := placeholder.Extract(args)
+	if len(secretNames) == 0 {
+		return mcp.NewToolResultError(errNoSecrets.Error()), nil
+	}
 
-	// Enforce scoped policy before touching the keyring
-	if err := h.getPolicy().Check(command, secretNames); err != nil {
+	// Enforce scoped policy before touching the keyring, with one snapshot
+	// for the check and the approval decision.
+	pol := h.getPolicy()
+	if err := pol.Check(command, secretNames); err != nil {
 		h.recordAudit("mcp:exec_with_secrets", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(h.policyDenialText(err)), nil
 	}
@@ -549,7 +561,7 @@ func (h *Handler) HandleExecWithSecrets(ctx context.Context, request mcp.CallToo
 	// Token or approval gateway. The prompt shows args with placeholders
 	// unresolved, so the user sees where each secret is going.
 	tokenID := request.GetString("token", "")
-	if err := h.checkTokenOrApproval(ctx, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
+	if err := h.checkTokenOrApproval(ctx, pol, tokenID, command, secretNames, execDetail(args, opts)); err != nil {
 		h.recordAudit("mcp:exec_with_secrets:approval", command, strings.Join(secretNames, ","), false, err.Error())
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -695,7 +707,7 @@ func (h *Handler) HandleListTokens(_ context.Context, _ mcp.CallToolRequest) (*m
 
 // checkTokenOrApproval validates a token if provided, enforces token_required policy,
 // or falls through to the existing approval gateway.
-func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command string, secretNames []string, detail string) error {
+func (h *Handler) checkTokenOrApproval(ctx context.Context, pol *policy.Policy, tokenID, command string, secretNames []string, detail string) error {
 	if tokenID != "" {
 		result := h.tokenStore.UseFor(tokenID, command, secretNames)
 		if result.Valid {
@@ -711,10 +723,8 @@ func (h *Handler) checkTokenOrApproval(ctx context.Context, tokenID, command str
 		return nil
 	}
 
-	// No token provided — check if policy requires one. Snapshot the
-	// current policy once so the token-required and approval checks see a
-	// consistent view even if the file is rewritten mid-request.
-	pol := h.getPolicy()
+	// No token provided — check if policy requires one. pol is the
+	// caller's snapshot, the one its policy check used.
 	if pol.RequiresToken(command, secretNames) {
 		names, _ := json.Marshal(secretNames)
 		base := filepath.Base(command)
@@ -953,6 +963,11 @@ type execOptions struct {
 	env            map[string]string // non-secret extras
 	separateStderr bool
 }
+
+// errNoSecrets refuses exec calls that would inject nothing. nokey would
+// only be running an arbitrary command on the caller's behalf, with no
+// secret for policy or approval to be about, so nothing would gate it.
+var errNoSecrets = errors.New("no secrets to inject: exec needs at least one secret (exec_with_secrets: a ${{NOKEY:NAME}} placeholder in args); run commands that need no secrets directly")
 
 // envNameRe is a portable environment variable name.
 var envNameRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

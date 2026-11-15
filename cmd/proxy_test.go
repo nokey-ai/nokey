@@ -98,6 +98,7 @@ func TestRunProxyStart_NoPolicies(t *testing.T) {
 	configDir := filepath.Join(dir, ".config", "nokey")
 	os.MkdirAll(configDir, 0700)
 
+	approveTestPolicy(t)
 	err := runProxyStart(nil, nil)
 	if err == nil {
 		t.Fatal("expected error when no proxy rules")
@@ -129,6 +130,7 @@ func TestRunProxyStart_WithRulesMissingSecret(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 
+	approveTestPolicy(t)
 	err := runProxyStart(nil, nil)
 	if err == nil {
 		t.Fatal("expected error when secret is missing")
@@ -150,6 +152,7 @@ func TestRunProxyStart_PolicyLoadError(t *testing.T) {
 	// Write an invalid YAML policy file
 	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte("{{invalid yaml"), 0600)
 
+	approveTestPolicy(t)
 	err := runProxyStart(nil, nil)
 	if err == nil {
 		t.Fatal("expected error with invalid policies.yaml")
@@ -353,6 +356,7 @@ func TestRunProxyStart_NoRules(t *testing.T) {
 	os.MkdirAll(configDir, 0700)
 	os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte("{}\n"), 0600)
 
+	approveTestPolicy(t)
 	err := runProxyStart(nil, nil)
 	if err == nil {
 		t.Fatal("expected error when no proxy rules")
@@ -386,6 +390,7 @@ func TestRunProxyStart_CACreateError(t *testing.T) {
 		t.Fatalf("WriteFile: %v", err)
 	}
 
+	approveTestPolicy(t)
 	err := runProxyStart(nil, nil)
 	if err == nil {
 		t.Fatal("expected error when CA dir is a file")
@@ -423,6 +428,7 @@ func TestRunProxyStart_SignalShutdown(t *testing.T) {
 	makeSignalChan = func() chan os.Signal { return sigCh }
 
 	errCh := make(chan error, 1)
+	approveTestPolicy(t)
 	go func() {
 		errCh <- runProxyStart(nil, nil)
 	}()

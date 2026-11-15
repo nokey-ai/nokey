@@ -136,7 +136,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve config dir for policy check: %w", err)
 	}
-	pol, err := policy.Load(configDir)
+	pol, err := loadApprovedPolicy(store, configDir)
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
@@ -191,7 +191,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var proxyEnv []string
 	stopProxy := func() {}
 	if enableIsolate {
-		env, cleanup, err := setupIsolationProxy(secrets)
+		env, cleanup, err := setupIsolationProxy(pol, secrets)
 		if err != nil {
 			return err
 		}
@@ -274,8 +274,9 @@ func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 }
 
 // setupIsolationProxy starts a local proxy that blocks egress to hosts without
-// a matching proxy rule. Returns env vars to inject and a cleanup function.
-func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
+// a matching proxy rule in pol, the approved policy. Returns env vars to
+// inject and a cleanup function.
+func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
 	noop := func() {}
 
 	// Determine config directory.
@@ -284,11 +285,6 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 		return nil, noop, fmt.Errorf("failed to get config directory: %w", err)
 	}
 
-	// Load policy to get proxy rules.
-	pol, err := policy.Load(configDir)
-	if err != nil {
-		return nil, noop, fmt.Errorf("failed to load policy: %w", err)
-	}
 	rules := pol.ProxyRules()
 	if len(rules) == 0 {
 		return nil, noop, fmt.Errorf("--isolate requires at least one proxy rule in %s/policies.yaml", configDir)

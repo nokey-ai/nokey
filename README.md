@@ -750,6 +750,22 @@ This starts a local proxy that rejects connections to any host not covered by a 
 > `approval: never` only exist once you have a `policies.yaml` file. Run
 > `nokey init` to scaffold a starter policy.
 
+### Approving changes
+
+Any program running as you can edit `policies.yaml`, including an AI agent, so nokey only applies a version you have approved. After creating or editing the file, run:
+
+```bash
+nokey policy approve
+```
+
+It prints the file, checks that it loads (unknown keys are refused), asks for Touch ID, the login password or your PIN, and records the file's SHA-256 in the keyring. Until you approve an edit:
+
+- `nokey exec` and `nokey proxy start` refuse to run, naming the file.
+- A running MCP server keeps the version it last applied. If it never applied one, it uses no policy, so every secret access asks for approval.
+- `nokey status` reports the policy as not approved.
+
+Deleting an approved file doesn't lift its rules. `nokey policy approve` with no file approves running without one.
+
 ### Full Reference
 
 ```yaml

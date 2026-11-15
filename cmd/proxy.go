@@ -105,8 +105,13 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	store, err := getKeyring()
+	if err != nil {
+		return fmt.Errorf("failed to open keyring: %w", err)
+	}
+
 	// Load policy.
-	pol, err := policy.Load(configDir)
+	pol, err := loadApprovedPolicy(store, configDir)
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
@@ -126,11 +131,6 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 	secretNames := proxy.CollectSecretNames(rules)
 
 	// Fetch secrets from keyring.
-	store, err := getKeyring()
-	if err != nil {
-		return fmt.Errorf("failed to open keyring: %w", err)
-	}
-
 	secrets := make(map[string]string, len(secretNames))
 	for _, name := range secretNames {
 		val, err := store.Get(name)

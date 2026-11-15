@@ -58,7 +58,15 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get config directory: %w", err)
 	}
-	polStore, err := policy.NewStore(configDir)
+	// Read the approved digest from a fresh keyring Store each time, so an
+	// approval made in another terminal is seen.
+	polStore, err := policy.NewStore(configDir, func() (string, error) {
+		store, err := getKeyring()
+		if err != nil {
+			return "", err
+		}
+		return approvedPolicyDigest(store)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
