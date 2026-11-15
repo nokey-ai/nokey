@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -376,5 +377,35 @@ func TestNewStore_UnapprovedFileStartsEmpty(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "nokey policy approve") {
 		t.Errorf("no warning on stderr: %q", stderr)
+	}
+}
+
+// A failed read of the approved digest is retried on the next call, not
+// left until the file changes again.
+func TestStore_RetriesAfterDigestReadError(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, ghPolicy, 0)
+	approval := &fixedApproval{}
+	approveContent(approval, ghPolicy)
+	failing := true
+	approved := func() (string, error) {
+		if failing {
+			return "", errors.New("keyring locked")
+		}
+		return approval.get()
+	}
+
+	s, err := NewStore(dir, approval.get)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	s.approved = approved
+	writePolicy(t, dir, openPolicy, 2*time.Second)
+	approveContent(approval, openPolicy)
+
+	_ = captureStderr(t, func() { _ = s.Current() })
+	failing = false
+	if pol := s.Current(); pol == nil || pol.Rules[0].Commands[0] != "*" {
+		t.Errorf("Current after the keyring recovered = %+v, want the approved edit", pol)
 	}
 }

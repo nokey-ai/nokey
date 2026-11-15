@@ -53,7 +53,7 @@ func (d *Denial) Hint(policyPath string) string {
 	if policyPath == "" {
 		policyPath = "policies.yaml in the nokey config directory"
 	}
-	return fmt.Sprintf("To allow it, the user can add a rule to %s:\n  rules:\n    - commands: [%q]\n      secrets: [%q]",
+	return fmt.Sprintf("To allow it, the user can add a rule to %s:\n  rules:\n    - commands: [%q]\n      secrets: [%q]\nand then approve the change with 'nokey policy approve' in a terminal.",
 		policyPath, d.Command, d.Secret)
 }
 
@@ -151,7 +151,12 @@ func LoadStrict(configDir string) (*Policy, error) {
 		}
 		return nil, fmt.Errorf("failed to read policy file: %w", err)
 	}
+	return ParseStrict(data)
+}
 
+// ParseStrict parses and validates policy file contents like LoadStrict,
+// rejecting unknown YAML keys.
+func ParseStrict(data []byte) (*Policy, error) {
 	var pol Policy
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)

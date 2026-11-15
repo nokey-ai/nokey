@@ -147,7 +147,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	sort.Strings(secretNames)
 	if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
 		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
-		return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this", checkErr, configDir)
+		return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this, then run 'nokey policy approve'", checkErr, configDir)
 	}
 	// token_required rules exist to stop an agent reaching a secret
 	// without a minted session token. Tokens only exist inside the MCP
@@ -155,7 +155,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if pol.RequiresToken(args[0], secretNames) {
 		msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
 		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
-		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command", msg, configDir)
+		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command, then run 'nokey policy approve'", msg, configDir)
 	}
 	// approval: always needs the person at the machine: the presence
 	// dialog, or a fresh PIN where there is none. The PIN session ticket
