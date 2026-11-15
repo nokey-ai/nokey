@@ -1806,9 +1806,10 @@ func TestRunExec_ApprovalAlways_FallsBackToFreshPIN(t *testing.T) {
 		prompted++
 		return nil
 	}
-	// The exec's own PIN read is satisfied by a session ticket.
+	// The exec's own PIN read is satisfied by a session ticket, kept out
+	// of the real home.
+	t.Setenv("HOME", t.TempDir())
 	_ = session.Create("hash")
-	t.Cleanup(func() { _ = session.Clear() })
 
 	ran, err := runApprovalAlwaysExec(t, store)
 	if err != nil || !ran {
