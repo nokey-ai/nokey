@@ -60,8 +60,11 @@ type statusReport struct {
 	dirErr     error
 	policyErr  error
 	strictErr  error // policies.yaml loads, but has keys Load silently ignores
-	listErr    error
-	pinSet     bool
+	// policyUnapproved: policies.yaml loads but is not the approved version,
+	// so nokey doesn't apply it.
+	policyUnapproved bool
+	listErr          error
+	pinSet           bool
 	// migratePending counts secrets the legacy keychain migrate would help.
 	migratePending int
 }
@@ -125,6 +128,9 @@ func collectStatus() *statusReport {
 			out.Policy = fmt.Sprintf("error: %s", polErr)
 		} else if pol == nil {
 			out.Policy = "no policies.yaml (allow-all)"
+		} else if store != nil && !policyApproved(store, configDir) {
+			r.policyUnapproved = true
+			out.Policy = "not approved"
 		} else {
 			out.Policy = "valid"
 			out.PolicyRule = len(pol.Rules)
@@ -276,6 +282,8 @@ func statusChecks(r *statusReport) []statusCheck {
 		add(checkFail, "policies.yaml", r.policyErr.Error(), "Fix policies.yaml, then run 'nokey config validate'")
 	} else if r.strictErr != nil {
 		add(checkFail, "policies.yaml", r.strictErr.Error(), "Unknown keys are ignored at runtime; fix the typo, then run 'nokey config validate'")
+	} else if r.policyUnapproved {
+		add(checkFail, "policies.yaml", "changed since it was last approved, or never approved, so it is not applied", "Review it, then run 'nokey policy approve'")
 	} else if r.dirErr == nil {
 		add(checkOK, "policies.yaml", r.out.Policy, "")
 	}

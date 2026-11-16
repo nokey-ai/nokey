@@ -250,7 +250,7 @@ func TestHandleExec_Success(t *testing.T) {
 }
 
 func TestHandleExec_NonZeroExit(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
@@ -291,7 +291,7 @@ func TestHandleExec_RedactsOutput(t *testing.T) {
 }
 
 func TestHandleExec_CommandNotFound(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
@@ -427,7 +427,7 @@ func TestHandleExec_WithInvalidToken(t *testing.T) {
 }
 
 func TestHandleExec_TimeoutClamp(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	// Timeout <= 0 should use default; > maxTimeoutSecs should clamp.
@@ -534,31 +534,64 @@ func TestHandleExecWithSecrets_SecretNotFound(t *testing.T) {
 	}
 }
 
-func TestHandleExecWithSecrets_NoPlaceholders(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
-	h := newTestHandler(t, store, nil, nil)
+// With nothing to inject there is nothing for policy or approval to be
+// about, so nokey would just run an arbitrary command unprompted.
+func TestHandleExecWithSecrets_NoPlaceholdersRefused(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 
-	req := makeCallToolRequest(map[string]any{
-		"command": "echo",
-		"args":    []any{"no-placeholders-here"},
-	})
-	result, err := h.HandleExecWithSecrets(context.Background(), req)
+	result, err := h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "touch",
+		"args":    []any{ran},
+	}))
 	if err != nil {
 		t.Fatalf("HandleExecWithSecrets: %v", err)
 	}
-	text := getResultText(t, result)
-	if !strings.Contains(text, "no-placeholders-here") {
-		t.Errorf("result = %q, want 'no-placeholders-here'", text)
+	if !result.IsError || !strings.Contains(getResultText(t, result), "no secrets to inject") {
+		t.Errorf("result = %q, want a refusal", getResultText(t, result))
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the command ran")
+	}
+}
+
+// exec refuses too when only/except, or an empty store, leave nothing.
+func TestHandleExec_NoSecretsRefused(t *testing.T) {
+	for name, tc := range map[string]struct {
+		secrets map[string]string
+		args    map[string]any
+	}{
+		"empty store": {map[string]string{}, map[string]any{}},
+		"except all":  {testSecrets(), map[string]any{"except": testSecretName}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ran := filepath.Join(t.TempDir(), "ran")
+			h := newTestHandler(t, &mapStore{secrets: tc.secrets}, nil, nil)
+			args := map[string]any{"command": "touch", "args": []any{ran}}
+			for k, v := range tc.args {
+				args[k] = v
+			}
+			result, err := h.HandleExec(context.Background(), makeCallToolRequest(args))
+			if err != nil {
+				t.Fatalf("HandleExec: %v", err)
+			}
+			if !result.IsError || !strings.Contains(getResultText(t, result), "no secrets to inject") {
+				t.Errorf("result = %q, want a refusal", getResultText(t, result))
+			}
+			if _, err := os.Stat(ran); err == nil {
+				t.Error("the command ran")
+			}
+		})
 	}
 }
 
 func TestHandleExecWithSecrets_NonZeroExit(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
 		"command": "sh",
-		"args":    []any{"-c", "exit 7"},
+		"args":    []any{"-c", "exit 7", "${{NOKEY:" + testSecretName + "}}"},
 	})
 	result, err := h.HandleExecWithSecrets(context.Background(), req)
 	if err != nil {
@@ -600,11 +633,12 @@ func TestHandleExecWithSecrets_WithToken(t *testing.T) {
 }
 
 func TestHandleExecWithSecrets_CommandNotFound(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
 		"command": "/nonexistent/cmd",
+		"args":    []any{"${{NOKEY:" + testSecretName + "}}"},
 	})
 	result, err := h.HandleExecWithSecrets(context.Background(), req)
 	if err != nil {
@@ -891,7 +925,7 @@ func TestCheckTokenOrApproval_ValidToken(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	err = h.checkTokenOrApproval(context.Background(), tok.ID, "test-cmd", []string{"MY_SECRET"}, "")
+	err = h.checkTokenOrApproval(context.Background(), h.getPolicy(), tok.ID, "test-cmd", []string{"MY_SECRET"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -901,7 +935,7 @@ func TestCheckTokenOrApproval_InvalidToken(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	h := newTestHandler(t, store, nil, nil)
 
-	err := h.checkTokenOrApproval(context.Background(), "bad-token", "test-cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "bad-token", "test-cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token invalid") {
 		t.Errorf("expected 'token invalid' error, got: %v", err)
 	}
@@ -911,7 +945,7 @@ func TestCheckTokenOrApproval_NoTokenNilPolicy(t *testing.T) {
 	store := &mapStore{secrets: map[string]string{}}
 	h := newTestHandler(t, store, nil, nil) // nil policy = no requirements
 
-	err := h.checkTokenOrApproval(context.Background(), "", "test-cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "test-cmd", []string{"SEC"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -928,7 +962,7 @@ func TestCheckTokenOrApproval_PolicyRequiresToken(t *testing.T) {
 	}
 	h := newTestHandler(t, store, pol, nil)
 
-	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token required") {
 		t.Errorf("expected 'token required' error, got: %v", err)
 	}
@@ -946,7 +980,7 @@ func TestCheckTokenOrApproval_WrongSecret(t *testing.T) {
 		t.Fatalf("mint: %v", err)
 	}
 
-	err = h.checkTokenOrApproval(context.Background(), tok.ID, "cmd", []string{"DISALLOWED"}, "")
+	err = h.checkTokenOrApproval(context.Background(), h.getPolicy(), tok.ID, "cmd", []string{"DISALLOWED"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token invalid") {
 		t.Errorf("expected 'token invalid' error, got: %v", err)
 	}
@@ -1136,7 +1170,7 @@ func TestCheckTokenOrApproval_RequiresApproval_Accepted(t *testing.T) {
 		return nil
 	})
 
-	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "some-cmd", []string{"SEC"}, "")
 	if err != nil {
 		t.Errorf("checkTokenOrApproval: %v", err)
 	}
@@ -1156,7 +1190,7 @@ func TestCheckTokenOrApproval_RequiresApproval_Declined(t *testing.T) {
 		return fmt.Errorf("user declined")
 	})
 
-	err := h.checkTokenOrApproval(context.Background(), "", "some-cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "some-cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "declined") {
 		t.Errorf("expected 'declined' error, got: %v", err)
 	}
@@ -1187,7 +1221,7 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 	})
 
 	// First call: triggers auto-mint approval.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd1", []string{"SECRET_A"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd1", []string{"SECRET_A"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1198,7 +1232,7 @@ func TestCheckTokenOrApproval_AutoMint_Approved(t *testing.T) {
 	}
 
 	// Second call: should use cached session token, no new approval.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd2", []string{"SECRET_A"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd2", []string{"SECRET_A"}, ""); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1231,7 +1265,7 @@ func TestCheckTokenOrApproval_AutoMint_Declined(t *testing.T) {
 	// Declining the session token must not grant access by itself, even
 	// with no policy file: the per-call prompt follows, and its decline
 	// denies the call.
-	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "approval denied") {
 		t.Errorf("expected approval denied after both prompts were declined, got: %v", err)
 	}
@@ -1263,7 +1297,7 @@ func TestCheckTokenOrApproval_AutoMint_DeclinedThenPerCallApproved(t *testing.T)
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("per-call approval should grant the call: %v", err)
 	}
 	if h.sessionTokenID != "" {
@@ -1291,7 +1325,7 @@ func TestCheckTokenOrApproval_AutoMint_SkippedWhenRuleNeverPrompts(t *testing.T)
 		AuditFn:      func(string, string, string, bool, string) {},
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if prompts != 0 {
@@ -1312,7 +1346,7 @@ func TestCheckTokenOrApproval_AutoMint_Disabled(t *testing.T) {
 	})
 
 	// No policy file and auto-mint disabled: one per-call prompt, no token.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1333,7 +1367,7 @@ func TestCheckTokenOrApproval_NoPolicyPrompts(t *testing.T) {
 		return fmt.Errorf("user declined")
 	})
 
-	err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "")
 	if err == nil || !strings.Contains(err.Error(), "approval denied") {
 		t.Errorf("err = %v, want approval denied", err)
 	}
@@ -1341,7 +1375,7 @@ func TestCheckTokenOrApproval_NoPolicyPrompts(t *testing.T) {
 		t.Errorf("prompts = %d, want 1", prompts)
 	}
 
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", nil, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", nil, ""); err != nil {
 		t.Errorf("a call with no secrets should not need approval: %v", err)
 	}
 	if prompts != 1 {
@@ -1382,7 +1416,7 @@ func TestCheckTokenOrApproval_AutoMint_Expired(t *testing.T) {
 	h.tokenStore.Revoke(tok.ID) // simulate expiry
 
 	// Next call should detect invalid session token, clear it, then auto-mint again.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1417,7 +1451,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 	})
 
 	// First call: auto-mint with SEC_A.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_A"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC_A"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	if approvalCount != 1 {
@@ -1429,7 +1463,7 @@ func TestCheckTokenOrApproval_AutoMint_NewSecret(t *testing.T) {
 	store.secrets["SEC_B"] = "b"
 
 	// Session token only covers SEC_A, not SEC_B -> should clear and re-mint.
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC_B"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC_B"}, ""); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 	if approvalCount != 2 {
@@ -1628,7 +1662,15 @@ func TestHandleExec_ReloadsPolicyWhenFileChanges(t *testing.T) {
 		t.Fatalf("write initial policy: %v", err)
 	}
 
-	polStore, err := policy.NewStore(configDir)
+	// The user approves each version the test writes.
+	approveOnDisk := func() (string, error) {
+		data, err := os.ReadFile(policyPath)
+		if err != nil {
+			return "", err
+		}
+		return policy.Digest(data), nil
+	}
+	polStore, err := policy.NewStore(configDir, approveOnDisk)
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -1750,7 +1792,7 @@ func TestCheckTokenOrApproval_AutoMint_Concurrent(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
-			if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+			if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 				t.Errorf("checkTokenOrApproval: %v", err)
 			}
 		})
@@ -1793,13 +1835,13 @@ func TestCheckTokenOrApproval_AutoMint_PendingPromptDoesNotWedge(t *testing.T) {
 
 	stuckCtx, release := context.WithCancel(context.Background())
 	defer release()
-	go h.checkTokenOrApproval(stuckCtx, "", "cmd", []string{"SEC"}, "")
+	go h.checkTokenOrApproval(stuckCtx, h.getPolicy(), "", "cmd", []string{"SEC"}, "")
 	<-prompted
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}, "") }()
+	go func() { done <- h.checkTokenOrApproval(ctx, h.getPolicy(), "", "cmd", []string{"SEC"}, "") }()
 
 	select {
 	case <-done:
@@ -1823,12 +1865,12 @@ func TestCheckTokenOrApproval_AutoMint_PanicDoesNotWedge(t *testing.T) {
 
 	func() {
 		defer func() { _ = recover() }()
-		h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "")
+		h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "")
 	}()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := h.checkTokenOrApproval(ctx, "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(ctx, h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if calls.Load() != 2 || !h.useSessionToken([]string{"SEC"}) {
@@ -1850,7 +1892,9 @@ func TestCheckTokenOrApproval_AutoMint_PromptTimesOut(t *testing.T) {
 	})
 
 	done := make(chan error, 1)
-	go func() { done <- h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "") }()
+	go func() {
+		done <- h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "")
+	}()
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
@@ -1876,7 +1920,7 @@ func TestCheckTokenOrApproval_AutoMint_ConcurrentShareDecline(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for range 6 {
-		wg.Go(func() { h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, "") })
+		wg.Go(func() { h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, "") })
 	}
 	wg.Wait()
 	if n := approvals.Load(); n != 1 {
@@ -2110,7 +2154,7 @@ func TestCheckTokenOrApproval_AutoMint_ApprovalShowsScope(t *testing.T) {
 		GetConfigDir: func() (string, error) { return t.TempDir(), nil },
 	})
 
-	if err := h.checkTokenOrApproval(context.Background(), "", "cmd", []string{"SEC"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "cmd", []string{"SEC"}, ""); err != nil {
 		t.Fatalf("checkTokenOrApproval: %v", err)
 	}
 	if len(rec.calls) != 1 {
@@ -2158,7 +2202,7 @@ func TestHandleRevokeToken_AuditsHashedID(t *testing.T) {
 // The exec schema declares args as a string ("JSON array of strings"), so
 // that is what schema-following clients send. It must not be dropped.
 func TestHandleExec_ArgsAsJSONString(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
@@ -2267,7 +2311,7 @@ func TestHandleExecWithSecrets_TimeoutReported(t *testing.T) {
 // read open long after the timeout killed the direct child.
 func TestHandleExec_TimeoutKillsProcessTree(t *testing.T) {
 	skipOnWindows(t)
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
@@ -2293,7 +2337,7 @@ func TestHandleExec_TimeoutKillsProcessTree(t *testing.T) {
 // itself exited. That is still a finished run, not a failure to execute.
 func TestHandleExec_GrandchildHoldingPipeKeepsResult(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 
 	for script, want := range map[string]string{
 		"(sleep 4 &); echo done":         "done\n",
@@ -2312,7 +2356,7 @@ func TestHandleExec_GrandchildHoldingPipeKeepsResult(t *testing.T) {
 }
 
 func TestHandleExec_TimeoutClampNoted(t *testing.T) {
-	store := &mapStore{secrets: map[string]string{}}
+	store := &mapStore{secrets: testSecrets()}
 	h := newTestHandler(t, store, nil, nil)
 
 	req := makeCallToolRequest(map[string]any{
@@ -2518,6 +2562,37 @@ func TestRegisterTools_Annotations(t *testing.T) {
 // --- optional exec parameters ---
 
 // execBoth runs args through both exec tools and returns their results.
+// testSecretName is a secret the run-mechanics tests store, so exec and
+// exec_with_secrets, which refuse to inject nothing, have one to inject.
+const (
+	testSecretName  = "NK_TEST"
+	testSecretValue = "nk-test-value-6f1c"
+)
+
+func testSecrets() map[string]string {
+	return map[string]string{testSecretName: testSecretValue}
+}
+
+// withSecretRef rewrites an exec_with_secrets call so it references
+// NK_TEST without changing what runs: `sh -c 'exec "$@"' <value> cmd
+// args...` puts the value in $0, which nothing reads, and runs cmd. Other
+// parameters are kept.
+func withSecretRef(args map[string]any) map[string]any {
+	out := make(map[string]any, len(args))
+	for k, v := range args {
+		out[k] = v
+	}
+	argv := []any{"-c", `exec "$@"`, "${{NOKEY:" + testSecretName + "}}", args["command"]}
+	if rest, ok := args["args"].([]any); ok {
+		argv = append(argv, rest...)
+	}
+	out["command"] = "sh"
+	out["args"] = argv
+	return out
+}
+
+// execBoth runs args through both exec tools. The exec_with_secrets call
+// goes through withSecretRef, so the store must hold NK_TEST.
 func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.CallToolResult {
 	t.Helper()
 	out := map[string]*mcp.CallToolResult{}
@@ -2525,7 +2600,11 @@ func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.Cal
 		"exec":              h.HandleExec,
 		"exec_with_secrets": h.HandleExecWithSecrets,
 	} {
-		result, err := fn(context.Background(), makeCallToolRequest(args))
+		req := args
+		if name == "exec_with_secrets" {
+			req = withSecretRef(args)
+		}
+		result, err := fn(context.Background(), makeCallToolRequest(req))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -2536,7 +2615,7 @@ func execBoth(t *testing.T, h *Handler, args map[string]any) map[string]*mcp.Cal
 
 func TestExecTools_Cwd(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -2565,7 +2644,7 @@ func TestExecTools_CwdRejected(t *testing.T) {
 
 func TestExecTools_Stdin(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 	for name, result := range execBoth(t, h, map[string]any{"command": "cat", "stdin": "piped in"}) {
 		if got := getResultText(t, result); got != "piped in" {
 			t.Errorf("%s: output = %q, want %q", name, got, "piped in")
@@ -2575,7 +2654,7 @@ func TestExecTools_Stdin(t *testing.T) {
 
 func TestExecTools_Env(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 	args := map[string]any{
 		"command": "sh",
 		"args":    []any{"-c", "echo $NOKEY_TEST_VAR"},
@@ -2589,7 +2668,7 @@ func TestExecTools_Env(t *testing.T) {
 }
 
 func TestExecTools_EnvRejected(t *testing.T) {
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{"API_KEY": "v"}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"API_KEY": "v", testSecretName: testSecretValue}}, nil, nil)
 	for _, env := range []map[string]any{
 		{"API_KEY": "spoofed"}, // shadows a stored secret
 		{"A=B": "x"},
@@ -2645,11 +2724,17 @@ func TestExecTools_EnvRejectsLoaderAndHookNames(t *testing.T) {
 // caller-chosen directory: cwd=/tmp/evil, command=./gh passes a "gh" rule.
 func TestExecTools_CwdRejectsRelativePathCommand(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 	dir := t.TempDir()
 
 	for _, command := range []string{"./gh", "bin/gh"} {
-		for tool, result := range execBoth(t, h, map[string]any{"command": command, "cwd": dir}) {
+		// Not execBoth: withSecretRef would replace the command under test.
+		args := map[string]any{"command": command, "cwd": dir, "args": []any{"${{NOKEY:" + testSecretName + "}}"}}
+		for tool, fn := range map[string]func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error){
+			"exec":              h.HandleExec,
+			"exec_with_secrets": h.HandleExecWithSecrets,
+		} {
+			result, _ := fn(context.Background(), makeCallToolRequest(args))
 			if !result.IsError || !strings.Contains(getResultText(t, result), "cwd") {
 				t.Errorf("%s: command %q with cwd accepted: %q", tool, command, getResultText(t, result))
 			}
@@ -2708,7 +2793,7 @@ func TestExecTools_ApprovalShowsCwdEnvStdin(t *testing.T) {
 
 func TestExecTools_SeparateStderr(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value", testSecretName: testSecretValue}}, nil, nil)
 	args := map[string]any{
 		"command":         "sh",
 		"args":            []any{"-c", "echo out; echo err secret-value >&2"},
@@ -2739,10 +2824,10 @@ func structured(t *testing.T, result *mcp.CallToolResult) execOutput {
 
 func TestExecTools_StructuredOutput(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value"}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"K": "secret-value", testSecretName: testSecretValue}}, nil, nil)
 
 	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
-		"command": "sh", "args": []any{"-c", "echo $K; exit 3"},
+		"command": "sh", "args": []any{"-c", "echo $K; exit 3"}, "only": "K",
 	}))
 	if text := getResultText(t, result); text != "[exit code: 3]\n[REDACTED:K]\n" {
 		t.Errorf("text = %q; the text content must not change", text)
@@ -2753,18 +2838,18 @@ func TestExecTools_StructuredOutput(t *testing.T) {
 		t.Errorf("structured = %+v, want %+v", got, want)
 	}
 
-	result, _ = h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(map[string]any{
+	result, _ = h.HandleExecWithSecrets(context.Background(), makeCallToolRequest(withSecretRef(map[string]any{
 		"command": "sh", "args": []any{"-c", "echo out; echo err >&2"}, "separate_stderr": true,
-	}))
+	})))
 	got = structured(t, result)
-	if got.Output != "out\n" || got.Stderr != "err\n" || got.SecretsInjected == nil || len(got.SecretsInjected) != 0 {
-		t.Errorf("structured = %+v, want split streams and an empty secrets list", got)
+	if got.Output != "out\n" || got.Stderr != "err\n" || fmt.Sprint(got.SecretsInjected) != "["+testSecretName+"]" {
+		t.Errorf("structured = %+v, want split streams and only %s injected", got, testSecretName)
 	}
 }
 
 func TestExecTools_StructuredTimeoutAndTruncation(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 
 	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
 		"command": "sh", "args": []any{"-c", "echo partial; sleep 30"}, "timeout_seconds": 1,
@@ -2785,7 +2870,7 @@ func TestExecTools_StructuredTimeoutAndTruncation(t *testing.T) {
 // stays within MaxOutputBytes as it does when they are interleaved.
 func TestExecTools_SeparateStderrSharesOutputCap(t *testing.T) {
 	skipOnWindows(t)
-	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, nil, nil)
+	h := newTestHandler(t, &mapStore{secrets: testSecrets()}, nil, nil)
 	result, _ := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
 		"command":         "sh",
 		"args":            []any{"-c", "head -c 2000000 /dev/zero; head -c 2000000 /dev/zero >&2"},
@@ -2844,7 +2929,7 @@ func TestCheckTokenOrApproval_TokenRequiredSaysWhatToMint(t *testing.T) {
 	pol := &policy.Policy{Rules: []policy.Rule{{Commands: []string{"*"}, Secrets: []string{"*"}, TokenRequired: true}}}
 	h := newTestHandler(t, &mapStore{secrets: map[string]string{}}, pol, nil)
 
-	err := h.checkTokenOrApproval(context.Background(), "", "/usr/bin/gh", []string{"A", "B"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "/usr/bin/gh", []string{"A", "B"}, "")
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -3124,7 +3209,7 @@ func TestGrant_RememberSkipsLaterPrompts(t *testing.T) {
 	h, audits := grantHandler(t, rec, &pol)
 	ctx := context.Background()
 
-	if err := h.checkTokenOrApproval(ctx, "", "/usr/bin/curl", []string{"A", "B"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(ctx, h.getPolicy(), "", "/usr/bin/curl", []string{"A", "B"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
 	// Same command (any path), same or fewer secrets: no prompt.
@@ -3132,7 +3217,7 @@ func TestGrant_RememberSkipsLaterPrompts(t *testing.T) {
 		cmd     string
 		secrets []string
 	}{{"curl", []string{"A", "B"}}, {"curl", []string{"B"}}, {"/opt/bin/curl", []string{"A"}}} {
-		if err := h.checkTokenOrApproval(ctx, "", call.cmd, call.secrets, ""); err != nil {
+		if err := h.checkTokenOrApproval(ctx, h.getPolicy(), "", call.cmd, call.secrets, ""); err != nil {
 			t.Fatalf("%s %v: %v", call.cmd, call.secrets, err)
 		}
 	}
@@ -3150,14 +3235,14 @@ func TestGrant_DoesNotCoverOtherCommandsOrSecrets(t *testing.T) {
 	h, _ := grantHandler(t, rec, &pol)
 	ctx := context.Background()
 
-	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"A"}, "")
-	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"A", "B"}, "") // B is new
-	_ = h.checkTokenOrApproval(ctx, "", "wget", []string{"A"}, "")      // other command
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "curl", []string{"A"}, "")
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "curl", []string{"A", "B"}, "") // B is new
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "wget", []string{"A"}, "")      // other command
 	if n := rec.count(); n != 3 {
 		t.Errorf("prompts = %d, want 3 (new secret and new command each prompt)", n)
 	}
 	// The second prompt was remembered too, so curl with A and B is now covered.
-	_ = h.checkTokenOrApproval(ctx, "", "curl", []string{"B"}, "")
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "curl", []string{"B"}, "")
 	if n := rec.count(); n != 3 {
 		t.Errorf("prompts = %d after a covered call, want still 3", n)
 	}
@@ -3168,7 +3253,7 @@ func TestGrant_WithoutRememberPromptsEveryTime(t *testing.T) {
 	rec := &rememberRecorder{remember: false}
 	h, _ := grantHandler(t, rec, &pol)
 	for range 3 {
-		if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+		if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "curl", []string{"A"}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -3183,11 +3268,11 @@ func TestGrant_DoesNotBypassTokenRequired(t *testing.T) {
 	pol := alwaysPolicy()
 	rec := &rememberRecorder{remember: true}
 	h, _ := grantHandler(t, rec, &pol)
-	if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "curl", []string{"A"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	pol = &policy.Policy{Rules: []policy.Rule{{Commands: []string{"curl"}, Secrets: []string{"A"}, TokenRequired: true}}}
-	err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, "")
+	err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "curl", []string{"A"}, "")
 	if err == nil || !strings.Contains(err.Error(), "token required") {
 		t.Errorf("err = %v, want token required despite the grant", err)
 	}
@@ -3198,7 +3283,7 @@ func TestGrant_DoesNotBypassPolicyDeny(t *testing.T) {
 	pol := alwaysPolicy()
 	rec := &rememberRecorder{remember: true}
 	h, _ := grantHandler(t, rec, &pol)
-	if err := h.checkTokenOrApproval(context.Background(), "", "echo", []string{"A"}, ""); err != nil {
+	if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "echo", []string{"A"}, ""); err != nil {
 		t.Fatal(err)
 	}
 	pol = &policy.Policy{Rules: []policy.Rule{{Commands: []string{"other"}, Secrets: []string{"*"}}}}
@@ -3219,7 +3304,7 @@ func TestGrant_RenameStillPrompts(t *testing.T) {
 	pol := alwaysPolicy()
 	rec := &rememberRecorder{remember: true}
 	h, _ := grantHandler(t, rec, &pol)
-	_ = h.checkTokenOrApproval(context.Background(), "", "rename_secret", []string{"OLD"}, "")
+	_ = h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "rename_secret", []string{"OLD"}, "")
 
 	if _, err := h.HandleRenameSecret(context.Background(), renameRequest("OLD", "NEW")); err != nil {
 		t.Fatal(err)
@@ -3239,7 +3324,7 @@ func TestGrant_FallbackNeverRemembers(t *testing.T) {
 		return nil
 	})
 	for range 2 {
-		if err := h.checkTokenOrApproval(context.Background(), "", "curl", []string{"A"}, ""); err != nil {
+		if err := h.checkTokenOrApproval(context.Background(), h.getPolicy(), "", "curl", []string{"A"}, ""); err != nil {
 			t.Fatal(err)
 		}
 	}

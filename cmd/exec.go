@@ -136,7 +136,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to resolve config dir for policy check: %w", err)
 	}
-	pol, err := policy.Load(configDir)
+	pol, err := loadApprovedPolicy(store, configDir)
 	if err != nil {
 		return fmt.Errorf("failed to load policy: %w", err)
 	}
@@ -147,7 +147,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	sort.Strings(secretNames)
 	if checkErr := pol.Check(args[0], secretNames); checkErr != nil {
 		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, checkErr.Error())
-		return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this", checkErr, configDir)
+		return fmt.Errorf("%w\n\nEdit %s/policies.yaml to allow this, then run 'nokey policy approve'", checkErr, configDir)
 	}
 	// token_required rules exist to stop an agent reaching a secret
 	// without a minted session token. Tokens only exist inside the MCP
@@ -155,7 +155,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	if pol.RequiresToken(args[0], secretNames) {
 		msg := fmt.Sprintf("policy requires a session token for %q with these secrets; session tokens exist only in the MCP server, so run this through nokey's MCP tools", filepath.Base(args[0]))
 		AppFromCmd(cmd).RecordAudit(store, "exec:policy_deny", args[0], authMethodUsed, secretNames, false, msg)
-		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command", msg, configDir)
+		return fmt.Errorf("%s\n\nEdit %s/policies.yaml to drop token_required for this command, then run 'nokey policy approve'", msg, configDir)
 	}
 	// approval: always needs the person at the machine: the presence
 	// dialog, or a fresh PIN where there is none. The PIN session ticket
@@ -191,7 +191,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var proxyEnv []string
 	stopProxy := func() {}
 	if enableIsolate {
-		env, cleanup, err := setupIsolationProxy(secrets)
+		env, cleanup, err := setupIsolationProxy(pol, secrets)
 		if err != nil {
 			return err
 		}
@@ -274,8 +274,9 @@ func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 }
 
 // setupIsolationProxy starts a local proxy that blocks egress to hosts without
-// a matching proxy rule. Returns env vars to inject and a cleanup function.
-func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
+// a matching proxy rule in pol, the approved policy. Returns env vars to
+// inject and a cleanup function.
+func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
 	noop := func() {}
 
 	// Determine config directory.
@@ -284,11 +285,6 @@ func setupIsolationProxy(secrets map[string]string) ([]string, func(), error) {
 		return nil, noop, fmt.Errorf("failed to get config directory: %w", err)
 	}
 
-	// Load policy to get proxy rules.
-	pol, err := policy.Load(configDir)
-	if err != nil {
-		return nil, noop, fmt.Errorf("failed to load policy: %w", err)
-	}
 	rules := pol.ProxyRules()
 	if len(rules) == 0 {
 		return nil, noop, fmt.Errorf("--isolate requires at least one proxy rule in %s/policies.yaml", configDir)

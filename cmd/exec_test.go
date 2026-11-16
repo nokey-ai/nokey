@@ -17,6 +17,7 @@ import (
 	"github.com/nokey-ai/nokey/internal/config"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	nkeyring "github.com/nokey-ai/nokey/internal/keyring"
+	"github.com/nokey-ai/nokey/internal/policy"
 	"github.com/nokey-ai/nokey/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -72,6 +73,10 @@ func withTestConfigDir(t *testing.T, policiesYAML string) string {
 	if policiesYAML != "" {
 		if err := os.WriteFile(dir+"/policies.yaml", []byte(policiesYAML), 0o600); err != nil {
 			t.Fatal(err)
+		}
+		// Approve it in the test's keyring, if it has installed one.
+		if store, err := getKeyring(); err == nil {
+			approveTestPolicyIn(t, store)
 		}
 	}
 	return dir
@@ -1165,7 +1170,7 @@ func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600)
 
 	secrets := map[string]string{"MY_KEY": "secret-val"}
-	envVars, cleanup, err := setupIsolationProxy(secrets)
+	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), secrets)
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1205,7 +1210,7 @@ func TestSetupIsolationProxy_AuditsBlockedRequests(t *testing.T) {
         Authorization: "Bearer $MY_KEY"
 `)
 
-	envVars, cleanup, err := setupIsolationProxy(map[string]string{"MY_KEY": "secret-val"})
+	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1271,7 +1276,7 @@ func TestSetupIsolationProxy_OverridesProxyBypassVars(t *testing.T) {
 `
 	os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600)
 
-	envVars, cleanup, err := setupIsolationProxy(map[string]string{"MY_KEY": "secret-val"})
+	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1335,7 +1340,7 @@ func TestSetupIsolationProxy_NoRules(t *testing.T) {
 	os.MkdirAll(configDir, 0700)
 
 	secrets := map[string]string{"K": "v"}
-	_, _, err := setupIsolationProxy(secrets)
+	_, _, err := setupIsolationProxy(loadTestPolicy(t), secrets)
 	if err == nil || !strings.Contains(err.Error(), "proxy rule") {
 		t.Errorf("expected proxy rule error, got: %v", err)
 	}
@@ -1586,6 +1591,7 @@ proxy:
 	if err := os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600); err != nil {
 		t.Fatal(err)
 	}
+	approveTestPolicyIn(t, store)
 
 	withExecGlobals(t)
 	oldIsolate := enableIsolate
@@ -1827,4 +1833,19 @@ func TestRunExec_ApprovalAlways_NoPresenceNoPIN(t *testing.T) {
 	if ran || err == nil || !strings.Contains(err.Error(), "nokey auth setup") {
 		t.Fatalf("ran = %v, err = %v; want a refusal that suggests setting a PIN", ran, err)
 	}
+}
+
+// loadTestPolicy loads the policies.yaml a test wrote, without the
+// approval check, for helpers that take an already-approved policy.
+func loadTestPolicy(t *testing.T) *policy.Policy {
+	t.Helper()
+	configDir, err := getConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pol, err := policy.Load(configDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return pol
 }

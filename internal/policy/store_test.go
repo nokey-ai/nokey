@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -34,7 +35,7 @@ func TestNewStore_ValidFile(t *testing.T) {
     secrets: ["GITHUB_TOKEN"]
 `, 0)
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestNewStore_ValidFile(t *testing.T) {
 func TestNewStore_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -63,7 +64,7 @@ func TestNewStore_MalformedFile(t *testing.T) {
 	dir := t.TempDir()
 	writePolicy(t, dir, `rules: [invalid yaml`, 0)
 
-	_, err := NewStore(dir)
+	_, err := NewStore(dir, approveOnDisk(dir))
 	if err == nil {
 		t.Fatal("NewStore should return error for malformed file")
 	}
@@ -76,7 +77,7 @@ func TestStore_CurrentReloadsOnMtimeChange(t *testing.T) {
     secrets: ["GITHUB_TOKEN"]
 `, 0)
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -113,7 +114,7 @@ func TestStore_CurrentNoopWhenUnchanged(t *testing.T) {
     secrets: ["GITHUB_TOKEN"]
 `, 0)
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -140,7 +141,7 @@ func TestStore_CurrentPreservesPreviousOnParseError(t *testing.T) {
     secrets: ["GITHUB_TOKEN"]
 `, 0)
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -162,88 +163,6 @@ func TestStore_CurrentPreservesPreviousOnParseError(t *testing.T) {
 	got := s.Get()
 	if got != prev {
 		t.Errorf("Get = %+v, want previous policy %+v (unchanged on parse error)", got, prev)
-	}
-}
-
-func TestStore_CurrentHandlesDeletion(t *testing.T) {
-	dir := t.TempDir()
-	writePolicy(t, dir, `rules:
-  - commands: ["gh"]
-    secrets: ["GITHUB_TOKEN"]
-`, 0)
-
-	s, err := NewStore(dir)
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	if s.Current() == nil {
-		t.Fatal("initial Current returned nil")
-	}
-
-	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-
-	clock := time.Now()
-	s.now = func() time.Time { return clock }
-
-	// A brief absence is not enough: an editor that deletes and rewrites the
-	// file must not open a window in which everything is allowed.
-	stderr := captureStderr(t, func() {
-		if got := s.Current(); got == nil {
-			t.Error("Current right after deletion = nil, want the previous policy kept")
-		}
-		clock = clock.Add(time.Second)
-		if got := s.Current(); got == nil {
-			t.Error("Current 1s after deletion = nil, want the previous policy kept")
-		}
-	})
-	if stderr != "" {
-		t.Errorf("warned before dropping the policy: %q", stderr)
-	}
-
-	clock = clock.Add(time.Second)
-	stderr = captureStderr(t, func() {
-		if got := s.Current(); got != nil {
-			t.Errorf("Current 2s after deletion = %+v, want nil (allow-all)", got)
-		}
-	})
-	if !strings.Contains(stderr, "policies.yaml") {
-		t.Errorf("dropping to allow-all did not warn on stderr, got %q", stderr)
-	}
-}
-
-func TestStore_CurrentKeepsPolicyWhenFileReturns(t *testing.T) {
-	dir := t.TempDir()
-	const content = `rules:
-  - commands: ["gh"]
-    secrets: ["GITHUB_TOKEN"]
-`
-	writePolicy(t, dir, content, 0)
-
-	s, err := NewStore(dir)
-	if err != nil {
-		t.Fatalf("NewStore: %v", err)
-	}
-	clock := time.Now()
-	s.now = func() time.Time { return clock }
-
-	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	_ = s.Current()
-	clock = clock.Add(1500 * time.Millisecond)
-	writePolicy(t, dir, content, time.Second)
-
-	// The file came back, so its absence restarts the clock.
-	_ = s.Current()
-	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
-		t.Fatalf("remove: %v", err)
-	}
-	_ = s.Current()
-	clock = clock.Add(1500 * time.Millisecond)
-	if got := s.Current(); got == nil {
-		t.Error("policy dropped 1.5s after the file went missing again")
 	}
 }
 
@@ -269,7 +188,7 @@ func captureStderr(t *testing.T, fn func()) string {
 func TestStore_CurrentHandlesLateCreation(t *testing.T) {
 	dir := t.TempDir()
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -298,7 +217,7 @@ func TestStore_ConcurrentGetAndCurrent(t *testing.T) {
     secrets: ["*"]
 `, 0)
 
-	s, err := NewStore(dir)
+	s, err := NewStore(dir, approveOnDisk(dir))
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
@@ -343,5 +262,150 @@ func TestStore_ConcurrentGetAndCurrent(t *testing.T) {
 	pol := s.Current()
 	if pol == nil {
 		t.Fatal("final Current returned nil")
+	}
+}
+
+// approveOnDisk approves whatever policies.yaml currently holds, as a user
+// who always runs `nokey policy approve` would; "" when there is none.
+func approveOnDisk(dir string) func() (string, error) {
+	return func() (string, error) {
+		data, err := os.ReadFile(filepath.Join(dir, "policies.yaml"))
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		if err != nil {
+			return "", err
+		}
+		return Digest(data), nil
+	}
+}
+
+// fixedApproval is a stored digest the test changes by hand.
+type fixedApproval struct{ digest string }
+
+func (f *fixedApproval) get() (string, error) { return f.digest, nil }
+
+func approveContent(f *fixedApproval, content string) { f.digest = Digest([]byte(content)) }
+
+const ghPolicy = `rules:
+  - commands: ["gh"]
+    secrets: ["GITHUB_TOKEN"]
+`
+
+const openPolicy = `approval: never
+rules:
+  - commands: ["*"]
+    secrets: ["*"]
+`
+
+// An edit nobody approved, such as an agent rewriting the file to allow
+// everything, is never applied; the approved policy stays.
+func TestStore_UnapprovedEditNotApplied(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, ghPolicy, 0)
+	approval := &fixedApproval{}
+	approveContent(approval, ghPolicy)
+
+	s, err := NewStore(dir, approval.get)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	writePolicy(t, dir, openPolicy, 2*time.Second)
+
+	stderr := captureStderr(t, func() {
+		pol := s.Current()
+		if pol == nil || pol.Rules[0].Commands[0] != "gh" {
+			t.Errorf("Current = %+v, want the approved gh policy", pol)
+		}
+		_ = s.Current()
+	})
+	if strings.Count(stderr, "nokey policy approve") != 1 {
+		t.Errorf("want one warning naming 'nokey policy approve', got %q", stderr)
+	}
+
+	// Once the user approves, the edit applies without another file change.
+	approveContent(approval, openPolicy)
+	if pol := s.Current(); pol == nil || pol.Rules[0].Commands[0] != "*" {
+		t.Errorf("Current after approval = %+v, want the new policy", pol)
+	}
+}
+
+// Deleting an approved file doesn't drop its rules.
+func TestStore_DeletedApprovedFileKeepsPolicy(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, ghPolicy, 0)
+	approval := &fixedApproval{}
+	approveContent(approval, ghPolicy)
+
+	s, err := NewStore(dir, approval.get)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	if err := os.Remove(filepath.Join(dir, "policies.yaml")); err != nil {
+		t.Fatal(err)
+	}
+	_ = captureStderr(t, func() {
+		if pol := s.Current(); pol == nil {
+			t.Error("policy dropped when its file was deleted")
+		}
+	})
+
+	// Approving "no policy" (clearing the digest) drops it.
+	approval.digest = ""
+	if pol := s.Current(); pol != nil {
+		t.Errorf("Current after approving no policy = %+v, want nil", pol)
+	}
+}
+
+// A file present at start but never approved (for example after upgrading
+// to a nokey that pins the policy) starts with no policy, which makes the
+// MCP server ask about every secret access.
+func TestNewStore_UnapprovedFileStartsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, openPolicy, 0)
+
+	var s *Store
+	stderr := captureStderr(t, func() {
+		var err error
+		s, err = NewStore(dir, (&fixedApproval{}).get)
+		if err != nil {
+			t.Fatalf("NewStore: %v", err)
+		}
+	})
+	if s.Get() != nil {
+		t.Errorf("Get = %+v, want nil for an unapproved file", s.Get())
+	}
+	if !strings.Contains(stderr, "nokey policy approve") {
+		t.Errorf("no warning on stderr: %q", stderr)
+	}
+}
+
+// A failed read of the approved digest is retried on the next call, not
+// left until the file changes again.
+func TestStore_RetriesAfterDigestReadError(t *testing.T) {
+	dir := t.TempDir()
+	writePolicy(t, dir, ghPolicy, 0)
+	approval := &fixedApproval{}
+	approveContent(approval, ghPolicy)
+	failing := true
+	approved := func() (string, error) {
+		if failing {
+			return "", errors.New("keyring locked")
+		}
+		return approval.get()
+	}
+
+	s, err := NewStore(dir, approval.get)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	s.approved = approved
+	writePolicy(t, dir, openPolicy, 2*time.Second)
+	approveContent(approval, openPolicy)
+
+	_ = captureStderr(t, func() { _ = s.Current() })
+	failing = false
+	if pol := s.Current(); pol == nil || pol.Rules[0].Commands[0] != "*" {
+		t.Errorf("Current after the keyring recovered = %+v, want the approved edit", pol)
 	}
 }

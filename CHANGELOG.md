@@ -41,6 +41,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `nokey export` and `nokey keychain backup` need the dialog, or a fresh
   PIN where there is none. Backup used to need nothing when no PIN was
   set. Backups are now recorded in the audit log.
+- `policies.yaml` only applies once approved. Any program running as the
+  user can edit it, so an agent could add `approval: never` rules and
+  the MCP server would reload them on its next request. New
+  `nokey policy approve` shows the file, refuses unknown keys, asks for the
+  system dialog or a fresh PIN, and stores the file's SHA-256 in the
+  keyring. `nokey exec` and `nokey proxy start` refuse an unapproved or
+  removed policy. The MCP server keeps the last version it applied, and
+  with none it asks about every secret access. `nokey status` reports an
+  unapproved policy. **Breaking:** run `nokey policy approve` once after
+  upgrading if you have a `policies.yaml`.
+- MCP `exec` and `exec_with_secrets` refuse calls that inject no secrets:
+  no `${{NOKEY:NAME}}` placeholder, or `only`/`except` leaving nothing.
+  With nothing to inject there was nothing to check or approve, so any
+  command ran unprompted, including one that edits `policies.yaml`.
 - `auth.cli_enforce_policy: false` is ignored: `nokey exec` always applies
   `policies.yaml`. Like `default_method`, it let an edit to `config.yaml`
   switch policy off. **Breaking** for configs that set it.

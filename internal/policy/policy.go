@@ -2,6 +2,8 @@ package policy
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -51,24 +53,81 @@ func (d *Denial) Hint(policyPath string) string {
 	if policyPath == "" {
 		policyPath = "policies.yaml in the nokey config directory"
 	}
-	return fmt.Sprintf("To allow it, the user can add a rule to %s:\n  rules:\n    - commands: [%q]\n      secrets: [%q]",
+	return fmt.Sprintf("To allow it, the user can add a rule to %s:\n  rules:\n    - commands: [%q]\n      secrets: [%q]\nand then approve the change with 'nokey policy approve' in a terminal.",
 		policyPath, d.Command, d.Secret)
 }
 
-// Load reads the policy file from configDir/policies.yaml.
+// DigestKey is the reserved keyring key holding Digest of the
+// policies.yaml the user last approved with `nokey policy approve`. The
+// file itself is writable by any process running as the user, so only a
+// policy whose digest matches is applied.
+const DigestKey = "__nokey_policy_digest__"
+
+// Digest is the hex SHA-256 of policy file contents.
+func Digest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
+
+// NotApprovedError means policies.yaml differs from the last approved
+// version: it was edited, never approved, or removed after approval.
+type NotApprovedError struct {
+	Path    string
+	Removed bool // the file is gone but an approved digest remains
+}
+
+func (e *NotApprovedError) Error() string {
+	if e.Removed {
+		return fmt.Sprintf("%s was removed after it was approved; restore it, or run 'nokey policy approve' in a terminal to approve running without one", e.Path)
+	}
+	return fmt.Sprintf("%s has not been approved in its current form; review it and run 'nokey policy approve' in a terminal", e.Path)
+}
+
+// Path returns the policy file's location in configDir.
+func Path(configDir string) string {
+	return filepath.Join(configDir, "policies.yaml")
+}
+
+// Load reads the policy file from configDir/policies.yaml without
+// checking that it was approved: use LoadApproved to enforce a policy.
 // Returns (nil, nil) if the file does not exist (allow-all).
 // Returns an error if the file exists but is malformed or invalid.
 func Load(configDir string) (*Policy, error) {
-	policyPath := filepath.Join(configDir, "policies.yaml")
-
-	data, err := os.ReadFile(policyPath)
+	data, err := os.ReadFile(Path(configDir))
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("failed to read policy file: %w", err)
 	}
+	return parse(data)
+}
 
+// LoadApproved reads policies.yaml like Load, but only if its digest is
+// approved, the digest stored under DigestKey ("" if none). With no file
+// and no approved digest it returns (nil, nil). Otherwise a file that
+// doesn't match, or a missing file with a digest still approved, is a
+// *NotApprovedError.
+func LoadApproved(configDir, approved string) (*Policy, error) {
+	path := Path(configDir)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			if approved != "" {
+				return nil, &NotApprovedError{Path: path, Removed: true}
+			}
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read policy file: %w", err)
+	}
+	if Digest(data) != approved {
+		return nil, &NotApprovedError{Path: path}
+	}
+	return parse(data)
+}
+
+// parse unmarshals and validates policy file contents.
+func parse(data []byte) (*Policy, error) {
 	var pol Policy
 	if err := yaml.Unmarshal(data, &pol); err != nil {
 		return nil, fmt.Errorf("failed to parse policy file: %w", err)
@@ -92,7 +151,12 @@ func LoadStrict(configDir string) (*Policy, error) {
 		}
 		return nil, fmt.Errorf("failed to read policy file: %w", err)
 	}
+	return ParseStrict(data)
+}
 
+// ParseStrict parses and validates policy file contents like LoadStrict,
+// rejecting unknown YAML keys.
+func ParseStrict(data []byte) (*Policy, error) {
 	var pol Policy
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
