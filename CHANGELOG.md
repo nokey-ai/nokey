@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-15
+
 ### Security
 - `nokey exec` with no applied policy asks for Touch ID, the login
   password or a fresh PIN before it injects secrets. A process running as
