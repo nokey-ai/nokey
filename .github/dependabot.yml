@@ -1,0 +1,34 @@
+# Baseline Dependabot config. Universal piece is github-actions: keeps every
+# repo's workflow `uses:` refs current (and is the natural companion to SHA
+# pinning — Dependabot bumps the pinned SHA + comment for you).
+#
+# Add language ecosystems per repo as needed (uncomment + adjust directory):
+#   npm / pip / bundler / gomod / cargo / composer / terraform / docker / ...
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    open-pull-requests-limit: 5
+
+  # - package-ecosystem: "npm"
+  #   directory: "/"
+  #   schedule: { interval: "weekly" }
+  #   groups:
+  #     npm:
+  #       patterns: ["*"]
+  #   versioning-strategy: increase
+
+  # - package-ecosystem: "terraform"
+  #   directory: "/"
+  #   schedule: { interval: "weekly" }
+
+  # - package-ecosystem: "docker"
+  #   directory: "/"
+  #   schedule: { interval: "weekly" }
