@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- Build with Go 1.26.11. Go 1.26.10's `net/http` can crash an HTTP/1
+  server through a `MaxBytesReader` header race (GO-2026-6859), and
+  govulncheck finds it reachable from the proxy.
 - `nokey set`, `delete` and `import` refuse the reserved `__nokey_` names.
   `nokey delete __nokey_pin_hash__` used to switch the PIN off, and
   `nokey set __nokey_pin_hash__` could replace it, with no PIN prompt, for

@@ -2,7 +2,7 @@ module github.com/nokey-ai/nokey
 
 go 1.26
 
-toolchain go1.26.10
+toolchain go1.26.11
 
 require (
 	github.com/byteness/go-keychain v0.0.0-20191008050251-8e49817e8af4
