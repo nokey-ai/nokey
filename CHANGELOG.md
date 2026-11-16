@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-15
+
 ### Security
 - Build with Go 1.26.11. Go 1.26.10's `net/http` can crash an HTTP/1
   server through a `MaxBytesReader` header race (GO-2026-6859), and
