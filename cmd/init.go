@@ -113,8 +113,9 @@ auth:
 
 const starterPolicies = `# nokey policies — controls which commands can access which secrets.
 #
-# Without this file, nokey runs in allow-all mode. Adding rules switches
-# to deny-by-default: only matched commands can access matched secrets.
+# Without this file, any command can have any secret, but every access
+# asks for approval. Adding rules switches to deny-by-default: only matched
+# commands can access matched secrets.
 
 # Global approval mode: "always" or "never"
 # approval: always

@@ -986,9 +986,13 @@ always checked and reported as `{"config": {...}, "policy": {...}}`, each with
 - OS keyring security depends on your system's security
 - nokey refuses to change or delete its own `__nokey_` entries (such as the
   PIN hash) except through `nokey auth`, but a process running as you may
-  still be able to delete them with the OS's own tools (for example
-  `security delete-generic-password` on macOS). A dedicated keychain that
-  stays locked until Touch ID unlocks it makes that harder.
+  can still delete them with the OS's own tools: on macOS,
+  `security delete-generic-password` deletes an item from the unlocked
+  dedicated keychain without a prompt. Deleting the approved policy digest
+  and `policies.yaml` leaves no policy, and with no policy every secret
+  access asks for Touch ID, the login password or a fresh PIN, so this
+  adds prompts rather than removing them. Deleting the PIN hash does
+  remove the PIN from `approval: never` rules on the CLI.
 
 ### Security Best Practices
 

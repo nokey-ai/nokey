@@ -166,7 +166,12 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// approval: always needs the person at the machine: the presence
 	// dialog, or a fresh PIN where there is none. The PIN session ticket
 	// doesn't count, and neither does the y/N prompt below.
-	if pol.RequiresApproval(args[0], secretNames) {
+	//
+	// So does running with no policy at all. A process running as the user
+	// can delete the approved digest from the keychain with the OS's own
+	// tools and remove policies.yaml, which leaves no policy; that must not
+	// leave no gate.
+	if (pol == nil && len(secretNames) > 0) || pol.RequiresApproval(args[0], secretNames) {
 		if err := confirmHuman(cmdContext(cmd), store, presenceReason(args[0], secretNames), false); err != nil {
 			AppFromCmd(cmd).RecordAudit(store, "exec:approval_denied", args[0], authMethodUsed, secretNames, false, err.Error())
 			return fmt.Errorf("approval denied: %w", err)
