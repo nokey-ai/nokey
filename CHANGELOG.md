@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A stored PIN now always applies to `nokey exec`. `auth.default_method:
   none` in `config.yaml` used to skip it, and any process running as the
   user can edit that file. The setting still applies when no PIN is set.
+- MCP approval needs the person at the machine. Accepting the elicitation
+  prompt is now followed by the system authentication dialog (Touch ID, or
+  the login password). The MCP client answers elicitation, and an agent
+  that starts its own `nokey mcp serve` is that client, so it could
+  approve its own requests. This covers `exec`, `exec_with_secrets`,
+  `mint_token`, `rename_secret` and the auto-minted session token; a
+  "don't ask again" grant is kept only after the dialog passes.
+  **Breaking** outside macOS and in sessions without a GUI: there is no
+  dialog yet, so MCP access that needs approval is denied. Linux
+  (pinentry or polkit) and Windows Hello are planned.
+- `approval: always` now applies to `nokey exec`. It needs the dialog, or
+  where there is none a fresh PIN (not the session ticket). The CLI used
+  to ignore it, and its y/N prompt reads stdin, which any program can
+  answer.
+- `nokey export` and `nokey keychain backup` need the dialog, or a fresh
+  PIN where there is none. Backup used to need nothing when no PIN was
+  set. Backups are now recorded in the audit log.
+- `auth.cli_enforce_policy: false` is ignored: `nokey exec` always applies
+  `policies.yaml`. Like `default_method`, it let an edit to `config.yaml`
+  switch policy off. **Breaking** for configs that set it.
 
 ## [0.9.1] - 2026-11-02
 

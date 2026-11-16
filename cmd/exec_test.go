@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -169,7 +170,9 @@ func TestRunExec_PolicyAllows(t *testing.T) {
 	}
 }
 
-func TestRunExec_PolicyOptOut(t *testing.T) {
+// auth.cli_enforce_policy: false no longer switches policy off: config.yaml
+// is writable by the same programs the policy is meant to restrain.
+func TestRunExec_PolicyOptOutIgnored(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -178,15 +181,13 @@ func TestRunExec_PolicyOptOut(t *testing.T) {
 	off := false
 	c.Auth.CLIEnforcePolicy = &off
 	withTestConfig(t, c)
-	// Policy would deny if enforced.
 	withTestConfigDir(t, "approval: never\nrules:\n  - commands: [\"ls\"]\n    secrets: [\"OTHER\"]\n")
 	store.Set("MY_SECRET", "v")
 
 	withExecGlobals(t)
 	osExitFn = func(_ int) {}
-	called := false
 	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
-		called = true
+		t.Error("command ran although the policy denies it")
 		return 0, nil
 	}
 	skipConfirm = true
@@ -195,11 +196,8 @@ func TestRunExec_PolicyOptOut(t *testing.T) {
 	cmd := &cobra.Command{}
 	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
 
-	if err := runExec(cmd, []string{"echo", "hi"}); err != nil {
-		t.Fatalf("runExec: %v", err)
-	}
-	if !called {
-		t.Error("execRunFn should run when cli_enforce_policy=false bypasses denial")
+	if err := runExec(cmd, []string{"echo", "hi"}); err == nil || !strings.Contains(err.Error(), "policy denied") {
+		t.Fatalf("runExec error = %v, want a policy denial", err)
 	}
 }
 
@@ -1569,15 +1567,17 @@ func TestRunExec_CleansUpBeforeExit(t *testing.T) {
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	c.Auth.DefaultMethod = "none"
-	enforce := false
-	c.Auth.CLIEnforcePolicy = &enforce
 	withTestConfig(t, c)
 
 	configDir, err := getConfigDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	polYAML := `proxy:
+	polYAML := `approval: never
+rules:
+  - commands: ["echo"]
+    secrets: ["MY_KEY"]
+proxy:
   rules:
     - hosts: ["api.example.com"]
       headers:
@@ -1736,5 +1736,95 @@ func TestRunExec_AuthMethodDowngradeRefused(t *testing.T) {
 	err := runExec(cmd, []string{"printenv"})
 	if err == nil || !strings.Contains(err.Error(), "--auth-method none would skip pin required by config") {
 		t.Fatalf("expected downgrade error, got: %v", err)
+	}
+}
+
+// --- approval: always on the CLI ---
+
+// runApprovalAlwaysExec runs `nokey exec echo` against an approval: always
+// rule and reports whether the command ran.
+func runApprovalAlwaysExec(t *testing.T, store *nkeyring.Store) (bool, error) {
+	t.Helper()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	c.Auth.DefaultMethod = "none"
+	withTestConfig(t, c)
+	withTestConfigDir(t, "rules:\n  - commands: [\"echo\"]\n    secrets: [\"MY_KEY\"]\n    approval: always\n")
+	_ = store.Set("MY_KEY", "v")
+
+	withExecGlobals(t)
+	osExitFn = func(int) {}
+	ran := false
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		ran = true
+		return 0, nil
+	}
+	// --yes skips the y/N prompt, which is not the approval.
+	skipConfirm = true
+	authMethod = ""
+
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+	err := runExec(cmd, []string{"echo"})
+	return ran, err
+}
+
+func TestRunExec_ApprovalAlways_PresenceConfirms(t *testing.T) {
+	reasons := withPresence(t, nil)
+	store, _ := newTestStore()
+
+	ran, err := runApprovalAlwaysExec(t, store)
+	if err != nil || !ran {
+		t.Fatalf("ran = %v, err = %v; want the command to run", ran, err)
+	}
+	if len(*reasons) != 1 || !strings.Contains((*reasons)[0], "MY_KEY") {
+		t.Errorf("presence reasons = %q, want one naming MY_KEY", *reasons)
+	}
+}
+
+func TestRunExec_ApprovalAlways_PresenceDeclined(t *testing.T) {
+	withPresence(t, errors.New("not confirmed: cancelled"))
+	store, _ := newTestStore()
+
+	ran, err := runApprovalAlwaysExec(t, store)
+	if ran || err == nil || !strings.Contains(err.Error(), "approval denied") {
+		t.Fatalf("ran = %v, err = %v; want approval denied", ran, err)
+	}
+}
+
+// Where there is no presence dialog the PIN is asked for afresh, even with
+// a valid session ticket.
+func TestRunExec_ApprovalAlways_FallsBackToFreshPIN(t *testing.T) {
+	store, _ := newTestStore()
+	_ = store.SetPINHash("hash")
+
+	prompted := 0
+	old := authAuthenticateFn
+	t.Cleanup(func() { authAuthenticateFn = old })
+	authAuthenticateFn = func(string) error {
+		prompted++
+		return nil
+	}
+	// The exec's own PIN read is satisfied by a session ticket, kept out
+	// of the real home.
+	t.Setenv("HOME", t.TempDir())
+	_ = session.Create("hash")
+
+	ran, err := runApprovalAlwaysExec(t, store)
+	if err != nil || !ran {
+		t.Fatalf("ran = %v, err = %v; want the command to run after the PIN", ran, err)
+	}
+	if prompted != 1 {
+		t.Errorf("fresh PIN prompts = %d, want 1", prompted)
+	}
+}
+
+func TestRunExec_ApprovalAlways_NoPresenceNoPIN(t *testing.T) {
+	store, _ := newTestStore()
+
+	ran, err := runApprovalAlwaysExec(t, store)
+	if ran || err == nil || !strings.Contains(err.Error(), "nokey auth setup") {
+		t.Fatalf("ran = %v, err = %v; want a refusal that suggests setting a PIN", ran, err)
 	}
 }

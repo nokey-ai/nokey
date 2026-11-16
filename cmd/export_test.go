@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -14,6 +15,7 @@ import (
 // runExportWith runs export for the given shell and returns stdout.
 func runExportWith(t *testing.T, shell string) string {
 	t.Helper()
+	withPresence(t, nil)
 	oldShell := shellType
 	t.Cleanup(func() { shellType = oldShell })
 	shellType = shell
@@ -26,6 +28,7 @@ func runExportWith(t *testing.T, shell string) string {
 }
 
 func TestRunExport_SortedOutput(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -51,6 +54,7 @@ func TestRunExport_SortedOutput(t *testing.T) {
 }
 
 func TestRunExport_FishEscaping(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -74,6 +78,7 @@ func TestRunExport_FishEscaping(t *testing.T) {
 }
 
 func TestRunExport_OnlyExcept(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -96,6 +101,7 @@ func TestRunExport_OnlyExcept(t *testing.T) {
 }
 
 func TestRunExport_OnlyExceptErrors(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -136,6 +142,7 @@ func (r *readCountingRing) Get(key string) (kring.Item, error) {
 }
 
 func TestRunExport_OnlyReadsSelectedValues(t *testing.T) {
+	withPresence(t, nil)
 	ring := &readCountingRing{mockRing: newMockRing()}
 	for _, k := range []string{"A", "B", "C"} {
 		ring.items[k] = kring.Item{Key: k, Data: []byte("v")}
@@ -158,6 +165,7 @@ func TestRunExport_OnlyReadsSelectedValues(t *testing.T) {
 }
 
 func TestRunExport_OnlyUnknownFailsBeforePIN(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	store.SetPINHash("fakehash")
 	store.Set("A", "1")
@@ -175,6 +183,7 @@ func TestRunExport_OnlyUnknownFailsBeforePIN(t *testing.T) {
 }
 
 func TestRunExport_FilterLeavesNothing(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	store.Set("A", "1")
 	withTestKeyring(t, store)
@@ -207,6 +216,7 @@ func TestRunExport_FilterLeavesNothing(t *testing.T) {
 // is only reached when export ignores the session.
 func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin bool) {
 	t.Helper()
+	withPresence(t, nil)
 	t.Setenv("HOME", t.TempDir()) // keep the session ticket out of the real home
 	withTestKeyring(t, store)
 	withTestAuditDir(t)
@@ -230,6 +240,7 @@ func exportAuthSetup(t *testing.T, store *nkeyring.Store, method string, pin boo
 }
 
 func TestRunExport_NoAuthRecordsMethod(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	exportAuthSetup(t, store, "none", false)
 
@@ -253,6 +264,7 @@ func TestRunExport_NoAuthRecordsMethod(t *testing.T) {
 // valid PIN session never skips the prompt. The test setup creates a valid
 // session; with no terminal the prompt fails, which shows it was reached.
 func TestRunExport_PINAlwaysPrompts(t *testing.T) {
+	withPresence(t, nil)
 	for _, method := range []string{"pin", "", "none"} {
 		t.Run("method="+method, func(t *testing.T) {
 			store, _ := newTestStore()
@@ -272,6 +284,7 @@ func TestRunExport_PINAlwaysPrompts(t *testing.T) {
 }
 
 func TestRunExport_AuthFailures(t *testing.T) {
+	withPresence(t, nil)
 	tests := []struct {
 		name    string
 		method  string
@@ -305,6 +318,7 @@ func TestRunExport_AuthFailures(t *testing.T) {
 // An unsupported shell is rejected before the keyring is opened, so the
 // user isn't asked to authenticate for an export that can't succeed.
 func TestRunExport_UnsupportedShellBeforeAuth(t *testing.T) {
+	withPresence(t, nil)
 	old := getKeyring
 	t.Cleanup(func() { getKeyring = old })
 	getKeyring = func() (*nkeyring.Store, error) {
@@ -323,6 +337,7 @@ func TestRunExport_UnsupportedShellBeforeAuth(t *testing.T) {
 }
 
 func TestRunExport_UnsupportedShellNoSecrets(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -336,6 +351,7 @@ func TestRunExport_UnsupportedShellNoSecrets(t *testing.T) {
 }
 
 func TestRunExport_PwshAlias(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestConfig(t, config.DefaultConfig())
@@ -343,5 +359,27 @@ func TestRunExport_PwshAlias(t *testing.T) {
 
 	if got := runExportWith(t, "pwsh"); got != "$env:A='1'\n" {
 		t.Errorf("output = %q", got)
+	}
+}
+
+// export prints values into the shell, so it needs the person at the
+// machine even with no PIN set.
+func TestRunExport_NeedsPresence(t *testing.T) {
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	withTestConfig(t, c)
+	_ = store.Set("K", "v")
+	shellType = "bash"
+	withPresence(t, errors.New("not confirmed: cancelled"))
+
+	var err error
+	output := captureStdout(t, func() { err = runExport(nil, nil) })
+	if err == nil || !strings.Contains(err.Error(), "not confirmed") {
+		t.Errorf("err = %v, want the presence refusal", err)
+	}
+	if output != "" {
+		t.Errorf("printed %q without approval", output)
 	}
 }

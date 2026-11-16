@@ -288,6 +288,7 @@ func TestRunSet_EmptyValue(t *testing.T) {
 // --- export ---
 
 func TestRunExport_Bash(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -311,6 +312,7 @@ func TestRunExport_Bash(t *testing.T) {
 }
 
 func TestRunExport_Fish(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -334,6 +336,7 @@ func TestRunExport_Fish(t *testing.T) {
 }
 
 func TestRunExport_Powershell(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -357,6 +360,7 @@ func TestRunExport_Powershell(t *testing.T) {
 }
 
 func TestRunExport_UnsupportedShell(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -376,6 +380,7 @@ func TestRunExport_UnsupportedShell(t *testing.T) {
 }
 
 func TestRunExport_NoSecrets(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -397,6 +402,7 @@ func TestRunExport_NoSecrets(t *testing.T) {
 }
 
 func TestRunExport_EscapesSingleQuotes(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -576,6 +582,7 @@ func TestRunSet_NonTerminalNonStdin(t *testing.T) {
 }
 
 func TestRunExport_WithAudit(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestAuditDir(t)
@@ -602,6 +609,7 @@ func TestRunExport_WithAudit(t *testing.T) {
 }
 
 func TestRunExport_Zsh(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -759,6 +767,7 @@ func TestRunSet_WithStdinAndAuditError(t *testing.T) {
 }
 
 func TestRunExport_FishEscapeQuotes(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("Q", "it's a test")
@@ -780,6 +789,7 @@ func TestRunExport_FishEscapeQuotes(t *testing.T) {
 }
 
 func TestRunExport_PowershellEscapeQuotes(t *testing.T) {
+	withPresence(t, nil)
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("Q", "it's a test")
@@ -871,6 +881,7 @@ func TestRunList_GetKeyringError(t *testing.T) {
 // --- export error/auth paths ---
 
 func TestRunExport_GetKeyringError(t *testing.T) {
+	withPresence(t, nil)
 	old := getKeyring
 	t.Cleanup(func() { getKeyring = old })
 	getKeyring = func() (*nkeyring.Store, error) {
@@ -1038,6 +1049,7 @@ func TestRunDelete_GetKeyringError(t *testing.T) {
 // --- export with authentication required ---
 
 func TestRunExport_RequiresAuth(t *testing.T) {
+	withPresence(t, nil)
 	// When RequireAuth=true, export calls AuthenticatedGetAll which tries
 	// to get the PIN hash. With no PIN stored, it should return an error.
 	store, _ := newTestStore()
@@ -1177,6 +1189,7 @@ func TestRunSet_SetFailure(t *testing.T) {
 // --- export with HasPIN path ---
 
 func TestRunExport_HasPINPath(t *testing.T) {
+	withPresence(t, nil)
 	// When HasPIN() is true (PIN hash stored), export goes through authenticated path
 	store, _ := newTestStore()
 	// Store a PIN hash to trigger HasPIN() == true

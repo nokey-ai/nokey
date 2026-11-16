@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"syscall"
 	"time"
@@ -350,6 +351,13 @@ func runKeychainBackup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// A backup holds every secret under a password the caller chooses, so
+	// the person at the machine must approve it. loadAllSecretsFn asks for
+	// a stored PIN afresh.
+	if err := confirmHuman(cmdContext(cmd), store, "write every secret to a backup file", store.HasPIN()); err != nil {
+		return err
+	}
+
 	secrets, err := loadAllSecretsFn(store)
 	if err != nil {
 		return fmt.Errorf("load secrets: %w", err)
@@ -385,9 +393,20 @@ func runKeychainBackup(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		abs = backupOut
 	}
+	names := make([]string, 0, len(filtered))
+	for k := range filtered {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	method := "presence"
+	if store.HasPIN() {
+		method = "pin"
+	}
 	if err := backup.Write(abs, blob); err != nil {
+		AppFromCmd(cmd).RecordAudit(store, "keychain:backup", abs, method, names, false, err.Error())
 		return err
 	}
+	AppFromCmd(cmd).RecordAudit(store, "keychain:backup", abs, method, names, true, "")
 	fmt.Printf("Wrote %d secret(s) to %s\n", len(filtered), abs)
 	return nil
 }

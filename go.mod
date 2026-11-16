@@ -9,6 +9,7 @@ require (
 	github.com/byteness/keyring v1.9.0
 	github.com/creack/pty v1.1.24
 	github.com/mark3labs/mcp-go v0.44.0
+	github.com/noamcohen97/touchid-go v0.3.0
 	github.com/spf13/cobra v1.10.1
 	golang.org/x/crypto v0.52.0
 	golang.org/x/sys v0.45.0
@@ -34,7 +35,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/noamcohen97/touchid-go v0.3.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/spf13/cast v1.7.1 // indirect

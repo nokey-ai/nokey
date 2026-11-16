@@ -425,8 +425,9 @@ auth:
   # Duration string (e.g. "15m", "1h"). Default 15m, max 8h.
   session_ttl: "15m"
 
-  # Skip the y/N confirmation prompt in `nokey exec`. Use with care —
-  # this removes the human-in-the-loop check for the exec path.
+  # Skip the y/N confirmation prompt in `nokey exec`. The prompt reads
+  # stdin, so it only guards against mistakes; `approval: always` rules
+  # still need Touch ID, the login password or a fresh PIN.
   skip_confirm: false
 
   # On first MCP approval, mint a 1h session token automatically so the
@@ -445,10 +446,6 @@ auth:
   # approvals still apply.
   # biometrics_only_when_locked: false
 
-  # Enforce policies.yaml rules on `nokey exec` invocations. Defaults to
-  # true. Set false to bypass policy for the local CLI while still
-  # enforcing it for MCP and the proxy.
-  cli_enforce_policy: true
 
 # Keyring backend behaviour (macOS-specific keys are ignored elsewhere).
 keyring:
@@ -646,7 +643,7 @@ This adds it for you in the current project. Add `--scope user` to make it avail
 
 Other MCP clients take the same command and arguments in their own MCP configuration. Approval prompts use MCP elicitation; with a client that doesn't support it, any access that needs approval is denied.
 
-Approval prompts have no yes/no question of their own: **Accept** approves the request and **Decline** (or Cancel) denies it. Prompts for `exec` and `exec_with_secrets` also offer an optional **Don't ask again this session** checkbox. Ticking it before you accept approves that command with those secrets (or fewer) for the rest of the MCP session, which ends when the client closes or reconnects the server. A different command, or a secret you have not approved for it, still prompts. A remembered approval only replaces the prompt: policy denies and `token_required` still apply, and `rename_secret` and `mint_token` always prompt.
+Approval prompts have no yes/no question of their own: **Accept** approves the request and **Decline** (or Cancel) denies it. Accept is followed by the system authentication dialog (Touch ID, or the login password), because the MCP client answers elicitation prompts and the client may be the very agent asking for the secret: an agent that starts its own `nokey mcp serve` can accept its own prompts, but it can't complete the dialog. On platforms without that dialog (Linux, Windows) and in sessions without a GUI, MCP access that needs approval is denied; use `approval: never` rules for what may run without a prompt. Prompts for `exec` and `exec_with_secrets` also offer an optional **Don't ask again this session** checkbox. Ticking it before you accept approves that command with those secrets (or fewer) for the rest of the MCP session, which ends when the client closes or reconnects the server. A different command, or a secret you have not approved for it, still prompts. A remembered approval only replaces the prompt: policy denies and `token_required` still apply, and `rename_secret` and `mint_token` always prompt.
 
 ### Available MCP Tools
 
