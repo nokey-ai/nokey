@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/nokey-ai/nokey/internal/env"
-	"github.com/nokey-ai/nokey/internal/keyring"
 	"github.com/nokey-ai/nokey/internal/sensitive"
 	"github.com/spf13/cobra"
 )
@@ -80,14 +79,13 @@ func runExport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Authenticate as exec does with no --auth-method flag, except that a
-	// stored PIN always applies and the session cache is not used: export
-	// puts the values into the shell, so every export prompts.
+	// Authenticate as exec does with no --auth-method flag, except that the
+	// session cache is not used: export puts the values into the shell, so
+	// every export prompts.
 	authMethod, err := resolveAuthMethod(store, "")
 	if err != nil {
 		return err
 	}
-	authMethod = exportAuthMethod(store, authMethod)
 	if names == nil {
 		// nil would mean "every secret" to getSecretsForMethod
 		names = []string{}
@@ -143,14 +141,4 @@ func runExport(cmd *cobra.Command, args []string) error {
 	AppFromCmd(cmd).RecordAudit(store, "export", shellType, authMethod, secretNames, true, "")
 
 	return nil
-}
-
-// exportAuthMethod raises none to pin when a PIN is stored, so a PIN gates
-// export even under default_method none. Other methods pass through, so a
-// removed or invalid one still fails as it does for exec.
-func exportAuthMethod(store *keyring.Store, method string) string {
-	if method == "none" && store.HasPIN() {
-		return "pin"
-	}
-	return method
 }

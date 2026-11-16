@@ -271,24 +271,6 @@ func TestRunExport_PINAlwaysPrompts(t *testing.T) {
 	}
 }
 
-func TestExportAuthMethod(t *testing.T) {
-	for _, tt := range []struct{ method, withPIN, withoutPIN string }{
-		{"none", "pin", "none"},
-		{"pin", "pin", "pin"},
-		{"oauth", "oauth", "oauth"}, // passes through so it fails as removed
-	} {
-		noPIN, _ := newTestStore()
-		if got := exportAuthMethod(noPIN, tt.method); got != tt.withoutPIN {
-			t.Errorf("exportAuthMethod(no PIN, %q) = %q, want %q", tt.method, got, tt.withoutPIN)
-		}
-		withPIN, _ := newTestStore()
-		withPIN.SetPINHash("hash")
-		if got := exportAuthMethod(withPIN, tt.method); got != tt.withPIN {
-			t.Errorf("exportAuthMethod(PIN, %q) = %q, want %q", tt.method, got, tt.withPIN)
-		}
-	}
-}
-
 func TestRunExport_AuthFailures(t *testing.T) {
 	tests := []struct {
 		name    string

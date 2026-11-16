@@ -957,6 +957,11 @@ always checked and reported as `{"config": {...}, "policy": {...}}`, each with
 #### OS-level attacks
 - If your OS account is compromised, attackers can read the keyring
 - OS keyring security depends on your system's security
+- nokey refuses to change or delete its own `__nokey_` entries (such as the
+  PIN hash) except through `nokey auth`, but a process running as you may
+  still be able to delete them with the OS's own tools (for example
+  `security delete-generic-password` on macOS). A dedicated keychain that
+  stays locked until Touch ID unlocks it makes that harder.
 
 ### Security Best Practices
 

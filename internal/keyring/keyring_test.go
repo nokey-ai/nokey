@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/byteness/keyring"
+	"github.com/nokey-ai/nokey/internal/auth"
 )
 
 // mockRing is an in-memory keyring.Keyring for testing. The mutex makes
@@ -155,7 +156,7 @@ func TestStore_List_FiltersInternal(t *testing.T) {
 	s := newTestStore()
 	_ = s.Set("API_KEY", "v1")
 	_ = s.Set("DB_PASS", "v2")
-	_ = s.Set("__nokey_internal", "hidden")
+	_ = s.SetInternal("__nokey_internal", "hidden")
 
 	keys, err := s.List()
 	if err != nil {
@@ -764,7 +765,7 @@ func TestStore_Cache_GetPopulatesCache(t *testing.T) {
 func TestStore_AllKeys_IncludesInternal(t *testing.T) {
 	s := newTestStore()
 	_ = s.Set("API_KEY", "v1")
-	_ = s.Set("__nokey_internal", "hidden")
+	_ = s.SetInternal("__nokey_internal", "hidden")
 
 	keys, err := s.AllKeys()
 	if err != nil {
@@ -819,7 +820,7 @@ func TestStore_MigrateAllItems_Migrate(t *testing.T) {
 	}
 	s := newTestStore()
 	_ = s.Set("KEY1", "v1")
-	_ = s.Set("__nokey_pin", "pinhash")
+	_ = s.SetInternal("__nokey_pin", "pinhash")
 
 	count, err := s.MigrateAllItems()
 	if err != nil {
@@ -834,7 +835,7 @@ func TestStore_MigrateAllItems_Migrate(t *testing.T) {
 	if v1 != "v1" {
 		t.Errorf("KEY1 = %q after migrate, want %q", v1, "v1")
 	}
-	v2, _ := s.Get("__nokey_pin")
+	v2, _ := s.GetInternal("__nokey_pin")
 	if v2 != "pinhash" {
 		t.Errorf("__nokey_pin = %q after migrate, want %q", v2, "pinhash")
 	}
@@ -981,11 +982,39 @@ func TestStore_Set_RejectsInvalidName(t *testing.T) {
 	}
 }
 
-func TestStore_Set_AllowsInternalKeys(t *testing.T) {
+func TestStore_ReservedKeys(t *testing.T) {
 	s := newTestStore()
-	// Internal __nokey_ keys bypass validation (used by auth, audit, etc.)
-	if err := s.Set("__nokey_internal_key", "val"); err != nil {
-		t.Fatalf("Set should allow internal __nokey_ keys: %v", err)
+	if err := s.SetInternal(auth.PINHashKey, "hash"); err != nil {
+		t.Fatalf("SetInternal: %v", err)
+	}
+
+	// The public methods refuse reserved keys, so `nokey set`, `delete` and
+	// `import` can't replace or remove the PIN hash.
+	if err := s.Set(auth.PINHashKey, "planted"); err == nil {
+		t.Error("Set accepted a reserved key")
+	}
+	if err := s.Delete(auth.PINHashKey); err == nil {
+		t.Error("Delete accepted a reserved key")
+	}
+	if _, err := s.Get(auth.PINHashKey); err == nil {
+		t.Error("Get accepted a reserved key")
+	}
+	if got, err := s.GetInternal(auth.PINHashKey); err != nil || got != "hash" {
+		t.Errorf("GetInternal = %q, %v; want the original hash", got, err)
+	}
+
+	// The internal methods refuse ordinary secret names.
+	if err := s.SetInternal("API_KEY", "v"); err == nil {
+		t.Error("SetInternal accepted a non-reserved key")
+	}
+	if _, err := s.GetInternal("API_KEY"); err == nil {
+		t.Error("GetInternal accepted a non-reserved key")
+	}
+	if err := s.DeleteInternal("API_KEY"); err == nil {
+		t.Error("DeleteInternal accepted a non-reserved key")
+	}
+	if err := s.DeleteInternal(auth.PINHashKey); err != nil {
+		t.Errorf("DeleteInternal: %v", err)
 	}
 }
 
@@ -1346,14 +1375,18 @@ func TestStore_Rename_Rejects(t *testing.T) {
 			s := newTestStore()
 			_ = s.Set("OLD", "v1")
 			_ = s.Set("TAKEN", "v2")
-			_ = s.Set("__nokey_pin_hash", "h")
+			_ = s.SetInternal("__nokey_pin_hash", "h")
 			err := s.Rename(tt.old, tt.new)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("Rename(%q, %q) error = %v, want it to contain %q", tt.old, tt.new, err, tt.want)
 			}
 			// Nothing may change on a rejected rename.
 			for k, v := range map[string]string{"OLD": "v1", "TAKEN": "v2", "__nokey_pin_hash": "h"} {
-				if got, _ := s.Get(k); got != v {
+				get := s.Get
+				if strings.HasPrefix(k, "__nokey_") {
+					get = s.GetInternal
+				}
+				if got, _ := get(k); got != v {
 					t.Errorf("%s = %q after rejected rename, want %q", k, got, v)
 				}
 			}

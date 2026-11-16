@@ -140,20 +140,32 @@ func New(backend, serviceName string, useBiometrics bool, dedicated bool, keycha
 	return s, nil
 }
 
-// Set stores a secret value for the given key.
-// User-facing secret names are validated; internal __nokey_ keys bypass validation.
+// reservedPrefix marks nokey's own keyring entries: the PIN hash, the
+// failure counter, audit keys and migration flags.
+const reservedPrefix = "__nokey_"
+
+// errReserved is returned when a public method is given a reserved key.
+var errReserved = fmt.Errorf("secret name cannot use reserved prefix '__nokey_'")
+
+// Set stores a secret value for the given key. Reserved __nokey_ keys are
+// refused: they hold the PIN hash and other state that a caller able to
+// run nokey must not be able to replace. nokey's own code uses SetInternal.
 func (s *Store) Set(key, value string) error {
-	if key == "" {
-		return fmt.Errorf("key cannot be empty")
+	if err := ValidateSecretName(key); err != nil {
+		return err
 	}
+	return s.set(key, value)
+}
 
-	// Validate user-facing names; internal keys bypass validation
-	if !strings.HasPrefix(key, "__nokey_") {
-		if err := ValidateSecretName(key); err != nil {
-			return err
-		}
+// SetInternal stores one of nokey's own __nokey_ entries.
+func (s *Store) SetInternal(key, value string) error {
+	if !strings.HasPrefix(key, reservedPrefix) {
+		return fmt.Errorf("internal key %q must use the reserved prefix", key)
 	}
+	return s.set(key, value)
+}
 
+func (s *Store) set(key, value string) error {
 	item := keyring.Item{
 		Key:   key,
 		Data:  []byte(value),
@@ -170,12 +182,27 @@ func (s *Store) Set(key, value string) error {
 	return nil
 }
 
-// Get retrieves a secret value for the given key
+// Get retrieves a secret value for the given key. Reserved __nokey_ keys
+// are refused; nokey's own code uses GetInternal.
 func (s *Store) Get(key string) (string, error) {
 	if key == "" {
 		return "", fmt.Errorf("key cannot be empty")
 	}
+	if strings.HasPrefix(key, reservedPrefix) {
+		return "", errReserved
+	}
+	return s.get(key)
+}
 
+// GetInternal retrieves one of nokey's own __nokey_ entries.
+func (s *Store) GetInternal(key string) (string, error) {
+	if !strings.HasPrefix(key, reservedPrefix) {
+		return "", fmt.Errorf("internal key %q must use the reserved prefix", key)
+	}
+	return s.get(key)
+}
+
+func (s *Store) get(key string) (string, error) {
 	s.mu.RLock()
 	if item, ok := s.cache[key]; ok {
 		s.mu.RUnlock()
@@ -200,12 +227,28 @@ func (s *Store) Get(key string) (string, error) {
 	return string(item.Data), nil
 }
 
-// Delete removes a secret for the given key
+// Delete removes a secret for the given key. Reserved __nokey_ keys are
+// refused, so the PIN can't be switched off by deleting its hash; nokey's
+// own code uses DeleteInternal.
 func (s *Store) Delete(key string) error {
 	if key == "" {
 		return fmt.Errorf("key cannot be empty")
 	}
+	if strings.HasPrefix(key, reservedPrefix) {
+		return errReserved
+	}
+	return s.delete(key)
+}
 
+// DeleteInternal removes one of nokey's own __nokey_ entries.
+func (s *Store) DeleteInternal(key string) error {
+	if !strings.HasPrefix(key, reservedPrefix) {
+		return fmt.Errorf("internal key %q must use the reserved prefix", key)
+	}
+	return s.delete(key)
+}
+
+func (s *Store) delete(key string) error {
 	if err := s.ring.Remove(key); err != nil {
 		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return fmt.Errorf("secret not found: %s", key)
@@ -229,8 +272,8 @@ func (s *Store) Rename(oldKey, newKey string) error {
 	if oldKey == "" {
 		return fmt.Errorf("key cannot be empty")
 	}
-	if strings.HasPrefix(oldKey, "__nokey_") {
-		return fmt.Errorf("secret name cannot use reserved prefix '__nokey_'")
+	if strings.HasPrefix(oldKey, reservedPrefix) {
+		return errReserved
 	}
 	if err := ValidateSecretName(newKey); err != nil {
 		return err
@@ -380,13 +423,13 @@ func filePasswordPrompt(prompt string) (string, error) {
 
 // HasPIN checks if a PIN is configured
 func (s *Store) HasPIN() bool {
-	_, err := s.Get(auth.PINHashKey)
+	_, err := s.GetInternal(auth.PINHashKey)
 	return err == nil
 }
 
 // GetPINHash retrieves the stored PIN hash
 func (s *Store) GetPINHash() (string, error) {
-	val, err := s.Get(auth.PINHashKey)
+	val, err := s.GetInternal(auth.PINHashKey)
 	if err != nil {
 		if IsNotFound(err) {
 			return "", fmt.Errorf("no PIN configured (run: nokey auth setup)")
@@ -398,7 +441,7 @@ func (s *Store) GetPINHash() (string, error) {
 
 // SetPINHash stores the PIN hash
 func (s *Store) SetPINHash(hash string) error {
-	if err := s.Set(auth.PINHashKey, hash); err != nil {
+	if err := s.SetInternal(auth.PINHashKey, hash); err != nil {
 		return fmt.Errorf("failed to store PIN hash: %w", err)
 	}
 	return nil
@@ -406,7 +449,7 @@ func (s *Store) SetPINHash(hash string) error {
 
 // DeletePINHash removes the PIN hash (disables authentication)
 func (s *Store) DeletePINHash() error {
-	if err := s.Delete(auth.PINHashKey); err != nil {
+	if err := s.DeleteInternal(auth.PINHashKey); err != nil {
 		if IsNotFound(err) {
 			return fmt.Errorf("no PIN configured")
 		}
@@ -461,10 +504,6 @@ func (s *Store) authenticate() error {
 		return err
 	}
 
-	// Warn if using legacy SHA-256 hash — can't auto-migrate without the raw PIN
-	if auth.IsLegacyHash(storedHash) {
-		fmt.Fprintf(os.Stderr, "⚠️  Your PIN uses legacy hashing. Run 'nokey auth change' to upgrade to Argon2id.\n")
-	}
 	return nil
 }
 
@@ -553,13 +592,13 @@ const keychainMigratedKey = "__nokey_keychain_migrated__"
 
 // IsKeychainMigrated returns true if the keychain migration sentinel exists.
 func (s *Store) IsKeychainMigrated() bool {
-	val, err := s.Get(keychainMigratedKey)
+	val, err := s.GetInternal(keychainMigratedKey)
 	return err == nil && val == "1"
 }
 
 // SetKeychainMigrated writes the migration sentinel key.
 func (s *Store) SetKeychainMigrated() error {
-	return s.Set(keychainMigratedKey, "1")
+	return s.SetInternal(keychainMigratedKey, "1")
 }
 
 // migratedToDedicatedKey marks a Store as the post-migration *destination*
@@ -571,7 +610,7 @@ const migratedToDedicatedKey = "__nokey_migrated_to_dedicated__"
 // IsMigratedToDedicated returns true if the v0.5.0 dedicated-keychain
 // migration sentinel is present on this store.
 func (s *Store) IsMigratedToDedicated() bool {
-	val, err := s.Get(migratedToDedicatedKey)
+	val, err := s.GetInternal(migratedToDedicatedKey)
 	return err == nil && val == "1"
 }
 
@@ -580,14 +619,14 @@ func (s *Store) IsMigratedToDedicated() bool {
 // copied AND verified — the sentinel is what tells future runs that the
 // move is complete.
 func (s *Store) SetMigratedToDedicated() error {
-	return s.Set(migratedToDedicatedKey, "1")
+	return s.SetInternal(migratedToDedicatedKey, "1")
 }
 
 // DeleteMigratedToDedicated clears the v0.5.0 dedicated-keychain
 // migration sentinel. Used by `from-dedicated` rollback. Returns nil
 // if the sentinel is already absent so the rollback is idempotent.
 func (s *Store) DeleteMigratedToDedicated() error {
-	if err := s.Delete(migratedToDedicatedKey); err != nil {
+	if err := s.DeleteInternal(migratedToDedicatedKey); err != nil {
 		if IsNotFound(err) {
 			return nil
 		}

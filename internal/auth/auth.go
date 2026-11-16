@@ -52,7 +52,12 @@ var (
 // Authenticate prompts the user for their PIN and verifies it against the stored hash.
 // This ALWAYS requires interactive input from a terminal (cannot be bypassed programmatically).
 // If a backoff store is registered via SetBackoffStore, failed attempts are rate-limited.
+// A legacy SHA-256 hash is refused: see ChangePIN.
 func Authenticate(storedHash string) error {
+	return authenticate(storedHash, VerifyPIN)
+}
+
+func authenticate(storedHash string, verify func(pin, encoded string) (bool, error)) error {
 	// Check brute-force backoff
 	if bs := backoffStore(); bs != nil {
 		if err := checkBackoff(bs); err != nil {
@@ -87,7 +92,7 @@ func Authenticate(storedHash string) error {
 	}
 
 	// Verify against stored hash
-	ok, err := VerifyPIN(pinStr, storedHash)
+	ok, err := verify(pinStr, storedHash)
 	if err != nil {
 		if bs := backoffStore(); bs != nil {
 			recordFailure(bs)
@@ -126,14 +131,27 @@ func HashPINArgon2id(pin string) (string, error) {
 	), nil
 }
 
-// VerifyPIN verifies a PIN against an encoded hash string.
-// Supports both Argon2id (preferred) and legacy SHA-256 hashes.
+// errLegacyHash is returned for a stored legacy SHA-256 hash outside
+// ChangePIN.
+var errLegacyHash = fmt.Errorf("the stored PIN uses legacy SHA-256 hashing, which is no longer accepted; run 'nokey auth change' to upgrade it")
+
+// VerifyPIN verifies a PIN against an Argon2id hash. A legacy SHA-256 hash
+// is an error: it is unsalted, so anyone who can write one into the keyring
+// can pick its PIN with a single sha256 call.
 func VerifyPIN(pin, encoded string) (bool, error) {
 	if strings.HasPrefix(encoded, "$argon2id$") {
 		return verifyArgon2id(pin, encoded)
 	}
-	// Legacy SHA-256 hash (hex-encoded, 64 chars)
-	return verifyLegacySHA256(pin, encoded), nil
+	return false, errLegacyHash
+}
+
+// verifyPINOrLegacy is VerifyPIN that also accepts a legacy SHA-256 hash.
+// Only ChangePIN uses it, so an existing legacy PIN can still be upgraded.
+func verifyPINOrLegacy(pin, encoded string) (bool, error) {
+	if IsLegacyHash(encoded) {
+		return verifyLegacySHA256(pin, encoded), nil
+	}
+	return VerifyPIN(pin, encoded)
 }
 
 // verifyArgon2id parses and verifies an Argon2id encoded hash
@@ -260,7 +278,7 @@ func ChangePIN(oldHash string) (string, error) {
 	// Verify old PIN first
 	fmt.Fprintf(stderrWriter, "\n🔐 Change PIN\n")
 	fmt.Fprintf(stderrWriter, "First, verify your current PIN\n")
-	if err := Authenticate(oldHash); err != nil {
+	if err := authenticate(oldHash, verifyPINOrLegacy); err != nil {
 		return "", err
 	}
 

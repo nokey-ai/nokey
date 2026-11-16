@@ -39,7 +39,7 @@ func TestAuditHelperProcess(t *testing.T) {
 
 	AuditLogDir = func() (string, error) { return dir, nil }
 	store := newTestStore()
-	if err := store.Set(AuditEncryptionKeyKey, os.Getenv(helperKeyEnv)); err != nil {
+	if err := store.SetInternal(AuditEncryptionKeyKey, os.Getenv(helperKeyEnv)); err != nil {
 		t.Fatalf("seed key: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestRecord_CrossProcessAppend(t *testing.T) {
 	dir := withTestAuditDir(t)
 	key := sharedKey()
 	store := newTestStore()
-	if err := store.Set(AuditEncryptionKeyKey, key); err != nil {
+	if err := store.SetInternal(AuditEncryptionKeyKey, key); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,7 +129,7 @@ func TestRecord_CrossProcessCompaction(t *testing.T) {
 	dir := withTestAuditDir(t)
 	key := sharedKey()
 	store := newTestStore()
-	if err := store.Set(AuditEncryptionKeyKey, key); err != nil {
+	if err := store.SetInternal(AuditEncryptionKeyKey, key); err != nil {
 		t.Fatal(err)
 	}
 
