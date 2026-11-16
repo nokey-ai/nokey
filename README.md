@@ -976,9 +976,10 @@ always checked and reported as `{"config": {...}, "policy": {...}}`, each with
 - Debuggers and memory dump tools can read them
 
 #### Encoding bypass of redaction
-- The `--redact` flag uses simple string matching
-- Base64 encoding, URL encoding, or other transformations bypass it
-- Redaction is defense-in-depth, not a security guarantee
+- Redaction matches each secret's exact value and a fixed set of transforms: reversed, base64 (standard and URL alphabets, padded or not, and embedded in a longer base64 value for secrets of 8 bytes or more), URL and JSON escaping, and hex
+- The MCP server redacts every secret value it has read during the session, not only the current call's, and refuses to inject values under 4 bytes, which can't be redacted reliably
+- Anything else gets through: other encodings, compression, encryption, a value split across lines or printed a character at a time
+- Redaction is defense-in-depth, not a security guarantee. Where a command can read a secret, it can reveal it. Prefer `exec_with_secrets`, which keeps secrets out of the environment, and proxy mode, where the command never sees them
 
 #### OS-level attacks
 - If your OS account is compromised, attackers can read the keyring
