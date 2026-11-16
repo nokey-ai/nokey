@@ -1493,3 +1493,23 @@ func TestStore_Rename_RollbackFailureIsReported(t *testing.T) {
 		t.Errorf("error = %v, want it to report the leftover copy", err)
 	}
 }
+
+func TestStore_Set_RefusesSteeringNames(t *testing.T) {
+	s := newTestStore()
+	for _, name := range []string{"BASH_ENV", "PATH", "LD_PRELOAD", "HTTPS_PROXY", "NODE_OPTIONS"} {
+		if err := s.Set(name, "x"); err == nil || !strings.Contains(err.Error(), "reserved") {
+			t.Errorf("Set(%q) error = %v, want a reserved-name refusal", name, err)
+		}
+	}
+	for _, name := range []string{"CARGO_REGISTRY_TOKEN", "GEM_HOST_API_KEY", "OPENAI_API_KEY"} {
+		if err := s.Set(name, "x"); err != nil {
+			t.Errorf("Set(%q): %v", name, err)
+		}
+	}
+	if err := s.Set("OK_NAME", "x"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Rename("OK_NAME", "BASH_ENV"); err == nil {
+		t.Error("Rename to BASH_ENV accepted")
+	}
+}

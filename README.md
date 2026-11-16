@@ -800,7 +800,11 @@ proxy:
       approval: never
 ```
 
-Commands are matched by base name (full paths are stripped). Secrets and commands support glob patterns (`*`, `?`). Rules are evaluated top-down; the first match wins. If no rule matches, access is denied (fail-closed).
+A command pattern without a `/` matches a command given by bare name (`gh`), which runs from the `PATH` of the process running nokey. A pattern with a `/` matches a command given as a path (`/opt/homebrew/bin/gh`, or `/opt/homebrew/bin/*`). A path is never reduced to its last element, because a program at `/tmp/x/gh` is not your `gh`. `*` alone matches any command. Secrets and commands support glob patterns (`*`, `?`). Rules are evaluated top-down; the first match wins. If no rule matches, access is denied (fail-closed).
+
+A directory on that `PATH` that other programs can write to, such as `~/.local/bin`, still lets them put a program under a trusted bare name. For sensitive secrets, prefer rules with absolute paths.
+
+Secrets can't be named after environment variables that change which code a command runs or where it connects (`PATH`, `BASH_ENV`, `LD_*`, `DYLD_*`, `NODE_OPTIONS`, `PYTHON*`, `HTTPS_PROXY`, `SSL_CERT_FILE` and similar), because `exec` injects secrets as environment variables. Credential names such as `CARGO_REGISTRY_TOKEN` are allowed. A secret already stored under a reserved name is not injected; rename it with `nokey rename`.
 
 ---
 

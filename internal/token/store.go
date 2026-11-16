@@ -5,9 +5,10 @@ import (
 	"encoding/hex"
 	"fmt"
 	"path"
-	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/nokey-ai/nokey/internal/policy"
 )
 
 const (
@@ -208,13 +209,10 @@ func (s *Store) cleanup() {
 	}
 }
 
-// matchesCommand reports whether a MintedFor pattern covers command.
+// matchesCommand reports whether a MintedFor pattern covers command, by
+// the rules policy files use.
 func matchesCommand(pattern, command string) bool {
-	if pattern == "*" {
-		return true
-	}
-	matched, err := path.Match(pattern, filepath.Base(command))
-	return err == nil && matched
+	return policy.MatchCommand(pattern, policy.CommandKey(command))
 }
 
 func generateID() (string, error) {

@@ -2933,7 +2933,7 @@ func TestCheckTokenOrApproval_TokenRequiredSaysWhatToMint(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected an error")
 	}
-	for _, want := range []string{"token required", "mint_token", `["A","B"]`, `"gh"`, "token"} {
+	for _, want := range []string{"token required", "mint_token", `["A","B"]`, `"/usr/bin/gh"`, "token"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error = %q, want it to contain %q", err, want)
 		}
@@ -3212,11 +3212,11 @@ func TestGrant_RememberSkipsLaterPrompts(t *testing.T) {
 	if err := h.checkTokenOrApproval(ctx, h.getPolicy(), "", "/usr/bin/curl", []string{"A", "B"}, ""); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	// Same command (any path), same or fewer secrets: no prompt.
+	// Same command, same or fewer secrets: no prompt.
 	for _, call := range []struct {
 		cmd     string
 		secrets []string
-	}{{"curl", []string{"A", "B"}}, {"curl", []string{"B"}}, {"/opt/bin/curl", []string{"A"}}} {
+	}{{"/usr/bin/curl", []string{"A", "B"}}, {"/usr/bin/curl", []string{"B"}}, {"/usr/bin/../bin/curl", []string{"A"}}} {
 		if err := h.checkTokenOrApproval(ctx, h.getPolicy(), "", call.cmd, call.secrets, ""); err != nil {
 			t.Fatalf("%s %v: %v", call.cmd, call.secrets, err)
 		}
@@ -3245,6 +3245,21 @@ func TestGrant_DoesNotCoverOtherCommandsOrSecrets(t *testing.T) {
 	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "curl", []string{"B"}, "")
 	if n := rec.count(); n != 3 {
 		t.Errorf("prompts = %d after a covered call, want still 3", n)
+	}
+}
+
+// A grant for curl doesn't cover a program the caller put at a path
+// ending in curl.
+func TestGrant_PathIsNotBaseName(t *testing.T) {
+	pol := alwaysPolicy()
+	rec := &rememberRecorder{remember: true}
+	h, _ := grantHandler(t, rec, &pol)
+	ctx := context.Background()
+
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "curl", []string{"A"}, "")
+	_ = h.checkTokenOrApproval(ctx, h.getPolicy(), "", "/tmp/evil/curl", []string{"A"}, "")
+	if n := rec.count(); n != 2 {
+		t.Errorf("prompts = %d, want 2: the path must prompt on its own", n)
 	}
 }
 
@@ -3330,5 +3345,25 @@ func TestGrant_FallbackNeverRemembers(t *testing.T) {
 	}
 	if prompts != 2 {
 		t.Errorf("prompts = %d, want 2", prompts)
+	}
+}
+
+// A secret stored under a name such as BASH_ENV (by an older nokey, or
+// written to the keyring directly) is not injected: it would make the
+// approved command run other code.
+func TestHandleExec_RefusesSteeringSecretName(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	h := newTestHandler(t, &mapStore{secrets: map[string]string{"BASH_ENV": "/tmp/evil.sh", "OK": "v"}}, nil, nil)
+	result, err := h.HandleExec(context.Background(), makeCallToolRequest(map[string]any{
+		"command": "touch", "args": []any{ran},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError || !strings.Contains(getResultText(t, result), "BASH_ENV") {
+		t.Errorf("result = %q, want a refusal naming BASH_ENV", getResultText(t, result))
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Error("the command ran")
 	}
 }

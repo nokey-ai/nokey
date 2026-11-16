@@ -208,7 +208,8 @@ func TestUseForEnforcesMintedFor(t *testing.T) {
 	}{
 		{"wildcard matches anything", "*", "curl", "ok"},
 		{"exact match", "gh", "gh", "ok"},
-		{"matches basename of a path", "gh", "/usr/local/bin/gh", "ok"},
+		{"path is not its base name", "gh", "/tmp/evil/gh", "wrong_command"},
+		{"path pattern matches the path", "/usr/local/bin/gh", "/usr/local/bin/gh", "ok"},
 		{"glob match", "terraform*", "terraform-docs", "ok"},
 		{"other command rejected", "gh", "curl", "wrong_command"},
 		{"prefix is not a match", "gh", "ghx", "wrong_command"},

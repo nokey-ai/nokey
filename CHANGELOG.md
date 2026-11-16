@@ -55,6 +55,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   no `${{NOKEY:NAME}}` placeholder, or `only`/`except` leaving nothing.
   With nothing to inject there was nothing to check or approve, so any
   command ran unprompted, including one that edits `policies.yaml`.
+- Commands are no longer matched by base name. A rule, token or "don't
+  ask again" grant for `gh` used to cover `/tmp/evil/gh`, or any program
+  given a path ending in `gh`. Now a pattern without `/` matches a command
+  given by bare name, a pattern with `/` matches a command given as that
+  path, and `*` still matches everything. **Breaking** for policies that
+  relied on a bare name matching a full path: add the path as a pattern.
+- The list of environment variables that can't be set through the MCP
+  `env` parameter now also covers proxy and CA settings
+  (`HTTP(S)_PROXY`, `ALL_PROXY`, `SSL_CERT_FILE`, `NODE_EXTRA_CA_CERTS`,
+  ...), config locations (`XDG_CONFIG_HOME`, `ZDOTDIR`, `GIT_DIR`, ...)
+  and more toolchain hooks (`GOTOOLCHAIN`, `RUSTC_WRAPPER`, `PIP_*`,
+  `CARGO_*`, ...). It also applies to secret names: `set`, `import` and
+  `rename` refuse a name such as `BASH_ENV` or `PATH`, and `exec` refuses
+  to inject a secret already stored under one. Credential names
+  (`*_TOKEN`, `*_KEY`, `*_SECRET`, `*_PASSWORD`, `*_AUTH`) stay allowed.
 - `auth.cli_enforce_policy: false` is ignored: `nokey exec` always applies
   `policies.yaml`. Like `default_method`, it let an edit to `config.yaml`
   switch policy off. **Breaking** for configs that set it.

@@ -16,6 +16,7 @@ import (
 
 	"github.com/byteness/keyring"
 	"github.com/nokey-ai/nokey/internal/auth"
+	"github.com/nokey-ai/nokey/internal/env"
 	"golang.org/x/term"
 )
 
@@ -23,7 +24,8 @@ var secretNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.\-]*$`)
 
 // ValidateSecretName checks that a secret name is well-formed.
 // Names must match [A-Za-z0-9_][A-Za-z0-9_.-]*, be at most 128 chars,
-// and must not use the reserved __nokey_ prefix.
+// must not use the reserved __nokey_ prefix, and must not be an
+// environment variable that steers a command (env.ReservedSecretName).
 func ValidateSecretName(name string) error {
 	if name == "" {
 		return fmt.Errorf("secret name cannot be empty")
@@ -37,7 +39,16 @@ func ValidateSecretName(name string) error {
 	if !secretNameRe.MatchString(name) {
 		return fmt.Errorf("invalid secret name %q: must match [A-Za-z0-9_][A-Za-z0-9_.\\-]*", name)
 	}
+	if env.ReservedSecretName(name) {
+		return ReservedNameError(name)
+	}
 	return nil
+}
+
+// ReservedNameError explains why a secret can't be named, or injected as,
+// name: see env.ReservedSecretName.
+func ReservedNameError(name string) error {
+	return fmt.Errorf("secret name %q is reserved: injected as an environment variable it would change which code a command runs or where it connects; use another name (nokey rename can move an existing secret)", name)
 }
 
 // Store wraps the keyring library and provides nokey-specific functionality

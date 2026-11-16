@@ -1849,3 +1849,26 @@ func loadTestPolicy(t *testing.T) *policy.Policy {
 	}
 	return pol
 }
+
+func TestRunExec_RefusesSteeringSecretName(t *testing.T) {
+	store, ring := newTestStore()
+	withTestKeyring(t, store)
+	c := config.DefaultConfig()
+	c.Audit.Enabled = false
+	withTestConfig(t, c)
+	withTestConfigDir(t, "")
+	// Written past Store.Set, which refuses the name.
+	_ = ring.Set(kring.Item{Key: "BASH_ENV", Data: []byte("/tmp/evil.sh")})
+
+	withExecGlobals(t)
+	execRunFn = func(string, []string, map[string]string, ...string) (int, error) {
+		t.Error("command ran with BASH_ENV injected")
+		return 0, nil
+	}
+	skipConfirm = true
+	cmd := &cobra.Command{}
+	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+	if err := runExec(cmd, []string{"bash", "script.sh"}); err == nil || !strings.Contains(err.Error(), "BASH_ENV") {
+		t.Fatalf("runExec error = %v, want a refusal naming BASH_ENV", err)
+	}
+}
