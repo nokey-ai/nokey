@@ -104,7 +104,7 @@ func runConfigValidate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("policies.yaml: %w", err)
 	}
 	if pol == nil {
-		fmt.Println("policies.yaml: not found (allow-all)")
+		fmt.Println("policies.yaml: not found (every secret access asks for approval)")
 	} else {
 		fmt.Println("policies.yaml: OK")
 	}

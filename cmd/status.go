@@ -127,7 +127,7 @@ func collectStatus() *statusReport {
 			r.policyErr = polErr
 			out.Policy = fmt.Sprintf("error: %s", polErr)
 		} else if pol == nil {
-			out.Policy = "no policies.yaml (allow-all)"
+			out.Policy = "no policies.yaml (every secret access asks for approval)"
 		} else if store != nil && !policyApproved(store, configDir) {
 			r.policyUnapproved = true
 			out.Policy = "not approved"

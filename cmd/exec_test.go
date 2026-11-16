@@ -206,14 +206,18 @@ func TestRunExec_PolicyOptOutIgnored(t *testing.T) {
 	}
 }
 
-func TestRunExec_NoPolicyFileAllows(t *testing.T) {
+// runNoPolicyExec runs `nokey exec --yes echo hi` with a secret and no
+// policies.yaml, the state a process running as the user can reach by
+// deleting the approved digest with the OS's keychain tools and removing
+// the file, and reports whether the command ran.
+func runNoPolicyExec(t *testing.T) (bool, error) {
+	t.Helper()
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	c.Auth.DefaultMethod = "none"
 	withTestConfig(t, c)
-	// No policies.yaml written → allow-all.
 	withTestConfigDir(t, "")
 	store.Set("MY_SECRET", "v")
 
@@ -229,18 +233,42 @@ func TestRunExec_NoPolicyFileAllows(t *testing.T) {
 
 	cmd := &cobra.Command{}
 	cmd.Flags().BoolVar(&enableRedact, "redact", false, "")
+	err := runExec(cmd, []string{"echo", "hi"})
+	return called, err
+}
 
-	if err := runExec(cmd, []string{"echo", "hi"}); err != nil {
-		t.Fatalf("runExec: %v", err)
+func TestRunExec_NoPolicyAsksPresence(t *testing.T) {
+	reasons := withPresence(t, nil)
+
+	ran, err := runNoPolicyExec(t)
+	if err != nil || !ran {
+		t.Fatalf("ran = %v, err = %v; want the command to run once confirmed", ran, err)
 	}
-	if !called {
-		t.Error("execRunFn should run when no policies.yaml exists (allow-all)")
+	if len(*reasons) != 1 || !strings.Contains((*reasons)[0], "MY_SECRET") {
+		t.Errorf("presence reasons = %q, want one naming MY_SECRET", *reasons)
+	}
+}
+
+func TestRunExec_NoPolicyPresenceDeclined(t *testing.T) {
+	withPresence(t, errors.New("not confirmed: cancelled"))
+
+	ran, err := runNoPolicyExec(t)
+	if ran || err == nil || !strings.Contains(err.Error(), "approval denied") {
+		t.Fatalf("ran = %v, err = %v; want approval denied", ran, err)
+	}
+}
+
+func TestRunExec_NoPolicyNoPresenceNoPIN(t *testing.T) {
+	ran, err := runNoPolicyExec(t)
+	if ran || err == nil || !strings.Contains(err.Error(), "nokey auth setup") {
+		t.Fatalf("ran = %v, err = %v; want a refusal that suggests setting a PIN", ran, err)
 	}
 }
 
 // --- runExec ---
 
 func TestRunExec_AuthNone(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -280,6 +308,7 @@ func TestRunExec_AuthNone(t *testing.T) {
 }
 
 func TestRunExec_AuthNone_NonZeroExit(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -312,6 +341,7 @@ func TestRunExec_AuthNone_NonZeroExit(t *testing.T) {
 }
 
 func TestRunExec_WithRedact(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -366,6 +396,7 @@ func TestRunExec_InvalidAuthMethod(t *testing.T) {
 }
 
 func TestRunExec_ExecError(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -394,6 +425,7 @@ func TestRunExec_ExecError(t *testing.T) {
 }
 
 func TestRunExec_WithAudit(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestAuditDir(t)
@@ -427,6 +459,7 @@ func TestRunExec_WithAudit(t *testing.T) {
 }
 
 func TestRunExec_ConfirmAborted(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -499,6 +532,7 @@ func TestRunExec_NoSecretsWarning(t *testing.T) {
 }
 
 func TestRunExec_RedactByDefault(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -612,6 +646,7 @@ func TestRunExec_LegacyPINDetection(t *testing.T) {
 }
 
 func TestRunExec_ExecErrorWithAudit(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestAuditDir(t)
@@ -643,6 +678,7 @@ func TestRunExec_ExecErrorWithAudit(t *testing.T) {
 }
 
 func TestRunExec_FilterExcept(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -691,6 +727,7 @@ func TestRunExec_FilterExcept(t *testing.T) {
 }
 
 func TestRunExec_PINAuthWithSession(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -822,6 +859,7 @@ func TestRunExec_FilterNotFound(t *testing.T) {
 }
 
 func TestRunExec_FilterOnly(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -870,6 +908,7 @@ func TestRunExec_FilterOnly(t *testing.T) {
 }
 
 func TestRunExec_WithRedactFlag(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -921,6 +960,7 @@ func TestRunExec_WithRedactFlag(t *testing.T) {
 }
 
 func TestRunExec_ConfigRedactByDefault(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	c := config.DefaultConfig()
@@ -998,6 +1038,7 @@ func TestConfirmSecrets_UserDenies(t *testing.T) {
 }
 
 func TestRunExec_SkipConfirmYes(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("K", "v")
@@ -1029,6 +1070,7 @@ func TestRunExec_SkipConfirmYes(t *testing.T) {
 }
 
 func TestRunExec_AbortConfirm(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("K", "v")
@@ -1052,6 +1094,7 @@ func TestRunExec_AbortConfirm(t *testing.T) {
 }
 
 func TestRunExec_IsolateNoPolicies(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	dir := t.TempDir()
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
@@ -1085,6 +1128,7 @@ func TestRunExec_IsolateNoPolicies(t *testing.T) {
 }
 
 func TestRunExec_AuditOnSuccess(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	withTestAuditDir(t)
@@ -1118,6 +1162,7 @@ func TestRunExec_AuditOnSuccess(t *testing.T) {
 }
 
 func TestRunExec_NonZeroExitCode(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("K", "v")
@@ -1347,6 +1392,7 @@ func TestSetupIsolationProxy_NoRules(t *testing.T) {
 }
 
 func TestRunExec_ExecFnError(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
 	store.Set("K", "v")
@@ -1476,6 +1522,7 @@ func TestRunExec_GetKeyringError(t *testing.T) {
 // --- exec user declines secret injection ---
 
 func TestRunExec_UserDeclines(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	store, _ := newTestStore()
 	store.Set("KEY", "val")
 	withTestKeyring(t, store)
@@ -1518,6 +1565,7 @@ func TestRunExec_UserDeclines(t *testing.T) {
 // --- exec with audit record failure (non-fatal warning) ---
 
 func TestRunExec_AuditRecordWarning(t *testing.T) {
+	withPresence(t, nil) // no policy: exec asks the person at the machine
 	// Use errorSetRing so audit.Record (which calls store.Set) fails
 	ring := newMockRing()
 	ring.items["KEY"] = kring.Item{Key: "KEY", Data: []byte("val")}

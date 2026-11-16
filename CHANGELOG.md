@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `nokey exec` with no applied policy asks for Touch ID, the login
+  password or a fresh PIN before it injects secrets. A process running as
+  the user can delete the approved policy digest with
+  `security delete-generic-password` and then remove `policies.yaml`,
+  which used to leave allow-all with no prompt. **Breaking** for setups
+  with no `policies.yaml`: each `nokey exec` with secrets now asks.
+
 ## [0.10.0] - 2026-11-15
 
 ### Security
