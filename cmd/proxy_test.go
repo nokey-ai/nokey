@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -109,6 +110,7 @@ func TestRunProxyStart_NoPolicies(t *testing.T) {
 }
 
 func TestRunProxyStart_WithRulesMissingSecret(t *testing.T) {
+	withPresence(t, nil)
 	dir := t.TempDir()
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
@@ -401,6 +403,7 @@ func TestRunProxyStart_CACreateError(t *testing.T) {
 }
 
 func TestRunProxyStart_SignalShutdown(t *testing.T) {
+	withPresence(t, nil)
 	dir := t.TempDir()
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
@@ -450,5 +453,32 @@ func TestRunProxyStart_SignalShutdown(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("runProxyStart did not return after signal")
+	}
+}
+
+// The proxy injects secrets for as long as it runs, so starting it needs
+// the person at the machine.
+func TestRunProxyStart_NeedsPresence(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	configDir := filepath.Join(dir, ".config", "nokey")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	policiesYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_SECRET"
+`
+	if err := os.WriteFile(filepath.Join(configDir, "policies.yaml"), []byte(policiesYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := approveTestPolicy(t)
+	_ = store.Set("MY_SECRET", "v")
+	withPresence(t, errors.New("not confirmed: cancelled"))
+
+	if err := runProxyStart(nil, nil); err == nil || !strings.Contains(err.Error(), "not confirmed") {
+		t.Fatalf("runProxyStart error = %v, want the presence refusal", err)
 	}
 }

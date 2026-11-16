@@ -7,11 +7,13 @@ import (
 	"github.com/nokey-ai/nokey/internal/policy"
 )
 
-// MatchRules returns the proxy rules whose host patterns match the given host.
-func MatchRules(host string, rules []policy.ProxyRule) []policy.ProxyRule {
+// MatchRules returns the proxy rules that cover host on port: a matching
+// host pattern, and the port among the rule's ports (443 when it lists
+// none).
+func MatchRules(host string, port int, rules []policy.ProxyRule) []policy.ProxyRule {
 	var matched []policy.ProxyRule
 	for _, rule := range rules {
-		if rule.MatchesHost(host) {
+		if rule.MatchesHost(host) && rule.AllowsPort(port) {
 			matched = append(matched, rule)
 		}
 	}

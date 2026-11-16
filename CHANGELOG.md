@@ -70,6 +70,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `rename` refuse a name such as `BASH_ENV` or `PATH`, and `exec` refuses
   to inject a secret already stored under one. Credential names
   (`*_TOKEN`, `*_KEY`, `*_SECRET`, `*_PASSWORD`, `*_AUTH`) stay allowed.
+- The proxy needs the person at the machine to start, and a password to
+  use. `nokey proxy start` asks for the system dialog or a fresh PIN
+  before it reads secrets; it used to need nothing. Each run has its own
+  password, which clients send as `Proxy-Authorization` (it is in the
+  URL `proxy start` prints and `exec --isolate` sets); without it a
+  request gets 407. Any local process could use the proxy before.
+- The proxy injects headers only into HTTPS, and only on port 443 unless
+  a rule lists `ports`. A plain `http://` request to a host with a rule
+  is refused: injecting over plain HTTP sent the secret in clear text,
+  and any port meant whatever else listened on the host. **Breaking** for
+  rules relied on over plain HTTP or other ports.
+- The proxy's upstream connections ignore `HTTP(S)_PROXY` in its own
+  environment, which could send requests with injected headers through
+  a proxy chosen by whoever started nokey.
 - `auth.cli_enforce_policy: false` is ignored: `nokey exec` always applies
   `policies.yaml`. Like `default_method`, it let an edit to `config.yaml`
   switch policy off. **Breaking** for configs that set it.

@@ -305,8 +305,7 @@ func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]strin
 	srv := proxy.NewServer(ca, rules, secrets, recordAudit)
 	srv.SetBlockUnmatched(true)
 
-	addr, err := srv.Start("127.0.0.1:0")
-	if err != nil {
+	if _, err := srv.Start("127.0.0.1:0"); err != nil {
 		return nil, noop, fmt.Errorf("failed to start isolation proxy: %w", err)
 	}
 
@@ -314,7 +313,8 @@ func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]strin
 		_ = srv.Stop(context.Background())
 	}
 
-	proxyURL := "http://" + addr
+	// The URL carries the proxy's credential: only this child may use it.
+	proxyURL := srv.URL()
 	certFile := configDir + "/ca/ca-cert.pem"
 
 	envVars := []string{

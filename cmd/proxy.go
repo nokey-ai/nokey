@@ -130,6 +130,12 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 	// Collect all secret names referenced by proxy rules.
 	secretNames := proxy.CollectSecretNames(rules)
 
+	// The proxy injects these secrets into requests for as long as it runs,
+	// so the person at the machine must approve starting it.
+	if err := confirmHuman(cmdContext(cmd), store, fmt.Sprintf("start the proxy with secrets %s", strings.Join(secretNames, ", ")), false); err != nil {
+		return err
+	}
+
 	// Fetch secrets from keyring.
 	secrets := make(map[string]string, len(secretNames))
 	for _, name := range secretNames {
@@ -149,9 +155,10 @@ func runProxyStart(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("nokey proxy listening on %s\n", addr)
-	fmt.Printf("\nTo use:\n")
-	fmt.Printf("  export http_proxy=http://%s\n", addr)
-	fmt.Printf("  export https_proxy=http://%s\n", addr)
+	fmt.Printf("\nTo use (the URL holds this run's proxy password; clients without it are refused):\n")
+	fmt.Printf("  export http_proxy=%s\n", srv.URL())
+	fmt.Printf("  export https_proxy=%s\n", srv.URL())
+	fmt.Printf("\nHeaders are injected only into HTTPS requests, on port 443 unless a rule lists ports.\n")
 	fmt.Printf("\nInjecting headers for %d rule(s) covering %d secret(s)\n", len(rules), len(secretNames))
 	fmt.Printf("CA cert: %s\n", filepath.Join(configDir, "ca", "ca-cert.pem"))
 	fmt.Printf("\nPress Ctrl+C to stop\n")

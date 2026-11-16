@@ -26,9 +26,32 @@ func TestMatchRules(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		matched := MatchRules(tt.host, rules)
+		matched := MatchRules(tt.host, 443, rules)
 		if len(matched) != tt.wantCount {
 			t.Errorf("MatchRules(%q) = %d rules, want %d", tt.host, len(matched), tt.wantCount)
+		}
+	}
+}
+
+// A rule covers 443 unless it lists ports, so its secret doesn't go to
+// whatever else listens on the host.
+func TestMatchRules_Ports(t *testing.T) {
+	rules := []policy.ProxyRule{
+		{Hosts: []string{"api.example.com"}, Headers: map[string]string{"x": "$K"}},
+		{Hosts: []string{"dev.example.com"}, Headers: map[string]string{"x": "$K"}, Ports: []int{8443}},
+	}
+	for _, tt := range []struct {
+		host string
+		port int
+		want int
+	}{
+		{"api.example.com", 443, 1},
+		{"api.example.com", 8443, 0},
+		{"dev.example.com", 8443, 1},
+		{"dev.example.com", 443, 0},
+	} {
+		if got := len(MatchRules(tt.host, tt.port, rules)); got != tt.want {
+			t.Errorf("MatchRules(%s:%d) = %d rules, want %d", tt.host, tt.port, got, tt.want)
 		}
 	}
 }
