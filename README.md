@@ -156,6 +156,8 @@ nokey keychain backup --out snapshot.enc
 nokey keychain restore --in snapshot.enc --dry-run
 ```
 
+`rename`, `delete`, and `set` or `import` over a secret that already exists ask for Touch ID, the login password or your PIN, because policy rules match secret names and commands trust the values behind them. Storing a secret under a new name doesn't prompt.
+
 Passphrases for `backup`/`restore` are prompted on the terminal; pipe one in
 with `--password-stdin` for scripting. The passphrase is never accepted as a
 CLI flag because argv leaks to the process table on macOS.

@@ -23,6 +23,9 @@ var setCmd = &cobra.Command{
 By default, you will be prompted to enter the secret value securely.
 Use --stdin to read the value from stdin instead (useful for piping).
 
+Replacing a secret that already exists asks for Touch ID, the login
+password or your PIN.
+
 Examples:
   nokey set OPENAI_API_KEY
   echo "sk-..." | nokey set OPENAI_API_KEY --stdin`,
@@ -85,7 +88,15 @@ func runSet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open keyring: %w", err)
 	}
 
-	err = store.Set(key, value)
+	// A new secret needs no gate, but replacing one does: commands that
+	// are allowed the secret would be handed a value the caller chose.
+	existing, err := storedAmong(store, key)
+	if err == nil {
+		err = confirmSecretChange(cmdContext(cmd), store, "replace the secret", existing)
+	}
+	if err == nil {
+		err = store.Set(key, value)
+	}
 
 	// Record audit entry
 	errMsg := ""

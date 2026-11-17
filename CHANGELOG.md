@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- `nokey rename`, `nokey delete`, and `nokey set` or `nokey import` over a
+  secret that already exists ask for Touch ID, the login password or a
+  fresh PIN. The MCP `rename_secret` tool always asked, but the CLI did
+  not: an agent with a shell could rename a secret under a more permissive
+  policy rule and read it through that rule's command, replace a value, or
+  delete one. Storing a secret under a new name still needs no prompt.
+  **Breaking** for scripts that rename, delete or overwrite secrets, and
+  on Linux and Windows these now need a PIN (`nokey auth setup`).
+
 ## [0.10.1] - 2026-11-15
 
 ### Security

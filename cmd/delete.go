@@ -10,7 +10,8 @@ var deleteCmd = &cobra.Command{
 	Use:     "delete KEY",
 	Aliases: []string{"rm", "remove"},
 	Short:   "Remove a stored secret",
-	Long: `Remove a stored secret from the OS keyring.
+	Long: `Remove a stored secret from the OS keyring. Asks for Touch ID, the login
+password or your PIN.
 
 Example:
   nokey delete OPENAI_API_KEY`,
@@ -30,7 +31,13 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to open keyring: %w", err)
 	}
 
-	err = store.Delete(key)
+	existing, err := storedAmong(store, key)
+	if err == nil {
+		err = confirmSecretChange(cmdContext(cmd), store, "delete the secret", existing)
+	}
+	if err == nil {
+		err = store.Delete(key)
+	}
 
 	// Record audit entry
 	errMsg := ""
