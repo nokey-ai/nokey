@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   delete one. Storing a secret under a new name still needs no prompt.
   **Breaking** for scripts that rename, delete or overwrite secrets, and
   on Linux and Windows these now need a PIN (`nokey auth setup`).
+- The system authentication dialog now says what is being approved, not
+  only the command and secret names: the arguments, working directory,
+  extra environment and stdin (shortened), the scope of a token (`for`,
+  TTL, max uses), and whether the approval is for the rest of the session.
+  These were shown only in the MCP elicitation prompt, which the client
+  answers. An agent could tick "don't ask again this session", or ask for
+  a `for="*"` unlimited-use token, and the person saw a dialog that named
+  one command and touched the sensor once. `nokey exec` under
+  `approval: always` shows its arguments too.
 
 ## [0.10.1] - 2026-11-15
 

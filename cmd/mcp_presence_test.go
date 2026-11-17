@@ -9,8 +9,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/config"
 	"github.com/nokey-ai/nokey/internal/mcpserver"
 	"github.com/nokey-ai/nokey/internal/policy"
@@ -172,5 +174,56 @@ func TestMCPApproval_NoPresenceFailsClosed(t *testing.T) {
 	result, isError, _ := execAsOwnClient(t)
 	if !isError || !strings.Contains(result, "Touch ID") {
 		t.Errorf("result = %q (isError %v), want a refusal naming the missing presence check", result, isError)
+	}
+}
+
+// The client answers the elicitation, so it can tick "don't ask again"
+// without the person seeing that prompt. The dialog must say so itself.
+func TestPresenceReason_StatesSessionGrant(t *testing.T) {
+	for _, remember := range []bool{false, true} {
+		reasons := withPresence(t, nil)
+		prompt := func(context.Context, approval.Requester, string, []string, string) (bool, error) {
+			return remember, nil
+		}
+		got, err := presenceRememberApproval(prompt)(context.Background(), nil, "gh", []string{"GITHUB_TOKEN"}, "args: \"api\" \"/user\"\ncwd: \"/tmp\"")
+		if err != nil || got != remember {
+			t.Fatalf("remember = %v, %v; want %v", got, err, remember)
+		}
+		if len(*reasons) != 1 {
+			t.Fatalf("presence reasons = %q, want one", *reasons)
+		}
+		reason := (*reasons)[0]
+		if strings.Contains(reason, "rest of this session") != remember {
+			t.Errorf("remember %v: reason = %q", remember, reason)
+		}
+		for _, want := range []string{`"gh"`, `args: "api" "/user"; cwd: "/tmp"`, "GITHUB_TOKEN"} {
+			if !strings.Contains(reason, want) {
+				t.Errorf("reason = %q, want it to contain %q", reason, want)
+			}
+		}
+	}
+}
+
+// One touch must not mint a wider token than the dialog showed.
+func TestPresenceReason_StatesTokenScope(t *testing.T) {
+	reasons := withPresence(t, nil)
+	prompt := func(context.Context, approval.Requester, string, []string, string) error { return nil }
+	detail := `token for="*", ttl=3600s, max_uses=unlimited`
+	if err := presenceApproval(prompt)(context.Background(), nil, "mint_token", []string{"GITHUB_TOKEN"}, detail); err != nil {
+		t.Fatal(err)
+	}
+	if len(*reasons) != 1 || !strings.Contains((*reasons)[0], detail) {
+		t.Errorf("presence reasons = %q, want one containing %q", *reasons, detail)
+	}
+}
+
+// A long detail is cut, marked, and never crowds out the secret names.
+func TestPresenceReason_CapsDetail(t *testing.T) {
+	reason := presenceReason("gh", []string{"GITHUB_TOKEN"}, strings.Repeat("é", 400), false)
+	if !utf8.ValidString(reason) || !strings.Contains(reason, "…") || !strings.Contains(reason, "GITHUB_TOKEN") {
+		t.Errorf("reason = %q", reason)
+	}
+	if len(reason) > maxReasonDetailBytes+100 {
+		t.Errorf("reason is %d bytes", len(reason))
 	}
 }

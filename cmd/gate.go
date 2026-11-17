@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/keyring"
@@ -61,35 +62,65 @@ var (
 // presenceApproval puts the presence dialog after an MCP elicitation
 // prompt. The MCP client answers elicitation, and the client may be the
 // very agent asking for the secret, so its Accept only lets the request
-// reach the person at the machine. The MCP server has no terminal, so
-// there is no PIN fallback: with no presence dialog, approval fails.
+// reach the person at the machine. The dialog therefore repeats what the
+// elicitation showed: the client can keep that prompt from the person, so
+// the dialog is the only text they are sure to see. The MCP server has no
+// terminal, so there is no PIN fallback: with no presence dialog, approval
+// fails.
 func presenceApproval(prompt mcpserver.ApprovalFunc) mcpserver.ApprovalFunc {
 	return func(ctx context.Context, r approval.Requester, command string, secretNames []string, detail string) error {
 		if err := prompt(ctx, r, command, secretNames, detail); err != nil {
 			return err
 		}
-		return presenceConfirmFn(ctx, presenceReason(command, secretNames))
+		return presenceConfirmFn(ctx, presenceReason(command, secretNames, detail, false))
 	}
 }
 
 // presenceRememberApproval is presenceApproval for prompts that offer
-// "don't ask again this session". The choice is only returned once the
-// presence dialog has passed, so a grant can't skip it.
+// "don't ask again this session". The client supplies that choice, so the
+// dialog states it, and it is only returned once the dialog has passed: a
+// grant can neither skip the dialog nor ride on one that didn't mention it.
 func presenceRememberApproval(prompt mcpserver.RememberApprovalFunc) mcpserver.RememberApprovalFunc {
 	return func(ctx context.Context, r approval.Requester, command string, secretNames []string, detail string) (bool, error) {
 		remember, err := prompt(ctx, r, command, secretNames, detail)
 		if err != nil {
 			return false, err
 		}
-		if err := presenceConfirmFn(ctx, presenceReason(command, secretNames)); err != nil {
+		if err := presenceConfirmFn(ctx, presenceReason(command, secretNames, detail, remember)); err != nil {
 			return false, err
 		}
 		return remember, nil
 	}
 }
 
+// maxReasonDetailBytes caps the detail part of a presence reason, so it
+// can't push the secret names out of the dialog.
+const maxReasonDetailBytes = 200
+
 // presenceReason is the dialog text for command reading secretNames. macOS
-// shows it as "nokey is trying to <reason>".
-func presenceReason(command string, secretNames []string) string {
-	return fmt.Sprintf("approve %s with secrets %s", approval.Quote(command), approval.Quote(strings.Join(secretNames, ", ")))
+// shows it as "nokey is trying to <reason>". detail is what the approval
+// covers besides the command and secrets (arguments, a token's scope), and
+// remember says the approval will stand for the rest of the session. Both
+// come before the secret names, the part that can run long: the dialog
+// cuts what doesn't fit, and the scope must not be what is cut.
+func presenceReason(command string, secretNames []string, detail string, remember bool) string {
+	var b strings.Builder
+	b.WriteString("approve ")
+	if remember {
+		b.WriteString("for the rest of this session, with any arguments, directory, environment and input, ")
+	}
+	b.WriteString(approval.Quote(command))
+	if detail != "" {
+		detail = strings.Join(strings.Split(detail, "\n"), "; ")
+		if len(detail) > maxReasonDetailBytes {
+			cut := maxReasonDetailBytes
+			for cut > 0 && !utf8.RuneStart(detail[cut]) {
+				cut--
+			}
+			detail = detail[:cut] + "…"
+		}
+		fmt.Fprintf(&b, " (%s)", detail)
+	}
+	fmt.Fprintf(&b, " with secrets %s", approval.Quote(strings.Join(secretNames, ", ")))
+	return b.String()
 }
