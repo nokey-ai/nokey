@@ -156,6 +156,8 @@ nokey keychain backup --out snapshot.enc
 nokey keychain restore --in snapshot.enc --dry-run
 ```
 
+`rename`, `delete`, and `set` or `import` over a secret that already exists ask for Touch ID, the login password or your PIN, because policy rules match secret names and commands trust the values behind them. Storing a secret under a new name doesn't prompt.
+
 Passphrases for `backup`/`restore` are prompted on the terminal; pipe one in
 with `--password-stdin` for scripting. The passphrase is never accepted as a
 CLI flag because argv leaks to the process table on macOS.
@@ -643,7 +645,7 @@ This adds it for you in the current project. Add `--scope user` to make it avail
 
 Other MCP clients take the same command and arguments in their own MCP configuration. Approval prompts use MCP elicitation; with a client that doesn't support it, any access that needs approval is denied.
 
-Approval prompts have no yes/no question of their own: **Accept** approves the request and **Decline** (or Cancel) denies it. Accept is followed by the system authentication dialog (Touch ID, or the login password), because the MCP client answers elicitation prompts and the client may be the very agent asking for the secret: an agent that starts its own `nokey mcp serve` can accept its own prompts, but it can't complete the dialog. On platforms without that dialog (Linux, Windows) and in sessions without a GUI, MCP access that needs approval is denied; use `approval: never` rules for what may run without a prompt. Prompts for `exec` and `exec_with_secrets` also offer an optional **Don't ask again this session** checkbox. Ticking it before you accept approves that command with those secrets (or fewer) for the rest of the MCP session, which ends when the client closes or reconnects the server. A different command, or a secret you have not approved for it, still prompts. A remembered approval only replaces the prompt: policy denies and `token_required` still apply, and `rename_secret` and `mint_token` always prompt.
+Approval prompts have no yes/no question of their own: **Accept** approves the request and **Decline** (or Cancel) denies it. Accept is followed by the system authentication dialog (Touch ID, or the login password), because the MCP client answers elicitation prompts and the client may be the very agent asking for the secret: an agent that starts its own `nokey mcp serve` can accept its own prompts, but it can't complete the dialog. The dialog repeats what is being approved, because it is the only prompt the client can't answer or hide: the command, its arguments, directory, extra environment and stdin (shortened), a token's scope, and **for the rest of this session** when the remember box below was ticked. Read it before you touch the sensor. On platforms without that dialog (Linux, Windows) and in sessions without a GUI, MCP access that needs approval is denied; use `approval: never` rules for what may run without a prompt. Prompts for `exec` and `exec_with_secrets` also offer an optional **Don't ask again this session** checkbox. Ticking it before you accept approves that command with those secrets (or fewer) for the rest of the MCP session, which ends when the client closes or reconnects the server. A different command, or a secret you have not approved for it, still prompts. A remembered approval only replaces the prompt: policy denies and `token_required` still apply, and `rename_secret` and `mint_token` always prompt.
 
 ### Available MCP Tools
 
@@ -684,15 +686,30 @@ The HTTP/HTTPS proxy intercepts outbound requests and injects secrets into heade
 ### Setup
 
 ```bash
-# 1. Generate the local CA certificate
+# 1. Add proxy rules to policies.yaml (see below), then approve the file
+nokey policy approve
+
+# 2. Generate the local CA certificate, limited to the rule hosts
 nokey proxy init-ca
 
-# 2. Trust the CA (prints OS-specific instructions)
+# 3. Trust the CA in the commands that use the proxy (prints instructions)
 nokey proxy trust-ca
 
-# 3. Start the proxy (asks for Touch ID, the login password or your PIN)
+# 4. Start the proxy (asks for Touch ID, the login password or your PIN)
 nokey proxy start
 ```
+
+### The Proxy CA
+
+To inject a header into an HTTPS request the proxy has to decrypt it, so it signs a certificate for the host with a local CA that the client must trust. Whoever holds that CA's key can impersonate hosts to anything that trusts it, so nokey limits what the key is worth:
+
+- **Name constraints.** The CA can sign only for the hosts of your proxy rules (`*.example.com` becomes "any subdomain of example.com"), and only server certificates. A rule host with no fixed domain to limit to, such as `*` or `api.*`, is refused.
+- **Key in the keyring.** Only the certificate is on disk, in `~/.config/nokey/ca/ca-cert.pem`.
+- **90 days.** nokey makes a new CA before the old one expires, and when a rule names a host the current one doesn't cover. It says so on stderr when it does.
+
+Trust the CA per process, through the environment of the commands that use the proxy (`nokey proxy trust-ca` prints the variables, and `nokey exec --isolate` sets them itself). The certificate path stays the same when the CA is replaced, so these keep working. Adding the CA to the system trust store is not recommended: every program on the machine would accept it, and you would have to swap it by hand after each replacement. `nokey proxy trust-ca --system` prints those commands if you need them.
+
+Upgrading from 0.10.1 or earlier: the old CA could sign for any host, was valid for ten years and kept its key in `~/.config/nokey/ca/ca-key.pem`. The first `nokey proxy start`, `nokey proxy init-ca` or `nokey exec --isolate` replaces it and deletes that file. If you added the old certificate to a system trust store, remove it there (it is named "nokey local proxy CA"): any program that ran as you could have copied its key.
 
 ### Proxy Rules
 
@@ -720,7 +737,7 @@ proxy:
       ports: [8443]    # optional: ports to inject on (default 443 only)
 ```
 
-Headers are injected only into HTTPS requests, which the proxy decrypts with its local CA, and only on port 443 unless the rule lists `ports`. A plain `http://` request to a host that has a rule is refused rather than sent without its header, because a secret sent over plain HTTP can be read by anyone on the path. The proxy connects upstream directly: it ignores `HTTP(S)_PROXY` in its own environment, so injected headers only go to the host the rule names.
+Headers are injected only into HTTPS requests, which the proxy decrypts with its local CA, and only on port 443 unless the rule lists `ports`. HTTPS to a host with no rule is passed through undecrypted: the client talks TLS to the host itself and sees its real certificate. A plain `http://` request to a host that has a rule is refused rather than sent without its header, because a secret sent over plain HTTP can be read by anyone on the path. The proxy connects upstream directly: it ignores `HTTP(S)_PROXY` in its own environment, so injected headers only go to the host the rule names.
 
 Proxy rules never prompt. `approval: always` is rejected when the policy loads, both on the `proxy:` section and on its rules, and the top-level `approval` setting does not apply to proxy rules. Blocked and forwarded requests are recorded in the audit log.
 

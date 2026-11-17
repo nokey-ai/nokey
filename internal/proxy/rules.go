@@ -97,3 +97,13 @@ func CollectSecretNames(rules []policy.ProxyRule) []string {
 	}
 	return names
 }
+
+// RuleHosts returns the host patterns of rules, which are the hosts the
+// proxy CA must be able to sign for.
+func RuleHosts(rules []policy.ProxyRule) []string {
+	var hosts []string
+	for _, rule := range rules {
+		hosts = append(hosts, rule.Hosts...)
+	}
+	return hosts
+}

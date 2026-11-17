@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nokey-ai/nokey/internal/approval"
 	"github.com/nokey-ai/nokey/internal/env"
 	iexec "github.com/nokey-ai/nokey/internal/exec"
 	"github.com/nokey-ai/nokey/internal/keyring"
@@ -172,7 +173,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	// tools and remove policies.yaml, which leaves no policy; that must not
 	// leave no gate.
 	if (pol == nil && len(secretNames) > 0) || pol.RequiresApproval(args[0], secretNames) {
-		if err := confirmHuman(cmdContext(cmd), store, presenceReason(args[0], secretNames), false); err != nil {
+		if err := confirmHuman(cmdContext(cmd), store, presenceReason(args[0], secretNames, approval.FormatArgs(args[1:]), false), false); err != nil {
 			AppFromCmd(cmd).RecordAudit(store, "exec:approval_denied", args[0], authMethodUsed, secretNames, false, err.Error())
 			return fmt.Errorf("approval denied: %w", err)
 		}
@@ -202,7 +203,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var proxyEnv []string
 	stopProxy := func() {}
 	if enableIsolate {
-		env, cleanup, err := setupIsolationProxy(pol, secrets)
+		env, cleanup, err := setupIsolationProxy(store, pol, secrets)
 		if err != nil {
 			return err
 		}
@@ -285,9 +286,9 @@ func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 }
 
 // setupIsolationProxy starts a local proxy that blocks egress to hosts without
-// a matching proxy rule in pol, the approved policy. Returns env vars to
-// inject and a cleanup function.
-func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
+// a matching proxy rule in pol, the approved policy. The CA key is kept in
+// store. Returns env vars to inject and a cleanup function.
+func setupIsolationProxy(store *keyring.Store, pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
 	noop := func() {}
 
 	// Determine config directory.
@@ -302,7 +303,7 @@ func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]strin
 	}
 
 	// Load or create the local CA.
-	ca, err := proxy.LoadOrCreateCA(configDir)
+	ca, err := proxy.LoadOrCreateCA(configDir, caKeys{store}, proxy.RuleHosts(rules))
 	if err != nil {
 		return nil, noop, fmt.Errorf("failed to load CA: %w", err)
 	}

@@ -214,3 +214,32 @@ func approveTestPolicyIn(t *testing.T, store *nkeyring.Store) {
 		t.Fatal(err)
 	}
 }
+
+// newCAKeyStore returns an empty test keyring for the proxy CA key.
+func newCAKeyStore() *nkeyring.Store {
+	store, _ := newTestStore()
+	return store
+}
+
+// withProxyPolicy writes and approves a policies.yaml with one proxy rule
+// in the config directory under HOME, and returns the test keyring.
+func withProxyPolicy(t *testing.T) *nkeyring.Store {
+	t.Helper()
+	configDir, err := getConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	policiesYAML := `proxy:
+  rules:
+    - hosts: ["api.example.com"]
+      headers:
+        Authorization: "Bearer $MY_SECRET"
+`
+	if err := os.WriteFile(policy.Path(configDir), []byte(policiesYAML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return approveTestPolicy(t)
+}

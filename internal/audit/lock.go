@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"syscall"
+
+	"github.com/nokey-ai/nokey/internal/filelock"
 )
 
 const lockFileName = "audit.lock"
@@ -62,13 +64,13 @@ func lockAuditDirForLoad() (func(), error) {
 // lockOpened takes the lock on f and returns the function that releases it
 // and closes f.
 func lockOpened(f *os.File) (func(), error) {
-	if err := lockFile(f); err != nil {
+	if err := filelock.Lock(f); err != nil {
 		_ = f.Close()
 		return nil, fmt.Errorf("failed to lock audit log: %w", err)
 	}
 
 	return func() {
-		_ = unlockFile(f)
+		_ = filelock.Unlock(f)
 		_ = f.Close()
 	}, nil
 }

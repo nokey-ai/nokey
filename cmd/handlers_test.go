@@ -106,6 +106,7 @@ func TestRunList_JSON_WithSecrets(t *testing.T) {
 func TestRunDelete_Success(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withPresence(t, nil)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	withTestConfig(t, c)
@@ -181,6 +182,7 @@ func TestReservedKeys_RefusedByCLI(t *testing.T) {
 func TestRunDelete_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withPresence(t, nil)
 	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
@@ -711,6 +713,7 @@ func TestRunImport_PermissivePermissions(t *testing.T) {
 func TestRunDelete_WithAuditSuccess(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withPresence(t, nil)
 	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true
@@ -1215,6 +1218,7 @@ func TestRunExport_HasPINPath(t *testing.T) {
 func TestRunRename_Success(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withPresence(t, nil)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = false
 	withTestConfig(t, c)
@@ -1275,6 +1279,7 @@ func TestRunRename_Errors(t *testing.T) {
 func TestRunRename_WithAudit(t *testing.T) {
 	store, _ := newTestStore()
 	withTestKeyring(t, store)
+	withPresence(t, nil)
 	withTestAuditDir(t)
 	c := config.DefaultConfig()
 	c.Audit.Enabled = true

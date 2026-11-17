@@ -61,9 +61,13 @@ func TestRunProxyTrustCA_WithCert(t *testing.T) {
 	if !strings.Contains(output, "CA certificate:") {
 		t.Errorf("output missing cert path: %q", output)
 	}
-	// On macOS, should show macOS-specific instructions
-	if !strings.Contains(output, "trust store") {
-		t.Errorf("output missing trust instructions: %q", output)
+	// Per-process trust is the advice; the system store commands are not
+	// printed unless asked for.
+	if !strings.Contains(output, "SSL_CERT_FILE=") {
+		t.Errorf("output missing per-process trust instructions: %q", output)
+	}
+	if strings.Contains(output, "sudo") || strings.Contains(output, "certutil") {
+		t.Errorf("output has system trust store commands without --system: %q", output)
 	}
 }
 
@@ -72,6 +76,7 @@ func TestRunProxyInitCA(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 	os.Setenv("HOME", dir)
+	withProxyPolicy(t)
 
 	output := captureStdout(t, func() {
 		if err := runProxyInitCA(nil, nil); err != nil {
@@ -191,6 +196,7 @@ func TestRunProxyInitCA_AlreadyExists(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 	os.Setenv("HOME", dir)
+	withProxyPolicy(t)
 
 	// First init creates the CA
 	output := captureStdout(t, func() {
@@ -303,6 +309,7 @@ func TestRunProxyInitCA_Success(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 	os.Setenv("HOME", dir)
+	withProxyPolicy(t)
 
 	output := captureStdout(t, func() {
 		err := runProxyInitCA(nil, nil)
@@ -328,6 +335,7 @@ func TestRunProxyTrustCA_Success(t *testing.T) {
 	oldHome := os.Getenv("HOME")
 	t.Cleanup(func() { os.Setenv("HOME", oldHome) })
 	os.Setenv("HOME", dir)
+	withProxyPolicy(t)
 
 	// First create the CA
 	if err := runProxyInitCA(nil, nil); err != nil {
@@ -480,5 +488,64 @@ func TestRunProxyStart_NeedsPresence(t *testing.T) {
 
 	if err := runProxyStart(nil, nil); err == nil || !strings.Contains(err.Error(), "not confirmed") {
 		t.Fatalf("runProxyStart error = %v, want the presence refusal", err)
+	}
+}
+
+func TestRunProxyTrustCA_SystemFlag(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	withProxyPolicy(t)
+	if err := runProxyInitCA(nil, nil); err != nil {
+		t.Fatalf("runProxyInitCA: %v", err)
+	}
+	old := trustCASystem
+	t.Cleanup(func() { trustCASystem = old })
+	trustCASystem = true
+
+	output := captureStdout(t, func() {
+		if err := runProxyTrustCA(nil, nil); err != nil {
+			t.Fatalf("runProxyTrustCA: %v", err)
+		}
+	})
+	if !strings.Contains(output, "not recommended") || (!strings.Contains(output, "sudo") && !strings.Contains(output, "certutil")) {
+		t.Errorf("output = %q, want the system trust store commands with their warning", output)
+	}
+}
+
+// The CA is limited to the proxy rule hosts, so there is none to make
+// before there are rules.
+func TestRunProxyInitCA_NeedsProxyRules(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	store, _ := newTestStore()
+	withTestKeyring(t, store)
+
+	err := runProxyInitCA(nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "no proxy rules") {
+		t.Fatalf("runProxyInitCA error = %v, want 'no proxy rules'", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, ".config", "nokey", "ca", "ca-cert.pem")); !os.IsNotExist(statErr) {
+		t.Errorf("a CA was created without proxy rules: %v", statErr)
+	}
+}
+
+// The CA key goes to the keyring; no file may hold it.
+func TestRunProxyInitCA_KeyInKeyring(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	store := withProxyPolicy(t)
+
+	_ = captureStdout(t, func() {
+		if err := runProxyInitCA(nil, nil); err != nil {
+			t.Fatalf("runProxyInitCA: %v", err)
+		}
+	})
+	if key, err := store.GetInternal(caKeyName); err != nil || !strings.Contains(key, "PRIVATE KEY") {
+		t.Errorf("CA key in keyring = %v, want a private key", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ".config", "nokey", "ca", "ca-key.pem")); !os.IsNotExist(err) {
+		t.Errorf("CA key file exists: %v", err)
+	}
+	if keys, _ := store.List(); len(keys) != 0 {
+		t.Errorf("the CA key shows up as a secret: %v", keys)
 	}
 }

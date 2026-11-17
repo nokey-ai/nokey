@@ -414,6 +414,13 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	// hold the goroutine forever.
 	_ = clientConn.SetDeadline(time.Now().Add(connectHandshakeTimeout))
 
+	// A host no rule names gets nothing injected, and the CA can't sign
+	// for it, so its connection is passed through undecrypted.
+	if !hasHostRule(host, s.rules) {
+		s.tunnel(r.Context(), clientConn, host, net.JoinHostPort(host, strconv.Itoa(port)))
+		return
+	}
+
 	// Send 200 Connection Established.
 	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
 
@@ -514,6 +521,30 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		_ = resp.Write(tlsConn)
 		_ = resp.Body.Close()
 	}
+}
+
+// tunnel connects clientConn to addr and copies bytes both ways until one
+// side closes. The proxy never sees inside: the client's TLS session is
+// with the host itself.
+func (s *Server) tunnel(ctx context.Context, clientConn net.Conn, host, addr string) {
+	upstream, err := (&net.Dialer{Timeout: connectHandshakeTimeout}).DialContext(ctx, "tcp", addr)
+	if err != nil {
+		s.audit("proxy:https:tunnel", host, nil, false, err.Error())
+		writeTextResponse(clientConn, http.StatusBadGateway, fmt.Sprintf("nokey proxy: upstream error: %s", err))
+		return
+	}
+	defer upstream.Close()
+	s.audit("proxy:https:tunnel", host, nil, true, "")
+
+	_, _ = clientConn.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	_ = clientConn.SetDeadline(time.Time{})
+
+	// Stop closes clientConn, which ends both copies.
+	go func() {
+		_, _ = io.Copy(upstream, clientConn)
+		_ = upstream.Close()
+	}()
+	_, _ = io.Copy(clientConn, upstream)
 }
 
 // writeTextResponse writes a plain-text HTTP/1.1 response straight to a

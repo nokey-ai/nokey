@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -22,6 +23,9 @@ The file should contain KEY=VALUE pairs, one per line.
 Lines starting with # are treated as comments, and a leading "export "
 (as written by shell scripts) is ignored.
 After importing, consider deleting the .env file for security.
+
+Importing over secrets that already exist asks for Touch ID, the login
+password or your PIN.
 
 Use --dry-run to see which secrets would be imported without touching
 the keyring.
@@ -135,6 +139,16 @@ func runImport(cmd *cobra.Command, args []string) error {
 	store, err := getKeyring()
 	if err != nil {
 		return fmt.Errorf("failed to open keyring: %w\n\nRun 'nokey status' to check your setup", err)
+	}
+
+	// One prompt covers every stored secret the file would replace.
+	existing, err := storedAmong(store, keys...)
+	if err != nil {
+		return err
+	}
+	if err := confirmSecretChange(cmdContext(cmd), store, fmt.Sprintf("replace %d secret(s) from %s:", len(existing), filepath.Base(filePath)), existing); err != nil {
+		AppFromCmd(cmd).RecordAudit(store, "import", filePath, "none", nil, false, err.Error())
+		return err
 	}
 
 	imported := 0
