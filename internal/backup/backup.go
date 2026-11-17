@@ -89,7 +89,11 @@ func Encrypt(payload *Payload, password string) ([]byte, error) {
 	key := deriveKey(password, salt)
 
 	// Layout: salt || nonce || secretbox(plaintext, nonce, key)
-	out := make([]byte, 0, argon2SaltLen+nonceLen+len(plaintext)+secretbox.Overhead)
+	//
+	// Only the header is sized here. Seal grows the slice for the
+	// ciphertext itself, so no allocation size is computed from the
+	// payload length, a sum that could overflow.
+	out := make([]byte, 0, argon2SaltLen+nonceLen)
 	out = append(out, salt...)
 	out = append(out, nonce[:]...)
 	out = secretbox.Seal(out, plaintext, &nonce, key)
