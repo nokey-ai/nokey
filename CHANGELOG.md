@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-11-16
+
+### Fixed
+- `nokey keychain backup` no longer computes the size of the encrypted
+  blob from the payload length before allocating it, a sum CodeQL flags
+  as able to overflow (`go/allocation-size-overflow`). The backup format
+  is unchanged.
+
 ## [0.11.0] - 2026-11-16
 
 ### Security
