@@ -25,6 +25,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a `for="*"` unlimited-use token, and the person saw a dialog that named
   one command and touched the sensor once. `nokey exec` under
   `approval: always` shows its arguments too.
+- The proxy CA is limited to the hosts of the proxy rules by X.509 name
+  constraints, signs only server certificates, lasts 90 days instead of
+  ten years, and keeps its key in the keyring instead of in
+  `~/.config/nokey/ca/ca-key.pem`. The old CA could sign for any host and
+  its key was an unencrypted file: once the certificate was in the system
+  trust store, any program running as the user could mint certificates
+  the whole machine accepted. nokey replaces the CA when a rule host is
+  not covered or it nears expiry, and says so on stderr.
+  `nokey proxy trust-ca` now recommends per-process trust
+  (`SSL_CERT_FILE` and similar) and prints the system trust store
+  commands only with `--system`. **Breaking:**
+  - An existing CA is replaced on first use and its key file deleted.
+    Whatever trusted the old certificate must trust the new one, and if
+    you added the old one to a system trust store, remove it there.
+  - `nokey proxy init-ca` needs approved proxy rules first.
+  - A proxy rule host with no fixed domain to limit the CA to (`*`,
+    `api.*`) is refused when the proxy starts.
+
+### Changed
+- `nokey proxy start` passes HTTPS for hosts with no proxy rule through
+  undecrypted, where it used to decrypt and re-encrypt them with its CA.
+  Nothing was injected into those requests, and the CA can no longer sign
+  for them. They appear in the audit log as `proxy:https:tunnel`, once per
+  connection rather than once per request. Clients that set
+  `SSL_CERT_FILE` to the CA certificate alone now reach only rule hosts;
+  add the system roots to that file to reach the rest.
 
 ## [0.10.1] - 2026-11-15
 

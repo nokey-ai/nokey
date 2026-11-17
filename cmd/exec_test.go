@@ -1215,7 +1215,7 @@ func TestSetupIsolationProxy_ValidRules(t *testing.T) {
 	os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600)
 
 	secrets := map[string]string{"MY_KEY": "secret-val"}
-	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), secrets)
+	envVars, cleanup, err := setupIsolationProxy(newCAKeyStore(), loadTestPolicy(t), secrets)
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1255,7 +1255,7 @@ func TestSetupIsolationProxy_AuditsBlockedRequests(t *testing.T) {
         Authorization: "Bearer $MY_KEY"
 `)
 
-	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
+	envVars, cleanup, err := setupIsolationProxy(newCAKeyStore(), loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1321,7 +1321,7 @@ func TestSetupIsolationProxy_OverridesProxyBypassVars(t *testing.T) {
 `
 	os.WriteFile(configDir+"/policies.yaml", []byte(polYAML), 0600)
 
-	envVars, cleanup, err := setupIsolationProxy(loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
+	envVars, cleanup, err := setupIsolationProxy(newCAKeyStore(), loadTestPolicy(t), map[string]string{"MY_KEY": "secret-val"})
 	if err != nil {
 		t.Fatalf("setupIsolationProxy: %v", err)
 	}
@@ -1385,7 +1385,7 @@ func TestSetupIsolationProxy_NoRules(t *testing.T) {
 	os.MkdirAll(configDir, 0700)
 
 	secrets := map[string]string{"K": "v"}
-	_, _, err := setupIsolationProxy(loadTestPolicy(t), secrets)
+	_, _, err := setupIsolationProxy(newCAKeyStore(), loadTestPolicy(t), secrets)
 	if err == nil || !strings.Contains(err.Error(), "proxy rule") {
 		t.Errorf("expected proxy rule error, got: %v", err)
 	}

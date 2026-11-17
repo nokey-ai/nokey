@@ -1,6 +1,6 @@
 //go:build windows
 
-package audit
+package filelock
 
 import (
 	"os"
@@ -8,13 +8,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// lockFile blocks until it holds an exclusive lock on the first byte of f.
-func lockFile(f *os.File) error {
+// Lock blocks until it holds an exclusive lock on the first byte of f.
+func Lock(f *os.File) error {
 	ol := new(windows.Overlapped)
 	return windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, ol)
 }
 
-func unlockFile(f *os.File) error {
+// Unlock releases a lock taken with Lock.
+func Unlock(f *os.File) error {
 	ol := new(windows.Overlapped)
 	return windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, ol)
 }

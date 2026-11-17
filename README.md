@@ -686,15 +686,30 @@ The HTTP/HTTPS proxy intercepts outbound requests and injects secrets into heade
 ### Setup
 
 ```bash
-# 1. Generate the local CA certificate
+# 1. Add proxy rules to policies.yaml (see below), then approve the file
+nokey policy approve
+
+# 2. Generate the local CA certificate, limited to the rule hosts
 nokey proxy init-ca
 
-# 2. Trust the CA (prints OS-specific instructions)
+# 3. Trust the CA in the commands that use the proxy (prints instructions)
 nokey proxy trust-ca
 
-# 3. Start the proxy (asks for Touch ID, the login password or your PIN)
+# 4. Start the proxy (asks for Touch ID, the login password or your PIN)
 nokey proxy start
 ```
+
+### The Proxy CA
+
+To inject a header into an HTTPS request the proxy has to decrypt it, so it signs a certificate for the host with a local CA that the client must trust. Whoever holds that CA's key can impersonate hosts to anything that trusts it, so nokey limits what the key is worth:
+
+- **Name constraints.** The CA can sign only for the hosts of your proxy rules (`*.example.com` becomes "any subdomain of example.com"), and only server certificates. A rule host with no fixed domain to limit to, such as `*` or `api.*`, is refused.
+- **Key in the keyring.** Only the certificate is on disk, in `~/.config/nokey/ca/ca-cert.pem`.
+- **90 days.** nokey makes a new CA before the old one expires, and when a rule names a host the current one doesn't cover. It says so on stderr when it does.
+
+Trust the CA per process, through the environment of the commands that use the proxy (`nokey proxy trust-ca` prints the variables, and `nokey exec --isolate` sets them itself). The certificate path stays the same when the CA is replaced, so these keep working. Adding the CA to the system trust store is not recommended: every program on the machine would accept it, and you would have to swap it by hand after each replacement. `nokey proxy trust-ca --system` prints those commands if you need them.
+
+Upgrading from 0.10.1 or earlier: the old CA could sign for any host, was valid for ten years and kept its key in `~/.config/nokey/ca/ca-key.pem`. The first `nokey proxy start`, `nokey proxy init-ca` or `nokey exec --isolate` replaces it and deletes that file. If you added the old certificate to a system trust store, remove it there (it is named "nokey local proxy CA"): any program that ran as you could have copied its key.
 
 ### Proxy Rules
 
@@ -722,7 +737,7 @@ proxy:
       ports: [8443]    # optional: ports to inject on (default 443 only)
 ```
 
-Headers are injected only into HTTPS requests, which the proxy decrypts with its local CA, and only on port 443 unless the rule lists `ports`. A plain `http://` request to a host that has a rule is refused rather than sent without its header, because a secret sent over plain HTTP can be read by anyone on the path. The proxy connects upstream directly: it ignores `HTTP(S)_PROXY` in its own environment, so injected headers only go to the host the rule names.
+Headers are injected only into HTTPS requests, which the proxy decrypts with its local CA, and only on port 443 unless the rule lists `ports`. HTTPS to a host with no rule is passed through undecrypted: the client talks TLS to the host itself and sees its real certificate. A plain `http://` request to a host that has a rule is refused rather than sent without its header, because a secret sent over plain HTTP can be read by anyone on the path. The proxy connects upstream directly: it ignores `HTTP(S)_PROXY` in its own environment, so injected headers only go to the host the rule names.
 
 Proxy rules never prompt. `approval: always` is rejected when the policy loads, both on the `proxy:` section and on its rules, and the top-level `approval` setting does not apply to proxy rules. Blocked and forwarded requests are recorded in the audit log.
 

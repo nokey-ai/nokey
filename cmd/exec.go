@@ -203,7 +203,7 @@ func runExec(cmd *cobra.Command, args []string) error {
 	var proxyEnv []string
 	stopProxy := func() {}
 	if enableIsolate {
-		env, cleanup, err := setupIsolationProxy(pol, secrets)
+		env, cleanup, err := setupIsolationProxy(store, pol, secrets)
 		if err != nil {
 			return err
 		}
@@ -286,9 +286,9 @@ func confirmSecrets(secrets map[string]string, command string) (bool, error) {
 }
 
 // setupIsolationProxy starts a local proxy that blocks egress to hosts without
-// a matching proxy rule in pol, the approved policy. Returns env vars to
-// inject and a cleanup function.
-func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
+// a matching proxy rule in pol, the approved policy. The CA key is kept in
+// store. Returns env vars to inject and a cleanup function.
+func setupIsolationProxy(store *keyring.Store, pol *policy.Policy, secrets map[string]string) ([]string, func(), error) {
 	noop := func() {}
 
 	// Determine config directory.
@@ -303,7 +303,7 @@ func setupIsolationProxy(pol *policy.Policy, secrets map[string]string) ([]strin
 	}
 
 	// Load or create the local CA.
-	ca, err := proxy.LoadOrCreateCA(configDir)
+	ca, err := proxy.LoadOrCreateCA(configDir, caKeys{store}, proxy.RuleHosts(rules))
 	if err != nil {
 		return nil, noop, fmt.Errorf("failed to load CA: %w", err)
 	}

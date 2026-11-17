@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -20,10 +21,35 @@ import (
 	"github.com/nokey-ai/nokey/internal/policy"
 )
 
-// newTestCA creates a CA in a temp dir for testing.
+// memKeys is an in-memory KeyStore.
+type memKeys struct {
+	mu     sync.Mutex
+	key    string
+	getErr error // returned by CAKey when set
+}
+
+func newMemKeys() *memKeys { return &memKeys{} }
+
+func (k *memKeys) CAKey() (string, error) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.key, k.getErr
+}
+
+func (k *memKeys) SetCAKey(keyPEM string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.key = keyPEM
+	return nil
+}
+
+// testCAHosts are the rule hosts the tests' CA covers.
+var testCAHosts = []string{"127.0.0.1", "localhost", "example.com", "*.example.com"}
+
+// newTestCA creates a CA for testCAHosts in a temp dir.
 func newTestCA(t *testing.T) *CA {
 	t.Helper()
-	ca, err := LoadOrCreateCA(t.TempDir())
+	ca, err := LoadOrCreateCA(t.TempDir(), newMemKeys(), testCAHosts)
 	if err != nil {
 		t.Fatalf("LoadOrCreateCA: %v", err)
 	}
@@ -794,7 +820,10 @@ func TestStopClosesListener(t *testing.T) {
 
 func TestStopWithSilentCONNECTClient(t *testing.T) {
 	ca := newTestCA(t)
-	srv := NewServer(ca, nil, nil, nil)
+	// A rule host, so the proxy answers the CONNECT itself and waits for
+	// the handshake.
+	rules := []policy.ProxyRule{{Hosts: []string{"example.com"}, Headers: map[string]string{"X": "$K"}, Secrets: []string{"K"}}}
+	srv := NewServer(ca, rules, nil, nil)
 	addr, err := srv.Start("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("Start: %v", err)
@@ -1025,5 +1054,102 @@ func TestUpstreamTransportIgnoresEnvironmentProxy(t *testing.T) {
 	}
 	if NewServer(newTestCA(t), nil, nil, nil).forwardTransport() != defaultUpstream {
 		t.Error("server does not use the proxy-less upstream transport by default")
+	}
+}
+
+// A host with no rule has nothing injected and is outside what the CA may
+// sign for, so the proxy must pass its TLS through untouched: the client
+// sees the host's own certificate and never needs to trust the proxy CA.
+func TestCONNECTTunnelsHostWithoutRule(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Api-Key") != "" {
+			t.Error("a header was injected into a host with no rule")
+		}
+		fmt.Fprint(w, "direct")
+	}))
+	defer upstream.Close()
+
+	rules := []policy.ProxyRule{{Hosts: []string{"api.example.com"}, Headers: map[string]string{"X-Api-Key": "$KEY"}, Secrets: []string{"KEY"}}}
+	var ops []string
+	var mu sync.Mutex
+	srv := NewServer(newTestCA(t), rules, map[string]string{"KEY": "secret-value"}, func(op, _, _ string, _ bool, _ string) {
+		mu.Lock()
+		defer mu.Unlock()
+		ops = append(ops, op)
+	})
+	if _, err := srv.Start("127.0.0.1:0"); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop(context.Background()) }()
+
+	// Only the upstream's own certificate is trusted, not the proxy CA.
+	pool := x509.NewCertPool()
+	pool.AddCert(upstream.Certificate())
+	transport := proxyTransport(srv.URL())
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	defer transport.CloseIdleConnections()
+
+	resp, err := (&http.Client{Transport: transport}).Get(upstream.URL)
+	if err != nil {
+		t.Fatalf("GET through tunnel: %v", err)
+	}
+	defer resp.Body.Close()
+	if body, _ := io.ReadAll(resp.Body); string(body) != "direct" {
+		t.Errorf("body = %q, want %q", body, "direct")
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !slices.Contains(ops, "proxy:https:tunnel") {
+		t.Errorf("audit ops = %v, want proxy:https:tunnel", ops)
+	}
+}
+
+// Stop must not wait on a tunnel that both ends are holding open.
+func TestStopClosesOpenTunnel(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	// The far end accepts and then holds the connection open.
+	held := make(chan net.Conn, 1)
+	go func() {
+		if c, err := ln.Accept(); err == nil {
+			held <- c
+		}
+	}()
+	defer func() {
+		select {
+		case c := <-held:
+			_ = c.Close()
+		default:
+		}
+	}()
+
+	srv := NewServer(newTestCA(t), nil, nil, nil)
+	addr, err := srv.Start("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	defer conn.Close()
+	fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\n%s\r\n", ln.Addr(), ln.Addr(), proxyAuthLine(srv))
+	status, err := bufio.NewReader(conn).ReadString('\n')
+	if err != nil || !strings.Contains(status, "200") {
+		t.Fatalf("expected 200 Connection Established, got %q (%v)", status, err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Stop(context.Background()) }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Stop: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop hung on an open tunnel")
 	}
 }
