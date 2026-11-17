@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-16
+
 ### Security
 - `nokey rename`, `nokey delete`, and `nokey set` or `nokey import` over a
   secret that already exists ask for Touch ID, the login password or a
