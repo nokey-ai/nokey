@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The Touch ID / login-password dialog for an approval puts each part on
+  its own line (the command, the session-wide grant, arguments, directory,
+  environment, input and secrets) instead of running them together in one
+  sentence, so it can be read at a glance before you touch the sensor.
+  Each secret name is quoted on its own.
+
 ## [0.11.1] - 2026-11-16
 
 ### Fixed
