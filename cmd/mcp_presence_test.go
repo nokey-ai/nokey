@@ -196,11 +196,24 @@ func TestPresenceReason_StatesSessionGrant(t *testing.T) {
 		if strings.Contains(reason, "rest of this session") != remember {
 			t.Errorf("remember %v: reason = %q", remember, reason)
 		}
-		for _, want := range []string{`"gh"`, `args: "api" "/user"; cwd: "/tmp"`, "GITHUB_TOKEN"} {
+		for _, want := range []string{`"gh"`, `args: "api" "/user"` + "\n" + `cwd: "/tmp"`, "GITHUB_TOKEN"} {
 			if !strings.Contains(reason, want) {
 				t.Errorf("reason = %q, want it to contain %q", reason, want)
 			}
 		}
+	}
+}
+
+// The dialog reads on from "nokey is trying to", then one item per line.
+func TestPresenceReason_Layout(t *testing.T) {
+	got := presenceReason("gh", []string{"GITHUB_TOKEN", "NPM_TOKEN"}, "args: \"api\" \"/user\"\ncwd: \"/tmp\"", true)
+	want := `approve "gh"
+for the rest of this session: any arguments, directory, environment and input
+args: "api" "/user"
+cwd: "/tmp"
+secrets: "GITHUB_TOKEN", "NPM_TOKEN"`
+	if got != want {
+		t.Errorf("reason =\n%s\nwant\n%s", got, want)
 	}
 }
 

@@ -98,20 +98,20 @@ func presenceRememberApproval(prompt mcpserver.RememberApprovalFunc) mcpserver.R
 const maxReasonDetailBytes = 200
 
 // presenceReason is the dialog text for command reading secretNames. macOS
-// shows it as "nokey is trying to <reason>". detail is what the approval
-// covers besides the command and secrets (arguments, a token's scope), and
-// remember says the approval will stand for the rest of the session. Both
-// come before the secret names, the part that can run long: the dialog
-// cuts what doesn't fit, and the scope must not be what is cut.
+// shows it as "nokey is trying to <reason>", so the first line reads on
+// from that and each item after it gets a line of its own, to be read at a
+// glance. detail is what the approval covers besides the command and
+// secrets (arguments, a token's scope), and remember says the approval
+// will stand for the rest of the session. Both come before the secret
+// names, the part that can run long: the dialog cuts what doesn't fit, and
+// the scope must not be what is cut.
 func presenceReason(command string, secretNames []string, detail string, remember bool) string {
 	var b strings.Builder
-	b.WriteString("approve ")
+	fmt.Fprintf(&b, "approve %s", approval.Quote(command))
 	if remember {
-		b.WriteString("for the rest of this session, with any arguments, directory, environment and input, ")
+		b.WriteString("\nfor the rest of this session: any arguments, directory, environment and input")
 	}
-	b.WriteString(approval.Quote(command))
 	if detail != "" {
-		detail = strings.Join(strings.Split(detail, "\n"), "; ")
 		if len(detail) > maxReasonDetailBytes {
 			cut := maxReasonDetailBytes
 			for cut > 0 && !utf8.RuneStart(detail[cut]) {
@@ -119,8 +119,12 @@ func presenceReason(command string, secretNames []string, detail string, remembe
 			}
 			detail = detail[:cut] + "…"
 		}
-		fmt.Fprintf(&b, " (%s)", detail)
+		b.WriteString("\n" + detail)
 	}
-	fmt.Fprintf(&b, " with secrets %s", approval.Quote(strings.Join(secretNames, ", ")))
+	quoted := make([]string, len(secretNames))
+	for i, name := range secretNames {
+		quoted[i] = approval.Quote(name)
+	}
+	b.WriteString("\nsecrets: " + strings.Join(quoted, ", "))
 	return b.String()
 }

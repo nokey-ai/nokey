@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-11-18
+
+### Changed
+- The approval dialog (Touch ID or the login password) shows one item per
+  line: the command, any session-wide grant, the arguments, directory,
+  environment, input and secrets. It used to run them together in one
+  sentence. Each secret name now has its own quotes, so two names no
+  longer read as one.
+
 ## [0.11.1] - 2026-11-16
 
 ### Fixed
