@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9ef676e869bed21eade5ac9fe2bfabd75753135b8395ddbb761ad4f5f07ec0aa",
+  "claims": [
+    {
+      "id": "claim_802051dd8c3e4ce4a63b7af694bbdebc",
+      "statement": "Policy rules map command patterns to secret patterns with an optional approval mode (always or never, falling back to the global mode) and token_required flag; rules must have non-empty commands and secrets.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L16-L38",
+          "version": "repo-lines-v1:sha256:b42a4053d9fa3a6d48557b52d37812e75af531994957fe86d31c75331599f11d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgzMTkxNTRiNTllMjhmZWNkYmNmODVhZDE0Mzk5NmRiMDE3NmZkZmEzMTY1OTk1ZDUzZTU1OTVmMjc4NGYwMGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA5NTA0ZDU0ZmQ1ZDBmODQ1ZTgxYzA4NjkxMzRiOTNjYWFlNjAzZTQxNmIxNTk5NGFkYWFjYmZlOTg4N2MwYWIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU5OTFiMTA1ZGViNTljM2RhMWE2ZTJjNjk3M2Y2YWM0Nzk0ZjcxM2YwNTMxNTIzNTc3MjczMzhiMzAzZWZiZDUifQ"
+        },
+        {
+          "resource": "repo://internal/policy/policy.go#L176-L209",
+          "version": "repo-lines-v1:sha256:b906c978ee199ad2bdcf00f2207269cb70fc7e5b970e757e786209779f148972:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijg4YjlkYzgzYzBiYjY4MmJkNDcwOGViNzUzMzg3YzJmOWYwYjU4ZGYyNzJjM2Q4NDU1NDIwOTYxYTkxNWQ5MTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY4MTE0MTgwMzQxMWFkZWIyYzQ0MzZlYjdjYTQ4MzczNTU1MjIxMjNlMTEyNjUxNzE0YmE3NTA4YWY3ZjcyZDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjEwYjYyMWFiZjliOWQ5ZjBmN2IzZWMyMjQ1YmY5ZGIzNTdmMzhjN2M1YTQzNGMxNzNkYmU0NzEyODczZTQ4YTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_46b7223cfdf74480a16ca77101575072",
+      "statement": "A nil policy allows every command, while a loaded policy denies any command/secret pair no rule matches.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L280-L308",
+          "version": "repo-lines-v1:sha256:67c1664995867fae50c7971881ce70db7be3a42b9d5c939048b968f1fc0c0331:eyJzZWxlY3RlZExpbmVDb3VudCI6MjksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZlMWUzN2M1ZDhhZjg0M2JlZjYwYmJjZjIzNjgyNjQzYTU0MWU3MTA0NmM4ZTQwNGQzMjNmMjdkODQzZGE1MzIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNjU5NzA4NjNkNTgxM2JmOTcwYjAyZTM0YjU1YTIxMDIyZmY5MWZiYjM3NjAwYmM5ZjZhNzY2NzkwZWVkMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU1N2ZhOTQ1YjMxYjEyYWQ3Zjk0ZWRjMWRhYjY5ODIzZDJmM2ExOTUzZmY4MzgxZTBkZmUxZDYxZjQwOTQxNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8e98f2a1600044d2a28ca6a5e0a9910d",
+      "statement": "With a policy, approval is required when the first matching rule's effective mode is always, and fails closed (required) when no rule matches; token_required applies only via a matching rule.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L211-L278",
+          "version": "repo-lines-v1:sha256:2c374e9c36f0976d94d0bf4a5b0174ea09295f42e2d089637defaaa56acb39fc:eyJzZWxlY3RlZExpbmVDb3VudCI6NjgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjN2MyZDUzYzc0YjM3ZjZhNWE2M2I2ZWE1NzRlMWE3Zjk1NDIxNzRhODZhZmU1MTUzNGJhZWQ3NzJhZTg3NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY2NWRlNzczNTcyNmY0YzIyMmU5ODYxMzJiZmNiZDZjZTE5MTQwYzVkNTVkZTgxNTI0ZWNlNzIyN2VmNzhkODgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_312b90f8cf6b441f8185a8a23101c2e3",
+      "statement": "Both nokey exec and the MCP gateway require human approval for secret access when no policy is loaded, so removing the policy cannot remove the gate.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L167-L180",
+          "version": "repo-lines-v1:sha256:6596e2bfa617fa575e0c9749f914cf9b3cc44c22a11306d40679de754e8cab90:eyJzZWxlY3RlZExpbmVDb3VudCI6MTQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NjI3NTg3ZDVlOGNkZDNhMTMzOGQxOTliNDUyMjcyNDE3MDhlYzM3OWU1NDQwNWZjOGJkOTEyMzAwNGU0Y2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ4ODU0NmE3MGY5Zjk3ZTUzMDVhMTBhNzAzZmM1YWY1OWRlMGRlYTJiYzNjYmJiN2FkZjQ2MmUwMjU2MTBiOGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxYTdiYmUyMGJlOWFmMzZjMTg4MzJiNDk0ZjllMGFkZmNjYzdkYzcyMDRiMjY0NGI5MjA5ODNmNDExMDY2M2IifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L781-L795",
+          "version": "repo-lines-v1:sha256:0a2641eaff72f8e245a7bf81db917ae0e597724123f7d58288b3246bb7ebcda9:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmNTI4Mzc0NGY0NzdiYzgyZGNlZmU0ZGQyZTI1NTUzMjIwMTZiYWIxMWUxODU3MTc5ODQ3ZTViZTJmMTFjYjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGMzNGQ2OWRhNWMxMTM1YmQ2MWFhZGE1Yjc5YzljMTAxNWM2YTYzODY5YWRhZDNhZmJlOTkzOTNlZWRhNmMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_83903cbbf40743ce9296f78c42693e2f",
+      "statement": "Commands are identified by bare name or by absolute cleaned path never reduced to its base name; bare-name patterns match only bare names, path patterns only paths, and * matches everything.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L310-L353",
+          "version": "repo-lines-v1:sha256:28752211886bbc591ae1ed8cc3595584fa4d54201bae0b1fa5742a3e549b03c9:eyJzZWxlY3RlZExpbmVDb3VudCI6NDQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4NjNjZDNiZTkzYmI3YmIxYzc5ODhjZTU4Yjc1ZjNjYWE5MzAwYzZlODBjZjcwZTVlNDc3Zjg5ZDk3N2JlNzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZiNjU5NzA4NjNkNTgxM2JmOTcwYjAyZTM0YjU1YTIxMDIyZmY5MWZiYjM3NjAwYmM5ZjZhNzY2NzkwZWVkMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQzOTI2ZmYxNTBlZTJmZDA4NmZiMmM1OWZkYTllNThkM2JjOTU0NzY5M2Y4ZjFhNjIyNjU5Njk2OGIxNDczNDMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_53489775b9224f68ba83c93d39a5a69f",
+      "statement": "Policy edits take effect only after nokey policy approve, which strictly parses and displays the file, requires human confirmation, and stores its SHA-256 digest in the keyring under __nokey_policy_digest__; with no file it can approve running without a policy by deleting the digest.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/policy.go#L51-L105",
+          "version": "repo-lines-v1:sha256:1ffac4efe20cea10dcafb6504cd51b3791414f5d5e4a9d406208b3ea0a176503:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyMTkyYjhkNmM4YTI2YzVkYjRlNDc3NWU4MzU5MmY2Mzg5MzJjNWQyYmNjNmE5OTFjOTIwM2ZiMzY1MzUyNTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMyNDQ4YjU3YzlmZGY2ZGE1M2M1NGYyNTU3ZjNhMGNjYmRlYjg5MmRhZGU1YzkzOGY3ZDY5N2E0NjFlNGI3OWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY5Njg3N2E1YzdjMzU2Y2JmNDhkNDU1ZmNhM2EzMWFiODM2NWY1MTc2Mjg5NTViNmJlNzNlZGYzZmEzYjgyMDAifQ"
+        },
+        {
+          "resource": "repo://internal/policy/policy.go#L61-L71",
+          "version": "repo-lines-v1:sha256:bca31737a54648b70a1e6da43a25a44e1b585d208bd47d7fc913310722c8b247:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY5ZThiMzE5MGMzYTY2NDY1MGJlNmZhZTc2M2ZiMWE4MDZhYTdjODBhMTRhZDQ1ODBlZWM5ZmE0YjA5MTQ0ODIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFlZWJiMDczZTJiNDUzMWI1ZDk4ODY3MzYyY2FkMzU1ZDRkN2Y4N2NjYTk4MTY4MDg2NjkzNzFjMjA2OWViYTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJlYThhMzYyNzgyYWI1ZjI1M2I4MTAzMDNjZDg4M2VlMTE5ZTY0YzBlMDRkNTY0ZDVlN2Y3NjhiNDE4NTBlYzgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f7f5cc2a3f2b468488397855ea4cf7e8",
+      "statement": "LoadApproved applies policies.yaml only when its digest matches the approved digest, and reports a NotApprovedError for edited/unapproved files or a file removed while a digest is still stored.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L73-L129",
+          "version": "repo-lines-v1:sha256:465d1abf4272144f3830f6662012a7a193a2d6070e11e12034328f6e2ca8397a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdkODdjYWJjY2NlNjZkZTQ0ZDY4NWI2MGQ0MjNjMGRjMGQxNTVjMjY5YzdiMzEwMGVmNTczM2RjZDYwYmNiMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE3ZTZjMWUyZGE2ZTA1N2FjZWNiMGRkMjEzM2E0YThkMTk0MWZkMzg1NmE1NjdmZTI4Mzk0NjRmODExZDQ0NTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY0YzZkMzY1N2M4MmFhOThhNmNhYmUwZTE3NWU1MThkN2VhYWJmYjI2ZTc2MDYwNWNkNmNhYzMxZjBiNDNlMWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_0c167aa296f14b96baf6818451745acf",
+      "statement": "The MCP policy Store starts with no policy and a warning if the file is unapproved, reloads on mtime/size/existence change or while approval is pending using a freshly read digest, and keeps the previous policy when a reload fails.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/mcp.go#L61-L69",
+          "version": "repo-lines-v1:sha256:7a5bbca116195d75c99bb2a5dfa31d8b3f9465dd8062f60f83e21106717b20b1:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDZmMzkwOTE0OGVlYTkyMWM0NDM3Y2YxODFjMGY0YzhiMDYxZDBjYjYxOTBkNTE5YmMyZGQ0Y2ZhZTI0NWU0NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdhOWI1ZTkwMTljOGRiODc4M2VjOWMzZmViYjBhMmM5ODYyZjYxYTA1YzMwOGZlODk1ZTRhOWJlZDAzZWRiMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2Y4Y2RiMThkODM0ZGZkZjkwNTQ2MzRmM2M3OWNkNmY0OTdiOGVkZTRjNDBkMzI2M2M3MGMzNmI3YTg1OGQ2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDQwZGZiMWFjMjY4NDEwNTI0NzgwNTU5NmIwODZmYmUwMGU2Nzg2ZGJhZDQ1M2IxMjc0NWRhNTZlNTVkMGQ4YyJ9"
+        },
+        {
+          "resource": "repo://internal/policy/store.go#L12-L134",
+          "version": "repo-lines-v1:sha256:48dfedac0651728d1035bf29667302ecc6f3227ed87e6cd0005754e4b1cff480:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIzLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI5YzM1YzAzZjdhNmE4ZWZhNDQ4YzM1ODM3ZWVmOGI5YjhlOWM3ZjQ3MmVkMmE3MWUyZDE5YjRjZjA3NThiZWY4IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3OWVkZDcyYmE2YjQwMDgzY2U5NTI2OWZhNTZmY2YzYWMxYmQ5ODIyMWFhNjYyMWE2ODNmN2Q1NjMyYmIyMWQ1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_2e1deffd88284019a990e5d8d8ce20f3",
+      "statement": "The CLI fails exec and proxy start when policies.yaml is not approved.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L146-L149",
+          "version": "repo-lines-v1:sha256:c68b54d749b0b5f9e07ae8187db9bfc5fcafe5aaa638b39b11a373dd2d0d88e6:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNGZmMzk3YzZjYWRlNzcyNTcwNjUyMGI4YzY1Njk3MDQxYmU3YzlhNTNiYjZjM2EwZjE3NDg5NDkyYzBmYTgxOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2EzYjM4NDQxMWM5MDhiM2U4N2UxYWE4MjQzZmY2ZGEwMTY3ZWIyMjUwN2Y4MjAwMTE0YTdmNGNkYjQ1ZGJjYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjVlZmU1YzM3YTY0ZGNhMjc2NTVmNjI4MzQ4OTI0Yjc1NWIwYTBmYjg2NDUxZGYzODZmMTc1MjljZDE4MmNhYSJ9"
+        },
+        {
+          "resource": "repo://cmd/policy.go#L117-L124",
+          "version": "repo-lines-v1:sha256:7cbc1b03aa793478e3683bc48448ca78aa0acea7efef5d6ff0a0b6f54bee6d4d:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWM0OTEzOGM4MWE4MzI2Mzg4ZWFiMjc1ZTAxMDE4ZWI5MjQ4YjU3ZjY0YWNjMmU2OWUxYjc1ZmI0NmQxY2Q2ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTZkNWM3ZTM3OTI5NzA1M2QxNjRmZGQzMWE0YjIwOGRiYzVlNDJhMWQyMjBkNWVhNGU5ZGYyOWExMTU2YmFjOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjA1YjllYmQ1MDZhYjZiYjk1NjI5NTJkMWE5NWY1MGU1NjU0ZmQyYTllOGNjOTBlZWUwYzM4MzUyYTExNWQ0ZCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

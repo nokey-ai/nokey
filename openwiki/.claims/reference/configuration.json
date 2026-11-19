@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:6fb1b107f5077517f996dfc781cb5f485ba243e13b0acb6a0ec5ecc445558e4f",
+  "claims": [
+    {
+      "id": "claim_32c8c17d6f9d4ce183745dedc781692d",
+      "statement": "The config directory is %APPDATA%\\nokey on Windows when APPDATA is set and ~/.config/nokey otherwise, with config.yaml inside it.",
+      "evidence": [
+        {
+          "resource": "repo://internal/config/config.go#L94-L118",
+          "version": "repo-lines-v1:sha256:6d943327adfd6c8233682d1b4c234c654129b65095105a9b37238ba945ec12a3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY2NTlhNTc2MTRlOTU3ZTZiNjM1MGQ4YjZkMzc2YzBmMTM5MjhjZDU5MjM0ODJmMDkwNDQ2YjdjNjRmMTc5MGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQzOWUyM2NhNDZhMDQzYTNkNjM2OWI1OGRmYTQyZTEzZTQ3NzA3OWFlYjViNzQ0ODI2MTY1NWIyZDYyZTVkYzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMzNTJhZDA1OTZlOThhNGFiMGVmYTg4NmFlOTFlYWJlMDJlNTg3ODQ2YzdmNmJmZmM0MzVjYzc5MWM4MzQ3YjIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4381e5eb5add433e878aeac68e887cb2",
+      "statement": "The PIN session ticket and the file-backend keyring directory are derived from the home directory plus .config/nokey rather than ConfigDir, so on Windows they do not live under %APPDATA%.",
+      "evidence": [
+        {
+          "resource": "repo://internal/keyring/keyring.go#L397-L408",
+          "version": "repo-lines-v1:sha256:e078400566fdaeb19c9fdd8602d98dc44371f30fe7364f283fd272587f0225e6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0Y2RhN2JjYjM4NmQ3ZjJkM2YzN2UzN2RiMWVjMzM3OGE5ZTgyMzM0NzcxNjZmODNhNmNlYWU3NjRkYjExNjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0ZjkzNDZkZDU1NTcwZDUxZjZiMDZmNmJmMjE1NWQ2Njc0ZDdhMjI3ZDEyMDA4YmI2MTdmMTc3YTdkNzJhOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjljODVjODFjNGNmOWZmODYyOGMxMjFmYjMyZTU5MTdjYzJmNjU2N2FkZWVhOTIwOWI1NTliMzNlZDljMDMyYTIifQ"
+        },
+        {
+          "resource": "repo://internal/session/session.go#L34-L54",
+          "version": "repo-lines-v1:sha256:c5316693794e4ebecfd558b9e959fab5eaad55adc252e3dc6c4fe95a016202dc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE5ZTk2YmY1N2E1N2I5MmJkMjJmMGNhNTJiMTBkZTE1ZmU0MWNlZjNmYTMyMzE2Y2M1ZTcyYTZkMDY4NThjZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxNGFjY2I1OTU2NDUyZGU2MTRjZGU4NTBhNjUxOTQ3M2Q1NDZkMjVjOWYxYmM2ODM2ZTk3NGQ4YjBmMTQ1MDkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRkMTZlMzlhNGRmNWZjZjAxM2VhNDdhNzE3YThlNmY5NzM0NTM3NDljNmIxZDZmNGE3MmRhMTc1MTIxMTZmY2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b2e47fe9a049439aacc5daf6d86d25b0",
+      "statement": "The audit log directory defaults to the config directory, holding audit.log and chain_head.json.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L35-L45",
+          "version": "repo-lines-v1:sha256:2f3dcfd4d360c8307c60165fa289928a8d332dfeb1a5a9091edb1a890cd537a2:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM2Njk4ZWQ2OTJiMDQ4ZWQ2NjJkMDI1MjA5ZjY5MDA2Y2UxNGE1MTViZjBkNzZlYjQwN2FiMzE4MTE1N2ZmZDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5M2QwNGJiMTBlYTVhYzgwZDA4NTVkYTNmNTM3ZmQ2MDVjNzJlMmI4ZGI3Mjg0NGIzMDNkZDFmZGIxMDYzNDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhYTU0ZjE4ZmQ0NjE5NzdkZGVhOTA2MjA3YzFmN2Q3YzhmMWRiM2YwMzQzN2E4YjQ1ZmU1MTFjMjViOTBhNGEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_965f2cca85f845c484ac90863bdb8416",
+      "statement": "Default config uses the platform keyring, service name nokey, redaction off, audit disabled with 1000 max entries and 90 days retention, and an auto-detected auth method.",
+      "evidence": [
+        {
+          "resource": "repo://internal/config/config.go#L72-L88",
+          "version": "repo-lines-v1:sha256:534f7528b61e109b76f36771c34d1d03f1561c78992909b0e47167315af7ae93:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI4ZDYwMTg0MjhiN2YyMTU4MzQ3NGFiNDAwZTg0NDg4OGE3MjYyZjEzYTc4OWM4YWU2OTgwNmMwZTRlNWJlMzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgxMGE0ZTE1MzA3ZGY2MmUzODc5ZjY2MDQ5NWVjY2QxOTEwYzI1NGIxYmZlYWZmNjMxNjIyMDEyYjg2ZGI2ZTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQwNzU0YTE4MzU4OGM4YzA5YmIzZTNkNDAxY2FmODhkNTU2YzRjN2YyODUyMjk0YzViZDU2NmVkYzU3ODBmZTQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d02606aa0a264c95ad13e8792ca4aa4e",
+      "statement": "config.Load ignores unknown keys and returns defaults for a missing file, while LoadStrict (used by config validate) rejects unknown keys and invalid or removed auth.default_method values such as oauth and both.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/config_cmd.go#L45-L60",
+          "version": "repo-lines-v1:sha256:ec84073efa456a05092d90e946764e2838d654a7756837c060c8f2a6f90d3c75:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2N2ZkNmUwY2Q2ZWNmZjA2ODNjMmQzMDk0NGRlNmRjNTQxNjFjNzZjYTUwZDc4NTJjZmEwMDM4MjEwN2VjYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdiYzRjNzQ4NmIzYThlZWNjZjRiY2YzN2FmNjYxZTdlNjU0YzM2ZWU2NWM4NThkZGNmMzM1MzhlYjJmMDRiYjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNiMGU0NjVhY2NiYzc3YmQ0YzMwYjkyMjFiNjQ2NTMzNTkxZGI4OWUwMjVhMzJkMTAxZDc5MjhmOWU0ODhkMzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY0MjRiMTI3ZjU5MTYwZDBlZTUxMzcxYTUwM2FjOTI4YTBiODI1MTEzZGU1NTk3ZGI3MDVmNTE4N2FjMzA3NWEifQ"
+        },
+        {
+          "resource": "repo://internal/config/config.go#L120-L177",
+          "version": "repo-lines-v1:sha256:d54edef3d5eb369d462c6213abdff601b638836a9626222a8be5f285328ac607:eyJzZWxlY3RlZExpbmVDb3VudCI6NTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwZDFkMTljNmMxODM4MDc1Yjc1ZDZhMjc5MTFhZWRhOTA0YjUzZDEyOTIwYTZjNWZhYzgyNjljODI1OTg5OTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRlODllNzM5OWI5MWEyOGU2OGY1Nzk0MzMwY2E2NDJmM2Y1OWY1N2M3ZDQ5NGU2MGU0NTU5YTZjNGMzYWYwMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_96442e438f764c62b707c180dbef03ba",
+      "statement": "auth.cli_enforce_policy is ignored and retained only so older configs still load; nokey exec always applies policies.yaml.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L138-L149",
+          "version": "repo-lines-v1:sha256:582c53928a44af75962cebb2be59227e3631e6ea2b2c322b0ac77332437acfde:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmIxZTBlZWI2OWQ4ZjkxMDFjNDZiMmYxNDhmODU5YmQ5NWMxNTQyOTNmMmZlNmY1YjEwN2U2NmU1MGZlOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI1ZWZlNWMzN2E2NGRjYTI3NjU1ZjYyODM0ODkyNGI3NTViMGEwZmI4NjQ1MWRmMzg2ZjE3NTI5Y2QxODJjYWEifQ"
+        },
+        {
+          "resource": "repo://internal/config/config.go#L38-L41",
+          "version": "repo-lines-v1:sha256:4065e930df669f28e0f83ad7ad367ac99ab6022c7b0ce7477b9794fbd2128e6f:eyJzZWxlY3RlZExpbmVDb3VudCI6NCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTIzNjkxNTVhMzliZTYzYTRlYzc5MjRiZmRkYTkyNTQyY2IyNTJiYTA2ZjdmMTQ2YWM2OTFiOGNhMDllMTNjNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGMxMTQ5YmE2ZjlmOTZjYTJjY2QxNjBhYjY5YzE1N2VhMTJmNTk4MjgyYTViNGRlZWZiNTVhOWNhMDk0ZmQ2MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYTIxMDIxMjc4ZmMwZjM2YmNkNzE3ZmVjYzJjMWY2YzBjNWM1ZGM4NmNlOGEzYWE2MTJlNTI5YmQ2MDE0YTNkMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmYxZDYxMTgxZTRhN2ZhNmIwYzMyMmI4MGJhZThiMjBmYWEzMmUxOGIwMTcyMmUzZTU0YTE5MGVlYTc4YmRhOCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_97df89dbe1524edfbe629704a786a559",
+      "statement": "auth.session_ttl defaults to 15 minutes and is capped at 8 hours.",
+      "evidence": [
+        {
+          "resource": "repo://internal/config/config.go#L31-L31",
+          "version": "repo-lines-v1:sha256:c66dee9db1db4417d0aff98de6046af854aa76f01d48b8e38eae677498febb44:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzY2ZGVlOWRiMWRiNDQxN2QwYWZmOThkZTYwNDZhZjg1NGFhNzZmMDFkNDhiOGUzOGVhZTY3NzQ5OGZlYmI0NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYzY2ZGVlOWRiMWRiNDQxN2QwYWZmOThkZTYwNDZhZjg1NGFhNzZmMDFkNDhiOGUzOGVhZTY3NzQ5OGZlYmI0NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWU4YzlmZDZkMmIxN2VlMWVlOGY1MWU0NTBhMjUxYmFmZWY2NDMwNDQxZmZiZWQ5ODA0ZDJiYzNkYmNmN2JjNyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmYxYzcwNDVjNmE4ZTk5MDAwOTQzMmIxNTVlZDQ4YWJhNGIzNjRjZDk3OTZhNGMyZTJlNDMwMmE3ZDVjMjBmYiJ9"
+        },
+        {
+          "resource": "repo://internal/session/session.go#L195-L197",
+          "version": "repo-lines-v1:sha256:522a6338e75f00998a06315320009875184d698faf5a6ab7a431164c0ba51202:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTZlMjU3ZGFiMzY3YThkMGUwNTMwNWZkZmVlYzhkYzBkM2M3NjZlMTdkYWJkY2ZiM2NmMjg2MGM1ZTIxNzQzMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRiNGRmZjUyMjZlYTEzOWI1Y2E3YzM3Y2I1YWRjZjhkNGFlODkwMzg1ZjYzY2I2NjM4NDUyODllMjJiNzMwMCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTYzMWI2ZTJjYTA3ZDhiYWYwZWI0NGU3NDlkYmY0OTBiMzkyZTNhNTM0ZWY2MTAyMjc3MTE0NmNkZjlhZjFhMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2Q2NjdlYTI0NDBhNGQ2NTkxYjhmYjY4OWFlYzc1ZTQ5ZGQ2MDZjM2ZhNjBiNDRhZGNlYmQ4MzcwMmZhMDVkZSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

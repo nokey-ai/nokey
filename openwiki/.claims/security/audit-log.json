@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:4c4f78a9b0c5f3bfbb4f7d9bed278e2027f700762f3db3797feb322903b61b85",
+  "claims": [
+    {
+      "id": "claim_678f3f196e3e4898ba61f45f79e3e6e2",
+      "statement": "Audit recording happens only when audit.enabled is set, and recording failures do not fail the audited operation.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/app.go#L34-L44",
+          "version": "repo-lines-v1:sha256:1df6a2a4122ef9f4bb86342556c683fa8798bb835f988862d4f071743d480d08:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZDM2ODBhNjdmZTdlYjEzMzA0ZWU3ZDhhYzYyMTQ5OTQxNDRkYzY3OWUzMDQwZGM1MzMyYzNhZTlkMzgyYzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5NDk1Nzg1YmNkOGIxODZkMjY4MGEyYjEwOWNmMDE3ZWExYWVlMTJkZTA4ZTljMTcyMjBkMGE3NzQ5ZTcyNmMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlY2NhZjI5MTg1YjQ3N2JkZWEwMjBkMDcxOTZkYTI2NTMzZTE4ZGU0MjgzOTY1MjExYzMzNDE2NjQxMWZlYTcifQ"
+        },
+        {
+          "resource": "repo://cmd/audit_helper.go#L7-L22",
+          "version": "repo-lines-v1:sha256:5c98e8d1f4b67c20710d644e83fadf8bc58a2e207a930185ffe510f7a307580d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjNzEyNDBiNjlmYzFhNmY1YjNkMmMxMmE4MDFkYjRmZDA1ZmQyN2JlNWY4M2U4Yzk0ODk0YzMwM2RjYTU4ZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3NWRiZmVhYzlmYzIyMmQxZDFlNzE3MzcwNjFmMGJkN2U3OTM2NWVhY2VhMDcwNjdkMmUwZWUyYTY3OGFlMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_299d52345c0b4bc3ae62b4e38524f4f2",
+      "statement": "Audit entries record operation, command, auth method, secret names (never values), success, error, user, hostname and PID with a UTC timestamp.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L58-L103",
+          "version": "repo-lines-v1:sha256:f773351192f8f8d5ac3fad39f24bcad0545520e563e117d7e6c928da342d4177:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcwMTQwMmU1OTY2NWU2M2JiOGFhMTFhYjdkNzQxMjdkYzI1ZjYzNmFlZGEzN2IzMzZhNGZkMjdkODI1NzZkNWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI3NjNjY2ZjMzZkOTM3MDY2OTc4NTIzZGE5NTNmMWQzOTk3MmNlODg0OTVjZGFmN2IxNmFmYWQ2MDk1ZDRjMDgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVjNWNlY2RiZmI1Y2IzNGM2YWJlZTZjZjc3ZGU1ZmUxNWNmOWY0ZGRhNDI2NTNlM2YyZDZkZWM5OTU5ZThmZTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_45299d662f4c4a2189b194084b86bae4",
+      "statement": "The audit log is a file of base64 NaCl-secretbox-encrypted JSON lines, each carrying the HMAC of the previous encrypted line, with the encryption key stored in the keyring and the HMAC key derived from it.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L25-L56",
+          "version": "repo-lines-v1:sha256:58502c8d6a5fd65daaa6128cde43599b5b78479107dfe06f66fa0018be9763cc:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwZDk4NmIwZGY3ZTljNDdhYTc4MmIwNjYwOTQ2OWJjOGVlY2E0NzYxMmI4MzhjZjgyOWRkYTRiY2RkZDMzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVkNjA5M2I4MGViMmQ4ZmUxNTdjZWY5ODczNDhhNDZiMjNmYzM2M2Y1OTg3ZGQ4ZjE2ZTUyNGExMzc5ZjYzZDUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUxYzUzMWQ4ZDIyYjkwNmM2ZTMwMGQ4NmFhYThiYzRkOTk4MjY0YTA5YmUwOGU1ZmVkYjJjNmQ4ZGQ1OGI1MjgifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L446-L458",
+          "version": "repo-lines-v1:sha256:12ffb8579be91226993a704bea96c8939ec24967e9f5f83d4cf15febaf144543:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMjA3OTYyMjdmMmUzYTIxMmJhYWZiMWYyZmNkZmM1MmQzYjFkNWFlOGNjOTEwNDZhODFmY2JhNTkwZDNmMTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5ZTBlZjE4OGE5Y2Y4MTQ3MjA2MDhhZDFmZDFlMGM4NmUwM2FjNDI0Njc3YjI2ODc0N2MwMDRmMDRmMzAxMzYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3YTM2YTFjNmViMGU2OWU1NTkwMzU2NzVlZmE0YjQ1ZjM3OThmYmM2MTY0YjEzYmY1ZDUxZTFiNWQwOWMzYmEifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L744-L756",
+          "version": "repo-lines-v1:sha256:527da654d309668b05bc3187ad14edf77fbacbf1d46f78c185fd6da628f798a8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmMDBjZTM0ZTQ2OThjYWQyOTU4MTIzYWFmMDVkYTI5MzZmMWJmMDJlOTRjN2YyZGIxZDRhMmZkZjU1OWJkNzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU5NDQ3ZjQ3ZjU4MzEyOWUxN2U1NGU2N2E3MWFjMzIzY2U5Mjg4ODU3NTFmY2QxYmRmNDhiODY1NGRhOGFmMjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhmYjQ4OGM2OWEwNDFkNDhjZjc1NzkxMDAxMDRjNWY5ZTRkNGRjN2JlY2ZlYWRhNTA2NGFlOTZiNTg3NjgzMmEifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L922-L933",
+          "version": "repo-lines-v1:sha256:2168ba65e62bf27757793ff16d7cdcfebd89e2ac56e6f9f09ed997415cadd5c7:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU4ZTk4ODkyMWMyMDRlZGI5YzYwYTE0NTA4N2Y1ZDU5MzJlMDFiMWY4NjNmNTE3ODJhNjdlYjk1ZGI2NzUzMWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA4ZmIzYWM4MzUwZTY0YjgzOTE3OTg1ZmU0YjA4OTAwOGE5MjZiYjU3OTVhN2ExMTk5MDU2ZTkzNTNkMGE1OGIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZhNjFkNTdiNmZhYWU4YjFlYTI2NWQxNjBlMjdmODdmYmVhNzMwOTJkZDIxMzU0OTlhOGU3NTE0MmY2MDNkZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_de6f33fc5dd540e586f0e5cd78291c0e",
+      "statement": "A chain-head file records the last line HMAC and entry count, and loading reports chain breaks, decryption failures, truncation, appended entries and last-entry tampering as warnings rather than errors.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/audit.go#L127-L127",
+          "version": "repo-lines-v1:sha256:2b757775a9694d83388e9e007b87589d6bb38a9267efef3c0c33a4bea80dbe12:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI3NTc3NzVhOTY5NGQ4MzM4OGU5ZTAwN2I4NzU4OWQ2YmIzOGE5MjY3ZWZlZjNjMGMzM2E0YmVhODBkYmUxMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMmI3NTc3NzVhOTY5NGQ4MzM4OGU5ZTAwN2I4NzU4OWQ2YmIzOGE5MjY3ZWZlZjNjMGMzM2E0YmVhODBkYmUxMiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmQwNGI5NTE0YTBkM2RjYzAzMWU3OTRkNTI2ODRlOTJkMTdkMjM1MDdkMjFkOTkzNmVjYWI3MDhiZDFjZmFiYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmFjMGRkNWNkN2E3ZTFhY2YyOWUxZTk3OTljZTVmMjE5ODZlYWFkMzA1NDE0M2I5MDMzYWFmZDU1OWViM2Y3NSJ9"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L461-L557",
+          "version": "repo-lines-v1:sha256:65d8612e3e6fc725f011d074825506cb29bf98e8a6e10fcb26bbe46f34e2cd22:eyJzZWxlY3RlZExpbmVDb3VudCI6OTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImIzMGNkZjY5ZDY5NGI3MmUyNzRkYmZlZmE3NWI1OTE2ZmU0N2E1MDVhODU4MzY0YjI5OGY5MDE3M2Q0NDdlOWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFmOGZiNDNjMGVjMGQyNjc5NTUyMzZjMWI3NjI2OTI0MmNhYzg1OGVjMGI3YjVjOTZhMzdlZjdlZDUwNjk3MTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQ0ZDcyNDBkM2Y1ZTdjMWQ1OWJlNjY5Y2M2NDEyMzljMzhjN2UzYmJiZmE2ZjU2ZTNkMWU5ZDA2MmE1YTNmNGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_aa0da8749a8443dbaed4cc58b4e6d5c1",
+      "statement": "Record serialises writers with an in-process mutex and a cross-process advisory lock on audit.lock that is never deleted, fetching the key before taking the lock so a keychain prompt does not block other processes.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L153-L178",
+          "version": "repo-lines-v1:sha256:7a6929d3e15876542ec321f7415e0fcc5c496e7e3ea928648f25388fda58f302:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4MGJmZjAxMzg3YWViNWU3YzRhYWFhMDBmZTQzZGMyZGNiMDZjNTk3MjE5ZmE3MWM3ZWIxYjY1NGFkODcyMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3MTY4N2E2NGU5YjA3YTVlNmQ0ZDc1MzRmY2E5YWYzNDQ2NGRlYWNlYzM2ZTk3MDAzYzRkMTY2YjdlOWJhMGMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkxNWEyNTdkYWMyZDM3Nzg0M2U2NWJiNWRmOTAwOTk2ZTM5NTczNDNjNzljMjcwMGIwNGJjMTNiMDExYTBhNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4OTZkNDQyY2M4OTAxYjQ0YTY5YTc2NjBkZGQ3MGU0YzAzNzRjZmMyMDI5ZmRkOGMxNDA1MzdmZTNmZDQ2MTIifQ"
+        },
+        {
+          "resource": "repo://internal/audit/lock.go#L14-L37",
+          "version": "repo-lines-v1:sha256:c1197eb13e862ee74d0d74a1b7819c2918baa156a4cecf2455117c6b3c6fd9ba:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkYWE3NzliNjhkYzgxZTYxMGE4OTQxYzQwMWZhYmRkNWE0YTI4Mzg0MDc3NTg1NDc2M2RiMjhiMmNlYTVjMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiNjBlYjAwOTgzNDM3NjY0YWE4Y2I0OGE2YmNkOGRkMDc2NjJiNzFjY2RjOGUwODBmZjU1YzY0OTkxNzI0ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjViNTZiMTY5N2ZkMDg2OTc4ZjZiMDA3ODkxMDVjYTgwNjEyZjBjMWUzOWUxZmQzMmExMDk5ZTQ2YWYzYzk4OGMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a20c2e76def0469cae36a8ac0ff90b87",
+      "statement": "Compaction runs lazily when the entry count reaches twice max_entries, applying age and count retention and rewriting survivors with a fresh chain via an atomic rename; retention_days of zero or less disables the age limit.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L214-L224",
+          "version": "repo-lines-v1:sha256:256ffb51889a639002a7f547c1e6de9f619b48257d6fa166bbc464c5d11aa76b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5NWEyOWZmZmE2OTcxYzA5ZGYwNjk3YzYwODkzMmNmNjY3ZTU2YzU4ZTE2ZTA3Nzg4N2ZiYWUxZDE1OWUxZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4NmM1OTlkYzI0MzFkY2UyNGY3MDZjYTVjYmExZjI4MWY1OTU5NTcxYWZhMDRjMjFiNmY1NWU5MmM1MjBkODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhMDAxNjFhMTlhNjJmY2MzYWEyMjliM2E0YWE5ZTkyZjkyMGM5OTE2YjNlNzI5YWQyMmE1ZWM4NzdlOGJhYWQifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L266-L325",
+          "version": "repo-lines-v1:sha256:98694e3cde7f3ecbed62dd255d08e933e91513c17637ce021cf7bde01f29dfe3:eyJzZWxlY3RlZExpbmVDb3VudCI6NjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmZDE3ZmRhZDMyMjg4MGRkNDk2ODA4YmQ1MzQ2NzVhNWZjZWUwNjZhMzExNjRiMDAwN2ZkOTZhMmY5NDBkN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVjYmUzMjA0ZTUxZTIwMDZkZDU2ZDc4MTRiMDE3NzI5YzFmOGU0NzVkNmI3YzM5MDE3MjI5MDAxNDFkMjFhNTMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI3MGRjY2UzM2ZkMmNkZWEwZTI4MTM2ZTNjNGFhOTE0ZGQ2ODRiNTU0ZTMxYjQ3NDYxOTcwMzg5YmIyM2RiZDYifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L559-L589",
+          "version": "repo-lines-v1:sha256:47de0e55f7f9d083467e7830b10a64d363bd3085db3c90a8b3b972d4e1c5c142:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQxMjU3Zjg1NjRkMjk5MWNmNzMyZDljZDE0OGUyNzQyZTA1YTFiOGFhYWQwYzk3Njg5NzUzNDExNTQ3ZjEyNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwMzVmZmY1Njk3Mjg4OTI5MTYzZDIxNDcwOTIwMmYzYzNkOTllMDdlZDE3NjYyMjA4YWMzODQ3MDg0YWZiOWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjliYWMzZDBlNWRhOGExMTY1OTI2NGJjNTI1ZWJmNTEwN2MzMjFiOTI1YzY4ZjFmMWZmNjc4MzdlOWMyNzc5NDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae577820e2834de7bac78fb6aaf8da00",
+      "statement": "Legacy keyring-stored audit logs and chain heads are migrated to files on first record, and audit clear removes the log, chain head and legacy keyring entries but not the encryption key.",
+      "evidence": [
+        {
+          "resource": "repo://internal/audit/audit.go#L197-L206",
+          "version": "repo-lines-v1:sha256:692d55a864781645513e8b8cc027ef60642376f93cfd50090d8ca6349f8b3996:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1NWMxZTJhMzAyZDIyYTM4NWY5ZjFiY2JiMTE1ZjlhOGM4MWM1ZjljNTFjZjk4ZjJkZjcwZmQ1YzYxZjJkODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE4NmM1OTlkYzI0MzFkY2UyNGY3MDZjYTVjYmExZjI4MWY1OTU5NTcxYWZhMDRjMjFiNmY1NWU5MmM1MjBkODIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcwYTY2ZDRkYTY2ZGY3MDQzYjgyN2NmNWMzMTE4YzczODQ3OTdmZTYwYmJlNjUzNWE4M2QwMTljMjk5M2NkNzYifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L327-L356",
+          "version": "repo-lines-v1:sha256:b1ab498e0fba57679f1950b9de610579046758d43fa9747ec57482ac75b74f3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjhjMjM0NjQxM2RhNGNmMjhiOGYzZDNlOWE5Y2IyY2I2MmIwNTNkYWNjYjk5MzQ4YzFlNTRlN2U5ZjhlYjQxYTciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc4YmI2NTJmOTRmNDcxZDNlMjY2NWIyOWNhY2U1ZDhlNGNmZmQ2MGIxNTMyYzQ0NzEyZGQ1ZmU2MmY5MWFhZjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwYTkzOWE3OTJiZjRlNmExNzY2YzRiN2VhMGJhZTFhNWVlMWJjOGY1NjFmNGIwMDllNGI5Y2ZlNzBlMWQ4MGMifQ"
+        },
+        {
+          "resource": "repo://internal/audit/audit.go#L856-L860",
+          "version": "repo-lines-v1:sha256:e5c742ea75ec2c0f64b1b3143206b9430ad236af8727bf899a9556f289c2152e:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGZhMDdhYjhiNjE1OGUzNDkyZjQwZTU1OGEyNDJlMGE4NTM4MDhiNThkNWUyMWQ3OTBhZjQ3OTZjM2E2NTY3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmExOGU4OWZhMzAwY2M3YzVlMTY5YTNlYjZlYjYxZDg4OTM4OGUyY2YzMDJhOWVmMmIyMTFhMjIwZTY2ZmYyYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGM5ZmIwNzUzMzU0YTVhODc2YjlhYWYxMWMxYmI3MzI2Y2NiNTg2NjM5MGQ4YzZiNjk4ZTZiMDZlYzEyYmNkZSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_cb02f2278c4341968362d9cef8c13a1a",
+      "statement": "audit clear requires PIN authentication when a PIN is configured or require_auth is set.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/audit.go#L251-L253",
+          "version": "repo-lines-v1:sha256:938c9c704ba76935a5c8ad0633ce2ae056a28a5c5889ef307840526cbae1aa27:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOWFmNmY2ODU4ODEwNjdlNzEyYjllMzNmZWUzMDdjMWE3YWNlMTYwYzQyYTU0MjBhMzdiZGI3ZWI5M2M2YTU4ZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGMxNTRjZGFlZjgyYmEzMzg2NmFmODNhMGZiNDYyNzcwOWZkZTBhZGY2YjM1ZWNlMTYzNTVmNDU3ZjU1ZWQ3NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE2MjA0MmZkN2RhZGU4OGRjYWZjODA0MTNmZDQ2ZGM5Y2NlMWMyY2QyMjUyYWMxZGM1Yjc4MDg2YWJkZTUwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOTAwOTMzOTkyNTE0ZGQyMmZkYWM3NzVhNjU5MDQ3MzQ4ZDY3Mzc0MzZjNzIwNWRhMjliOTU3MDI1OTc2MzUzMiJ9"
+        },
+        {
+          "resource": "repo://cmd/audit.go#L75-L77",
+          "version": "repo-lines-v1:sha256:23ae35ad5e8dfdc2bf20a6145360a474547517534bd8bab474e3d1cea1a74bfa:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzBiOTVmOWM4NDU3OWJmODVmYzgzM2M3NGQxNmVhNDAzYmY4YTJlMTAyNzFmYWM3NDNjOTkyNmU4ZjAxMWYwMCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGU4NmJiMjdmYWZiYjc0MzU3NGE1NmY4MDZjY2ExMGUxZjdkYTY3ZDliYjVhMTlhYzMzMjgzNTMzYzAwZGE5MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGZlZjdlNTU4OThkOWVhODdkYTZiNDMxMjZmYTY1NzFjZWYxNDljYTBhNTAyNmZkMGQ4ZTA2MzVmM2E4ZjAwYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMWM5Y2U3NTAyMWRhMzNlZmY1MTNmNDNkZTBiZDZiZWY1MDdiZTY0ZmRhODhiNWViMjE5MzZkNjRiZDJmZDFlNCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

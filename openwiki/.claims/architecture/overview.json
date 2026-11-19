@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:9e93eb2fe76edcff689ad1cb3e08043a070d162323d6a29164ebf6bf3064ccd5",
+  "claims": [
+    {
+      "id": "claim_7473b5980b2649d2b48ab81a2e12fa52",
+      "statement": "nokey is a single binary whose main calls cmd.Execute, with all CLI commands in the single Cobra package cmd.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/root.go#L20-L35",
+          "version": "repo-lines-v1:sha256:2b3f470b81949195f9cfbe63dd5142f01c38facf61bf8a5ebcf04fbdb040a2bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFiYjY0ZDUzNTFiY2ZiYTQ1ODk0MDAyODZmMmVkN2JmOWFiMjZhZjUyMGMzZjc4NTc2MjU1N2I0NTBjZDYyYzMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIwZTMyMWMzNzg5ZGI2NmZmNWE1YTA3NzE0YTk0ZjUzMDQ5ZGRjMDNlMjg3YTYxNTBkNDUzYzI0ZWEyMTZkNGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFkNmUwZDAxNGE0N2JkZTIyZDJkZTJkNGUxZmFhYzgyNWY4OGYxNWVjYzY1ZDNiYzI0M2ZhMzFjM2U1Mjk2MDgifQ"
+        },
+        {
+          "resource": "repo://main.go",
+          "version": "repo-file-v1:sha256:60902f8ccbc0d5af48ea79a385ea9b3c9399a24a07dffaa9ad71bbeab12fe11f"
+        }
+      ]
+    },
+    {
+      "id": "claim_41c2c17295a04f87ad8c8978a23e8302",
+      "statement": "At start-up config.yaml is loaded and a load failure falls back to default config with a warning; the keyring backend can be overridden by NOKEY_BACKEND and then by the --backend flag.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/root.go#L55-L85",
+          "version": "repo-lines-v1:sha256:8a0249c09103281113f649f85a21fa96af0dc06548f924c04a6c3cabbd98a0bb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyMzk5ZTMyM2IyYjc2NWU5ODk4YmEwNTM1MDU0NjdlZTEzMTE2YTM0Nzg3ODE5NWExMWM4ZGE4OTc4OTViOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0ZTA1ZGIwOWQwZWU3ODMwODc1NmQzMzBjMDRhOTkxYzQzMzA3MzBkMWNiZDQ3MTE1NjlkNDA5OGJkNDFkZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZkM2JmNTgzNmQxN2FmM2Q0YzQ1MjhjYjdkOGU2NzYyNDcyMDcwMWY5YmQxYzE3ZGI5MjUyMGY4MzVkMjc3MWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_542123f6664d4d06ae0a1a6ab551cac5",
+      "statement": "The App container attached in PersistentPreRun carries the config, and App.RecordAudit writes audit entries only when audit is enabled, reporting write failures as warnings.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/app.go#L14-L51",
+          "version": "repo-lines-v1:sha256:272b683dbcd8b05ef4378a047669eefb41fa1af4aec2c8408ba549ec65b29a57:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk2MmIxNmRmNWU4MjU0MjIxN2IwNDdiZjg2ZDdiYWFjNjc1MjI5NWI5ZGQxMDA1YWRhN2U2ODYxMGJkYjEzNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk0NDg0ZGIwNzE2OTc4OGNlM2UwNzVjMGVhOGM5ZDVmMDI0OTdlMzQxN2Y0OWFmMWI0NmU1MjNkYWE3MzA1MDQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://cmd/root.go#L58-L60",
+          "version": "repo-lines-v1:sha256:76e5c718ca37dc3b2d2937a856f15d2851e27f8ba9aacc8168750341d77c3b89:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzFlNWEzZTZkMzE2YWJhY2UwYzFhY2RjNzZkMzBjNWQwOGQxMjI1Y2U5YjE1NjA5ODJlZTZjOGViY2M0M2ZkOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmFkYjc1MTM0Y2U3NzBkMzZiYjlmMDk0NWNkZmQ5OTMxNGRhNjdkNjE0Y2VjNjI2MmE2ZWQyODExYmI5ZWU2NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWJiYzE2MTRhNWMwNjRhZjBlZTkyNmZiMDUyNDAyYWU2MzljMTkwYjEzM2M0YWJlNGVkYWUxMzViYzdhOTU5NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e7d4126553c94d7ab2758e5849f86838",
+      "statement": "The MCP server and proxy record audit entries through a package-level recordAudit helper using the keyring_acl auth method label.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/audit_helper.go#L7-L22",
+          "version": "repo-lines-v1:sha256:5c98e8d1f4b67c20710d644e83fadf8bc58a2e207a930185ffe510f7a307580d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjJjNzEyNDBiNjlmYzFhNmY1YjNkMmMxMmE4MDFkYjRmZDA1ZmQyN2JlNWY4M2U4Yzk0ODk0YzMwM2RjYTU4ZTIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA3NWRiZmVhYzlmYzIyMmQxZDFlNzE3MzcwNjFmMGJkN2U3OTM2NWVhY2VhMDcwNjdkMmUwZWUyYTY3OGFlMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://cmd/mcp.go#L74-L82",
+          "version": "repo-lines-v1:sha256:7e153aa35e38136f8b7e124f8983e031919a4e5805b4959f67574182f3082055:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTA1ZDZjYTJiNjA3NTI0OWEzZDQzZjU5NWQ1MmEzMGFhMTQ3MWMxYWI2M2U3OTY4NzgwNTM4MjJlNWIwNzhkZCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzdhOWI1ZTkwMTljOGRiODc4M2VjOWMzZmViYjBhMmM5ODYyZjYxYTA1YzMwOGZlODk1ZTRhOWJlZDAzZWRiMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZGIzZmFkYzQ2ZGY0NjgxNWMyYzU4ODlkMjI0MWUwNzYyMTk3Y2M5ZDY3YmI1ZWRlNGZkYTk4MjhjN2RkMDA3YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjZlMmI1NmIwNGJmZmE4OWYxYzFiNjdhYTFkMmE0OTVkYWFhZTcxNGVhNzRlYjY1N2QwYWQ3Y2Y5ODA1NmI3ZCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_b4f36c223676409e87e5b872ebcd4baa",
+      "statement": "nokey exec enforces the approved policy, refuses token_required rules because tokens exist only in the MCP server, and requires human confirmation for approval: always rules or when no policy exists at all.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L138-L180",
+          "version": "repo-lines-v1:sha256:457de4fc59716f139400bc4467a64755fc76b60ec783f53dbfe87337ef69b9fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzNmIxZTBlZWI2OWQ4ZjkxMDFjNDZiMmYxNDhmODU5YmQ5NWMxNTQyOTNmMmZlNmY1YjEwN2U2NmU1MGZlOGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMxYTdiYmUyMGJlOWFmMzZjMTg4MzJiNDk0ZjllMGFkZmNjYzdkYzcyMDRiMjY0NGI5MjA5ODNmNDExMDY2M2IifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e9dc755c5a0b4f37a5c71469aa2c1005",
+      "statement": "The --auth-method flag can add authentication but never skip a factor the config or a stored PIN requires.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L345-L384",
+          "version": "repo-lines-v1:sha256:8f1d75f70e9f9723b7fc8a5a4165991cec1534435131497a98ebfbe58a356219:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3YmJiOTRhNGUxNjI5NGM3NDY1MGZkNzA0YjFhMzQzNDJlN2E2ZDQzYzJhMTUyMGM3ZDE5NmM5MDY0OGMwZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFjYzhlMzZkZjI2NjI2YjI4NDkxYzYwODVkNDQ1NzA2Zjc1ODliMTQzZmY4MGZmMjI4ODdiZmE5YzIyZjU5ZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyOGQyYmYwNTMxMDAyZTRhZGUwMWI0ZDc5MDE0MDIzOTM1NzUwZTExZGU5MjczODQ0OTkzYzY0YzNhZjI2NDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_36a0132ca57a46758588e0c53de71507",
+      "statement": "The isolate mode starts a local proxy that blocks hosts without a proxy rule and points the child at it via proxy and CA environment variables, clearing NO_PROXY.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L288-L343",
+          "version": "repo-lines-v1:sha256:89f5deccf0a429b164e99673271f28aa77c82f499c546e55672d6fc1c967e153:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ZTg1MzNjYzE1YTQ2OWZkNzAxYTcxY2VkYjNiYjIzNzQxYmJiYmIyYzUzZDY0MTY3NGNhMDc3Yjk1YmM2ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjMzNjYjdjNTc4ZjE0ZjI0OGI4Mzg2OWU3OTc5YzM2YTk2OTQ2MWYwNzVmZGFiOTliYjU2YmRmODA0MTFkMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2MmJlMzY1MjJmNmMyNWU2ZWU5MzkxMzQyMTg3MTZmYTJiYjBmMTRjYmYxZjRkZDVkYzJkYjQ4ZTVmNWJiYTEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

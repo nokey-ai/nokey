@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c39cfa8523f6d58ed59f303cc46da0372d14a40048f88da0da3898b69f40c445",
+  "claims": [
+    {
+      "id": "claim_5fa4a273a2774e849192268425793c38",
+      "statement": "The cmd package's TestMain replaces getKeyring with an erroring stub and the presence dialog with an unavailable stub so no test touches the real keychain or shows Touch ID; tests opt in with withTestKeyring and withPresence.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/main_test.go#L14-L60",
+          "version": "repo-lines-v1:sha256:ffc22eff47143829b1a094093f095f61659422c2f36da58c7c8e97692445e669:eyJzZWxlY3RlZExpbmVDb3VudCI6NDcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMjAzN2FkYzljMzI0Y2NkMjM1YmZiZmJkMDQ4MjAwMjViM2I2MDNlMTZhZTdlMjNjZDIyYjFkOGM2YzkzN2MiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE5ODBlY2JjZTVmOWFmYzA1ZjlkZjc1YmExYzhhYTcxYmNlODg0MGI4ODY1ZDNjYjlhZTUyMjJkMGM3Nzg2ZWUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1febeb2bf4e64b7b838143de32d0adfd",
+      "statement": "cmd tests use an in-memory mock keyring wrapped by keyring.NewWithRing plus helpers for config, audit dir, stdin, output capture and pre-approved policies.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/helpers_test.go#L22-L230",
+          "version": "repo-lines-v1:sha256:0fe785c920d5af4ac49fd9b28e028caef2a1f36ca56c4a45e046706e24dfcf9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjA5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI3OTNkOTIxYmFkYmFjNjI1YmNiZjhhZTYxMzM0ODBkMWE0ZjhkNTA0MTE5YTZlNGQxYzQ2ZDRiMDE0NWQ1MjRjIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0ODBkYTRiNWQ5NGZkYjcxMWI4OTg5MzU3OGU0OTNkNDMwZDQ5NTM2ZDEzN2JmYWU0MTRmZDhjNTQ3Mzk5OTNjIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlODFkNDZjNzk1ZWRlYmQ4OWMzM2Y0MThjYmQzNmEzYzI2MmUwYjNkODkzMWZkNzQ3YWM0MTE1YmNiODMwMTU0IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI5MzBkNjg5MGMyMGFiMTFiMDQzYWMzYzUxNGZlZjY3ZTUxMzMzYmE3YWU5MTQ1NWUxMzNlMTEzMGU1N2I1ZDYyIn0"
+        },
+        {
+          "resource": "repo://internal/keyring/keyring.go#L67-L76",
+          "version": "repo-lines-v1:sha256:1c593576cf467039805f80ca10dfaa941447e104fce684b0a36ea372651d1a99:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyMzgyMTMzOTJkNGEyNmE5MTYxMGY1M2JiYTkyMzI2NjhlNTY3NjEzMDQ5NjI4YmU5NWE4NWE3YzJmZmE3NmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1MWMwOWJjMzcyMzI3ZmFiYmRlMWIyNzRiNmRhMzgwYWI5NTJlMTMyZjE2Y2Q4YzYyZmZlZDI0NjRlNzEzMzAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkZDA4OGExZGEyYTFlZTUzMjQ5ZGExNDQ3ZDU0ZDc3ZDFiY2Q1ZjY3ZDQ1N2Y0MjY5M2Y1OTFiNWU4YzdkMGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_383f4ca075d74bcab0f17ae351999ff1",
+      "statement": "MCP integration tests drive an mcp-go server through JSON-RPC requests using the same Handler wiring as nokey mcp serve.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/mcp_integration_test.go#L1-L45",
+          "version": "repo-lines-v1:sha256:81846f8b22cc05ce51fc55fb9104a76e332d726e74a08c7fefca985546f54a22:eyJzZWxlY3RlZExpbmVDb3VudCI6NDUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNzgzNTVjNGRhMzdkZjhmNzA4ZjE0M2ZlMTkxNzNkYzE0NmFkY2Q5OWQxNjM2NTk0ZDI2NWM1NDA3NzU1YmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImVhOTBkN2E3OWM2Mjc5NzQ2OTNiMWRkZTQ3YzJiMGZmYzJmZjBlNTUwN2U4M2EyZDkwYmIxZmU1ODRjYjNmYTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJjYWU2MWIyYTExNzFkMTkxZjdmYmUxMDkzYWU2Y2UzYmU5ZjE1MmE4MTdhZGE2OWJjMjk0ZjFlZDQwZDA0NTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b3f81eabf07c47378360bcc3e9aa6fe0",
+      "statement": "Fuzz targets cover policy loading, placeholder extraction, backup decryption, proxy header templates and listen-address validation.",
+      "evidence": [
+        {
+          "resource": "repo://internal/backup/backup_fuzz_test.go#L13-L13",
+          "version": "repo-lines-v1:sha256:f1dd16c3948fea96d251e70f9798e65b62c7673ca5537662be1d61a9b6e94659:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFkZDE2YzM5NDhmZWE5NmQyNTFlNzBmOTc5OGU2NWI2MmM3NjczY2E1NTM3NjYyYmUxZDYxYTliNmU5NDY1OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjFkZDE2YzM5NDhmZWE5NmQyNTFlNzBmOTc5OGU2NWI2MmM3NjczY2E1NTM3NjYyYmUxZDYxYTliNmU5NDY1OSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDU2NmZiNzhhOTlkNzg4YzZjNTFjNTE4MDQyNDkzNjA4ZWEzN2FhM2FiYzA0ZWY0ZWMzODllNTdiMjFmNDUzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzhhZGY0MDA3ZGE2ZTY2NDNhNGE2OTAxZDM3ZDAwYWI2YzcxN2EyMzMxYThkNDU1YTMwMjZiMTQ2MjM5ZWZmZCJ9"
+        },
+        {
+          "resource": "repo://internal/placeholder/placeholder_fuzz_test.go#L12-L12",
+          "version": "repo-lines-v1:sha256:2862cfbfcc88c84167b26a8a26bb64cce4c40f5fd31503a926c46a0411a48eba:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg2MmNmYmZjYzg4Yzg0MTY3YjI2YThhMjZiYjY0Y2NlNGM0MGY1ZmQzMTUwM2E5MjZjNDZhMDQxMWE0OGViYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMjg2MmNmYmZjYzg4Yzg0MTY3YjI2YThhMjZiYjY0Y2NlNGM0MGY1ZmQzMTUwM2E5MjZjNDZhMDQxMWE0OGViYSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGVhNGM4YWUwZWE3ZDQ3ODg5NTk1ZDBkYjE1NDdjZGI5Yjg4YzU0Mjc0ODQ1NTFlZWU1ZGYzOGJmNGYxYmFmNCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTFmYWY2MGFmMGIwNWYxMjg3OWI0NjY4OGI2MmFlZmIxZjAxYTY0MjA4MWQ1Zjk4ODU3MGI3NDdlZGFiNzY2MCJ9"
+        },
+        {
+          "resource": "repo://internal/policy/policy_fuzz_test.go#L12-L12",
+          "version": "repo-lines-v1:sha256:312d463a8801441ba72c6b7dab632bab6b80f68bd18636a032ed49706309b6d1:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyZDQ2M2E4ODAxNDQxYmE3MmM2YjdkYWI2MzJiYWI2YjgwZjY4YmQxODYzNmEwMzJlZDQ5NzA2MzA5YjZkMSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzEyZDQ2M2E4ODAxNDQxYmE3MmM2YjdkYWI2MzJiYWI2YjgwZjY4YmQxODYzNmEwMzJlZDQ5NzA2MzA5YjZkMSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDQ3NWU3YjE1Mzc5YWVlZjE0MjQ5ZmM4MTFlYzE4NjljNGY5N2I5ZjUzMmFiNDJiYTRhOTU5MTIwMjM5ODI5NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYzFjOTQxNmQ5MzI3NDQ3OGUxMDAzN2U5N2FhNDNjZmUxOWFkMjJmODUzYjU5OTljMTZjZjAyNTU2MGM4YjQxMiJ9"
+        },
+        {
+          "resource": "repo://internal/proxy/rules_fuzz_test.go#L13-L13",
+          "version": "repo-lines-v1:sha256:a779a046b355ef8a0a007018182688b7ed21fe5ae4c910445318f381c80d28d4:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc3OWEwNDZiMzU1ZWY4YTBhMDA3MDE4MTgyNjg4YjdlZDIxZmU1YWU0YzkxMDQ0NTMxOGYzODFjODBkMjhkNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTc3OWEwNDZiMzU1ZWY4YTBhMDA3MDE4MTgyNjg4YjdlZDIxZmU1YWU0YzkxMDQ0NTMxOGYzODFjODBkMjhkNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWQyMGEzOTdhMjcyNmViN2UxYTFkMjNjMTQ4NzdhNjVlZTY4OTY5YmMxOWQzYmU5ZjQxOTk2Nzk3OTBhZDA3NCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWU3YzZmNzNjNWUyZDQwNWVkNTg1NWU3ZjE1MzUwZjVmZTM3NDYxMTNhZDJiNDQwNjE0OWI0OGQzNmU4MTYwNiJ9"
+        },
+        {
+          "resource": "repo://internal/proxy/server_fuzz_test.go#L13-L13",
+          "version": "repo-lines-v1:sha256:eb480030e897f4d8940f59decc80f310b0c269030fdad6cdf16106fe551c2d7f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI0ODAwMzBlODk3ZjRkODk0MGY1OWRlY2M4MGYzMTBiMGMyNjkwMzBmZGFkNmNkZjE2MTA2ZmU1NTFjMmQ3ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWI0ODAwMzBlODk3ZjRkODk0MGY1OWRlY2M4MGYzMTBiMGMyNjkwMzBmZGFkNmNkZjE2MTA2ZmU1NTFjMmQ3ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNDdjMzVmNzQ0Y2MwMzc3MWE5OWRkNDEwYjgzNGUzNjBiOGQ5OWVjZTE2ZDk0Nzc1NGJkN2EwMmFlZTYwZTMzNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNmNhMzQ1ZDFjYjI1ODUxYjg0MjE0ZGU3NGM0ODM4MjcxYTQ3YWI0ZDdlOWM1ODk3ZjAzOTMyMjg3NzZmZWJiMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_246e890dfb144aa2b075259b68cef8f3",
+      "statement": "macOS keychain tests are darwin-tagged and create throwaway keychains, and the PTY redaction tests are tagged non-Windows.",
+      "evidence": [
+        {
+          "resource": "repo://internal/keyring/buildtrust_darwin_test.go#L1-L20",
+          "version": "repo-lines-v1:sha256:1ecb1863ae64e72049cc80b2be3f3d2bb92975da091d2eb354b04c11f5dae30d:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ3YmZhYjI1OTI3YTE1ZmY3ZWZhMDEwMzExYzM2NmU5NmI5ZGNlZjE0OWRkYzkzZmJlZGE2M2U4YTM4ZGIxZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxM2RhYWI1ZTUyM2ZjOWY3ZWEwNjk1MTI0MjAwNmNiODBlODg5MTE0M2E2ZTljMzhmZDkxMDMyYmIwYTljYmQifQ"
+        },
+        {
+          "resource": "repo://internal/redact/redact_unix_test.go",
+          "version": "repo-file-v1:sha256:86af391687a0b9eba35c05e56f012ee49de47d512e283f110f6ebd9c3c29dea3"
+        }
+      ]
+    },
+    {
+      "id": "claim_834a592182214a8ca9295bd19fc339f8",
+      "statement": "golangci-lint v2 enables errcheck, govet, staticcheck, unused, gosec, errorlint, noctx, bodyclose, contextcheck, misspell, nolintlint, copyloopvar and unconvert, with documented gosec exclusions (G204, G304, G115, G103 in internal/sensitive) and gofmt/goimports formatters.",
+      "evidence": [
+        {
+          "resource": "repo://.golangci.yml#L1-L72",
+          "version": "repo-lines-v1:sha256:d810ac46f81460957ef69aadb7bdffdd2fbe23219a3c356655878cc6d456e771:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE3ZDE5ZTlhYTBkOWFkYTQ3MGQ3YmM3M2I4MzQ4Mzc1Y2E2NDM2YWVlYmI5MjgzMzdkZjM1MjZiZGU4ZWQxZjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ2OWJhZWMwOGFkMDlkMjVkZDNiNTZkNWI3ZGY4YjMyOWY3ZDQ3OTIyZGJlMmVlYzVlY2U4MDZmNGFjN2YwNGQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

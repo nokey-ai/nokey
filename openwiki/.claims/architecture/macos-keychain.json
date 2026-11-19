@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:5e75235589402ec938e210a88e3e23426ed89614a1f21694ff5570af1b1f594e",
+  "claims": [
+    {
+      "id": "claim_d7d1da235cda4660a359a54425cd3255",
+      "statement": "The dedicated keychain is opt-in via keyring.dedicated, defaults its file name to \"nokey\", and lives at ~/Library/Keychains/<name>.keychain-db; DedicatedKeychainPath returns empty off macOS.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/root.go#L88-L100",
+          "version": "repo-lines-v1:sha256:151ea6928e703e8f6f480806afe7f06a7b18ec44d0a1ec4a46d2558ea4a5e335:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiODQzZThmM2ZhNzJjZGQ2ZTRlM2ZkZjA2NzNkOWNiOWQwZDMwODM2NDdiOWJmMGU5YTQxMDkyZjNmZGI2MWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVlMzlkNmNjNDkwMWUwNjQ4NTBhZGQwNzdlYmQxY2VhN2I4ZmRkNGZlMzZhYzE0ZjY5MDIzNmY4ZGRmZWIyOGMifQ"
+        },
+        {
+          "resource": "repo://internal/config/config.go#L20-L26",
+          "version": "repo-lines-v1:sha256:a83c359b8b4fa1ce5aa3ff5788b6db36412b3bf5e26a783e76eb473d219c444e:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTgyY2I5ODE2MDlmMzU5ZDE0MDAxNjU1MjhmOThiOGFjZjYwZWJkNTg5OWZlMTlhNTAyN2MyZjA3MWIzNmVkYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGM1MjQ2YmQxZDUyMzlmZjEyZmE0ZDBiM2NmM2I3NzY0OGE4ZTg0N2U3YjA4MzU2OTI4ZDRjZDdhMWQzYTQwNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDIyN2VjNTQ4YmY0ODhiNWJhYjI0MGVjMGRjMTY2NzBhOGY3YmEwYWUwMjI1YzM5NDIzZGM0ZmIxYTZiZTA3OSJ9"
+        },
+        {
+          "resource": "repo://internal/keyring/keyring.go#L649-L663",
+          "version": "repo-lines-v1:sha256:7782b2005354d0000937675cb74e0d40987ad1695da434d584f6e45c9bb20f77:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQyNWQyM2ZhNWI5NzFmMTA2ZTgwMTUwNTc5N2I1NjlhOGY0MjRkMjE2OGZkZmZhN2U2NjRlOTgwNzQ3NTUzYTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzFiNmUyY2EwN2Q4YmFmMGViNDRlNzQ5ZGJmNDkwYjM5MmUzYTUzNGVmNjEwMjI3NzExNDZjZGY5YWYxYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjI2OTQ2ZjY3ZjQxN2E0MTA5NmZhYjQ2NGU3MDRlMTEzNWQxYzkwZGVjZTMxYzE3YjQ5ZjFiMzdkNzY0NjQyYzUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4ad65d02eee143c0ba1f4501044c9156",
+      "statement": "Setting KeychainName in the byteness/keyring config selects the dedicated keychain, and it is the only mode where the library honours UseBiometrics.",
+      "evidence": [
+        {
+          "resource": "repo://internal/keyring/keyring.go#L116-L122",
+          "version": "repo-lines-v1:sha256:497a687dc2c7a3baa54b2d8f876bf9d4cbbd1a7e0d23bf5c312504fb6d220cbd:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiM2VkZTA1NjUxNTg3NGViNTQ2Y2ViYzYzMWY5MzAwNjViYTRiODhhMmM5YTcxOTdhYzY4NGJjM2M5NzQ1NGU2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjgzZTViY2ExNWExZTQ0NTc5ZmRmOWI2YjIyMGI5NTljYWVmYTIxYmIxMGNmNTc2MzIyN2Y1MmZlY2ViYmE3NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_6d208da4d21f460d9b77dc7c872d95eb",
+      "statement": "With auth.biometrics_only_when_locked, nokey skips Touch ID when the dedicated keychain is already unlocked, checked without prompting via SecKeychainGetStatus.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/root.go#L102-L114",
+          "version": "repo-lines-v1:sha256:a451070cb549d86eacabeff5bdaac017fdaf6b831f7183d6cab5f8eaaff16e7d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZmOWFjYTJkZTY0YjFkMmFkZWJlODUwZTQ0MGY0ZjM0MzhlYTEzMWM0MjIwMTU5OTI2ZmNhZDc4ZjQyZGYzOWQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVlZThhNGNmNTdiMTkyMDY2MWIwODFkYmM2N2EzYTk4MWY5ZTg2NDE3NWMzNzBmYzMwYjQ0YTMxNjY4ZGQwYjciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://internal/keyring/keychain_status_darwin.go#L11-L33",
+          "version": "repo-lines-v1:sha256:7771f91524b167ba7e97b82b31bf36b3452eeae5592d467670ec2829275a5f10:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI0MmZjNjliNWZkNTBiM2Y5NzYwNjViNjU2MmY2MjhkMWY1YmNjNGVlMDgyMDY0MDU0OWI4OTU2NTMyYmJmNjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmYWNjMTgyNjA3MWNiYjM1YmNlYzIwM2M1Yjg0YTc1NDMwY2M1NmE1ODVhMTQyYjljZjdlMDVmMTQwMmM1MjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e8460b107cb04e91a01df4e868d2f0b0",
+      "statement": "A Touch ID item left by a different dedicated keychain (same service and com.nokey.biometrics account, different label) blocks Touch ID setup, so to-dedicated detects it without reading item data and refuses with the delete command.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L536-L552",
+          "version": "repo-lines-v1:sha256:73c1dfb0b584315bdb3387f396fb882275d1a3b2eda0e8a663f46c359ef9a003:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5YTU1MTkxNzdhODc1YTEwMGI1OTM1YjFhOGY5ZDRmMTExNmJhOWVhNWJiMWYyNDRhNDMwMjgxMDIwYjg1MDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjIyZjJmZjVmZWVjNjBmNTg3YzhmYWU0ZTg3ZjgwOWE2NjFjZmZlZDZiNDdhYWU1ZjZkNmEyNjUzYWE4OTUyZWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImNlMWEzNWNjNTUyZTk4ZDBhMmQ0MGI2MDVlZTYzZWJhY2ZmY2FkOTZjYTNjZWJiNzkxOTJkMGVkOGJhNTFkZTIifQ"
+        },
+        {
+          "resource": "repo://internal/keyring/touchid_item.go#L8-L31",
+          "version": "repo-lines-v1:sha256:e61eb237cf2084eefe66614413f87333196c93223bf91d2fed5dda241a8514e3:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjUwMWYxYWI5NTY5YjdlNGIxYzI4OWU1NjZjM2ZkODgzMGRiNTQ5ZTMwYjQzYjk2ZTdiM2RjMTY4ZWNmY2Q5NGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNjNTljOWE5Y2Y1ZGIzZmExZThhYWM3NGVhZTBjMjI4MDg2M2JiYzE2NjhkMTg0MGMyYWQ1MDJkODM2NTRhNTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjU3ZGExZDY1MDBhMGJkYjFkOTEzMTlhNTBmM2ViMGNiZGE1NzdiNzhlYWI0NTUxYWIyNGUyOGVmNDMxM2Y0MzIifQ"
+        },
+        {
+          "resource": "repo://internal/keyring/touchid_item_darwin.go#L17-L38",
+          "version": "repo-lines-v1:sha256:496bebbf3cc17b888aceadd81f346fd704cba03fecfe08a86a13453e9b8978d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk5OTUwMzI2YjlmZDEzM2ZhY2Q5YjFlZjQ3MzVjNDUzMzc3ZGE3OGM3YjA5NTM3OTMzYWViMmNmOTEyMzZlZWIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjA0YTk4MjUxYWU0OGY2NzI0ZjQ1MjU1YzVlM2E5ODBiYmQyNjUxNTgzOWUzMDZmODI0NzBjZjI3ZmE3MmY5YzUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_99c5970ed5244f9abd6d10e3694c4b21",
+      "statement": "For certificate-signed builds, nokey adds the running binary's cdhash to the partition list of dedicated-keychain items that lack it, using the stored Touch ID passphrase and the private SecKeychainItemSetAccessWithPassword API; ad-hoc builds are skipped and without a stored passphrase macOS prompts as before.",
+      "evidence": [
+        {
+          "resource": "repo://internal/keyring/buildtrust_darwin.go#L13-L17",
+          "version": "repo-lines-v1:sha256:0369307122c578ebce64d4f8732bb9eecbbc4b26ebf39aef51752f143fb196b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTA4MmQwODk4Y2I2NmZmN2Y5MDBhMzQzMTVlNDgzZjNmOGZiYWExOGU5YTlmNWRmZDM1ZmMyZDZmNGM5NTQyOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNGRlMjg2NDhlNTljZjUwODMyZGQ0OWI4OWRlNzdkYzdkM2VmNTZhYjA2NWVhMDkxY2VhOTU4MDJlNTdkNjdhNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGUwOGMzNzUzOWZhOTU3OWMyNDQyN2Q3NTBmMDJiZDc0Njk5NWFmYWYwN2YxNmQwMWFlZDM3NDU1ZWIxNzhhYSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYWU1YmYzNzU5MWE5YTZiMjY3OTMzMjhiZWNlN2JlYzI2MTZjOWU3OGE0ZmZkMjA5NzhlOTc3MjVlMTM0ZTFlYyJ9"
+        },
+        {
+          "resource": "repo://internal/keyring/buildtrust_darwin.go#L302-L354",
+          "version": "repo-lines-v1:sha256:7364034f07a71b4307a0acffce612758c66d76fbd05be48110275792d84d3e49:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY4NWMyYWNkYzM0NDIxMDNmZDc0ZDhkZjQ4ZmJmYmMyYzZhZjhmMThjZGUwZGI5NDYyNWZmYWI0MjBmNmQyZjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImY3NDExNDExOGQyMzE1ZWUwNWVmODlkYjcwZWE2ZDgxNDg0N2JlYTMxYzRmYWIwMTIzZDllMzNjZDdmYTcyMGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImEwZmQzMjcyYmUxNWY1YThlMDdmMzU1ZWJkOTU2YjJiZTRlYzZlNGMyNzk5ZGJkYTVmMTNmM2Q1OGE4NzNkZTEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a73d146daa1e4dd29f3307a204d0ff14",
+      "statement": "Build trust runs once per dedicated-keychain store before the first secret read via a sync.Once, and failures only produce a warning.",
+      "evidence": [
+        {
+          "resource": "repo://internal/keyring/keyring.go#L139-L149",
+          "version": "repo-lines-v1:sha256:f1c079cbde3a09ebf6f175cc737acad8ccf57e8998a159de11f7d15aa0e492f1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjkzNTI3ODkzMGQxN2UwMGU0NTQxYmNjZWY2NDEwOWE1ODVkZjJhODhkYjBjZGM4YTIwMzEzYzgxMzEzZmZkMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY1ZTE3OTZmZjhmZDIyOTFjMWI4MmQ1MDRlMTI5ZWM4MDUyMTk1M2M0Y2I4NjkxZGFmNzRmNmY2OGVhNWNjMWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjZDgzYTM3Zjk3YWMxMTFkNTMxNjBmYzIwNzc3MjZmODU0Yjg2ZjZmMjMzNDA3MGMxMTBmYzNjODQ1M2U5NzYifQ"
+        },
+        {
+          "resource": "repo://internal/keyring/keyring.go#L222-L226",
+          "version": "repo-lines-v1:sha256:80530a70ba47d559c0925d85d25ff7eeca585a0c7e4e897ec6344f35d091a91a:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjdkYjVmMjVmNDUwMWYzMjNjN2VlNTU5YzQ4YjA3NGZiMDk5YmJiMjVhMDMxNzAwZDgxOTFhODM4OWVhMjMzYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTNhY2U5YmNmMGM5ZWRiOGM0YjUzYWQzYzkxZjQxZDFiOTMxZWY1ZTI2NDQzY2M0OTBmOThjYjUyZjE0MzdlOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGY2MjAzZWU0NTA5MWVkZWQzNDgzMzUzZTRlZTYyYWJjMjVjMjY2YmNiMWNiMTlhMGE0OGYzNWRmNTU1MTQ3OSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_49851f02e7b3427eb02b2719fa8a2afd",
+      "statement": "ApplyKeychainSettings makes a keychain lock on sleep and after 300 seconds idle via security set-keychain-settings, and to-dedicated applies it after copying secrets.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L660-L668",
+          "version": "repo-lines-v1:sha256:bdfddda1cc3e538d3562a7930e76f513bcf75eb921729e8f2d2f1cae0f88bd2a:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDFiYTQ3MTljODBiNmZlOTExYjA5MWE3YzA1MTI0YjY0ZWVlY2U5NjRlMDljMDU4ZWY4Zjk4MDVkYWNhNTQ2YiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNzhmZGRkNDJiOGI3NjdkYmZjNTVkNzkyYWM1ZjJlYjM4MjkzOWQ1YzA3NmQ5MWY4M2RmZjQzMDUwZTU1OGU5NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDhjZGY1YjJkYmViYWIzYTNiNTNmYmUwYWNkY2VkOWI2ZjY3MGViNDUxMWZlOTc1ZDc0NTA0ODMyOTYwMTlhOSJ9"
+        },
+        {
+          "resource": "repo://internal/keyring/keychain_settings_darwin.go#L12-L32",
+          "version": "repo-lines-v1:sha256:4963cdee6953dae36e1d38419a4766522d4ac1f5888d7333192af8fc81e279db:eyJzZWxlY3RlZExpbmVDb3VudCI6MjEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyNGExYjdkYjRlYmNkNzUzNzQ5M2VlM2Y0NmNkZjhiYWJlMDg3ZDZiNjk4NWIwOGRkODVhZTkwZDI2YzRkYWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjdmMmRlYWY3YjczMTg4NTNmNzg0NjM3Y2Y3ZGUyMDdjNjQ5ODUyOTYxODFkZTY2NmNlOTZiNzQxOTQ2MDAwMTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f08afb1845e747e8ac224d119802002a",
+      "statement": "keychain to-dedicated writes a sealed backup before any destination write (unless --no-backup), aborts without writing if any destination value conflicts, verifies every written value by re-reading, and writes the migration sentinel last; login-keychain entries are left in place.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L566-L677",
+          "version": "repo-lines-v1:sha256:e7058a1c398ad1285e0b4a705094f6b75cfc2c6823301aa268216d75fb2fc9d0:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEyLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIwYzc1ODI3MTA2ZDA4Mjk2NzA1OGE3YzRlYjNlOTRjNWNiOWFlM2Q4OWFkMzA4MWNlODA2N2IwNTkwNGMzNjQ5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhZGExZDc5MTQ4MDllMzQ5OWQ0NTczZThiZmU1ODI2YWUwODJlYTJlMmExNGRiN2NjMTQxNzI1NzdjNmE3MzVhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJmZjdlMGRkMjYyNjUyYjIwOWM1NDBhYWFkNGFlMjJmNGU1YTc5ZGVhY2ZlNWU0MjIwY2ZjYzliYzRjNWI5ODEzIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI0NWVlNTRhODJjYmY2ZWIzNTEyNzBhYTEwOTQ2ODBmNGU4OWE2MmYyMTkyYTM0YzIxZTliNGZmMTg0MTgwNjE1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_ddad535732b9447ca2807a9d9b6402be",
+      "statement": "keychain restore aborts the whole restore if any existing secret has a different value and skips __nokey_ internal keys so a crafted backup cannot overwrite the PIN hash or sentinels.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L438-L463",
+          "version": "repo-lines-v1:sha256:f2c703a8af17205ebeb4c1392c735a44289322dd1d6bd89954de1164aa5cbf53:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRmMzI1ZmQyM2FmYjMyNjk5N2VmODM1ZGE3NzZiMDc4NTQzODc3YzZlMjEzMGFkNjI3OWY3ZjU5YTcxYjNiYmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4YjQzOWViOTY2NzY0MDg1MzBkOTkxZDdlMDU0NGNmNWI5ODIxMGE2NjdkOGZjZWMwNTA5NWM0ZjkzZmFhZDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijg2NGIxM2RkZjc0NDg1YTFmZjExN2ZiOGIyYmVlMTI4MDdkYjFhMWIyOTU2YTBlODdmMDZlMmQxYTFjYTVkYmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE5Y2NkM2JlODdjMzczZDRlYmY2NGYyNWFjYmYxMGExNWFhYjEzZDlkOGQxYTk1MTIyMjRhMTAyZWI3ZjVmMDEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1254f8be5e374fe8ad2bf3bece2897d2",
+      "statement": "Backup and restore passphrases are read from a terminal prompt or --password-stdin and never from argv, and empty passphrases are rejected.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L220-L226",
+          "version": "repo-lines-v1:sha256:961c8a4cb36a943d018f584054f7ef766272e8a4668a2358c033d154db795a32:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTk5ZDE3ZjA0ZjQ3ZjFiNDY1ZDYzNGQyNzY4ODI0MzYzNWExMGFmODQyMzgyY2Y2Mzk4MjNiYzc1ZjM3ZmVjYSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDU4MjFiZjQ2YzRiOWUwZmUwZmQ1MDVmZGNkY2NjMzNjZmVkNGIyYzMxOWQ0NDU2YTVhODBmNTE4ZDdhYjcwNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYmE1M2VjMjI1OWE1ZWExNmYyMGY3MWExOWM4ZDQ5Y2FjOTY5MzNjNGQzYTgxMThiNmQ5M2NlZWM1OTI3ZDY3NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZmU3MDlkMGRmYjYzNzA0MDgyMGFjODcyYTgyMzUzYzg0M2E5OTU1MDZhYzE5M2NjMmNiOTA5NTQ1ZmQ1YzFiYyJ9"
+        },
+        {
+          "resource": "repo://cmd/keychain.go#L324-L345",
+          "version": "repo-lines-v1:sha256:002ded5a565b4dd4d75bd4e9417015b6201c8554c3e275b093fe6b0a62fc2b0f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyN2RlNzNjZjRmZTkwNmY2OGE1MmQxNjI3NGVlNjAyOWY4MmFkZmFhMjQ5MTVmNTIwMmEwY2IyZjQ3MDQ1YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFhNzU4Njk4ODY4MTMxMzg1YmQxODkyMzUxYTI2ODkxZDIzZTFmN2IzY2JiYjQwMjc0ZmUzOTg3N2Y2MDM3ZWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzFiNmUyY2EwN2Q4YmFmMGViNDRlNzQ5ZGJmNDkwYjM5MmUzYTUzNGVmNjEwMjI3NzExNDZjZGY5YWYxYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImJjYmY0MmM2ZjM1MzMwNGZhYjNjYjYxYTYwN2QxZDQyODE0MzI0YjJhMjhiYjc2NGU5MGU3NGNhNTVkZWI4YjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_94c70eda997b4eff8d5091e4d1161cee",
+      "statement": "Backups are salt(16) || nonce(24) || NaCl secretbox ciphertext of a versioned JSON payload, keyed by Argon2id with the same parameters as the PIN hash, and written atomically with 0600 permissions.",
+      "evidence": [
+        {
+          "resource": "repo://internal/backup/backup.go#L1-L57",
+          "version": "repo-lines-v1:sha256:236e5d4b704d538e5d784dde2d3dae44db20387be00dbf7452b8a15203a6b9d2:eyJzZWxlY3RlZExpbmVDb3VudCI6NTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBiYWZmZjgwOTg3NDI2YzU4ODE3ZmQwMTIyYzk0NWRjYmZiNjkwNWE4NTdiZGRlOTcyNTEzNjUzNjk5NGYwYjEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwYzM2YWQ5ZmJiN2M0Nzc1NDAyODExMzEzODIzYWEzMTY4ODk5YTcwNDZlMTBiNDVmMTU1NzQxOThlMzk4MmMifQ"
+        },
+        {
+          "resource": "repo://internal/backup/backup.go#L135-L180",
+          "version": "repo-lines-v1:sha256:959adee8dee100d8cbb77f57a737cd8dedb24efef03cf75fefb9ba08039998a4:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5NDdkMzNhYjdhNDRjMGRkMmIyZGQ1YjczNjJiZjVlYWMxY2JkYWMyMDIxMTczNjg1NjRmMTViNThiODM5OTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU5YjdjNGVhODMxNTFmNzEwYjdhMmIwYWY5NzczNGViMjMyNGM3NzdhM2ZkN2MzOWY3NzQyMjQxMTM0MDA1YTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjMxYzVlNjA5ZTUzZGJiZTM2Y2MwY2YzNmYxYjg1YmFiZTgzMDkzNjNkM2Y2ODg3MWIxOTA3ZDA1MWY0MjUxZmMifQ"
+        },
+        {
+          "resource": "repo://internal/backup/backup.go#L204-L210",
+          "version": "repo-lines-v1:sha256:fa07eccba86454fae59e40b971ebc8fcb0e02a4a487b1c8f18950fab7e07d70b:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNmE1OWU5Mzc5NDA0NDExZjFkYjE2MDYxZTkwOTNjYmZkNGYyNzA5ZTUwOGNjYjJkMDQyZDNjMjkzODk1YjQ2MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGQwNjBiMzk3Y2M3NTU4YjQxMWQ1YWU1OWQxZWVkMWZkM2QxODcxZGEzYWY4ZDM2ZDc1N2I3YTFlZGE4OTA0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}
