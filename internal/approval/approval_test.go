@@ -231,8 +231,8 @@ func TestFormatArgs(t *testing.T) {
 	if got := FormatArgs(nil); got != "" {
 		t.Errorf("FormatArgs(nil) = %q, want empty", got)
 	}
-	got := FormatArgs([]string{"-H", "X: ${{NOKEY:K}}", "line\nbreak"})
-	want := `args: "-H" "X: ${{NOKEY:K}}" "line\nbreak"`
+	got := FormatArgs([]string{"-H", "X: ${{NOKEY:K}}", "line\nbreak", "", `say "hi"`, `a\b`, "/BloxDC/vm/k8s-1"})
+	want := `args: -H "X: ${{NOKEY:K}}" "line\nbreak" "" "say \"hi\"" "a\\b" /BloxDC/vm/k8s-1`
 	if got != want {
 		t.Errorf("FormatArgs = %q, want %q", got, want)
 	}
@@ -242,7 +242,7 @@ func TestFormatArgs(t *testing.T) {
 	if len(long) > maxDetailArgsBytes+64 {
 		t.Errorf("FormatArgs not capped: %d bytes", len(long))
 	}
-	if !strings.HasSuffix(long, "… (+111 more bytes; 3 args in all)") {
+	if !strings.HasSuffix(long, "… (+105 more bytes; 3 args in all)") {
 		t.Errorf("capped args should say what was cut, got tail %q", long[len(long)-40:])
 	}
 }

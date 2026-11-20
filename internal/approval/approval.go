@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -161,23 +162,37 @@ func FormatStdin(stdin string) string {
 	return fmt.Sprintf("stdin: %d bytes, starting %s", len(stdin), quoteCapped(stdin, stdinPreviewBytes))
 }
 
-// FormatArgs renders args for an approval prompt: each one %q-quoted so
-// control characters and spacing are visible, capped at maxDetailArgsBytes.
-// Callers pass args before placeholders are resolved, so no secret value
-// is shown. Returns "" for no args.
+// FormatArgs renders args for an approval prompt, capped at
+// maxDetailArgsBytes. An argument is %q-quoted only when shown bare it
+// would hide something: it is empty, or holds whitespace, a quote, a
+// backslash or a character that doesn't print. The rest show as typed, so
+// a long argument list reads as a command line rather than a wall of
+// quotes. Callers pass args before placeholders are resolved, so no
+// secret value is shown. Returns "" for no args.
 func FormatArgs(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
 	quoted := make([]string, len(args))
 	for i, a := range args {
-		quoted[i] = fmt.Sprintf("%q", a)
+		quoted[i] = quoteArg(a)
 	}
 	line, hidden := capDetail("args: " + strings.Join(quoted, " "))
 	if hidden > 0 {
 		line += fmt.Sprintf(" … (+%d more bytes; %d args in all)", hidden, len(args))
 	}
 	return line
+}
+
+// quoteArg %q-quotes a only when bare text would misread: see FormatArgs.
+func quoteArg(a string) string {
+	hides := func(r rune) bool {
+		return unicode.IsSpace(r) || !unicode.IsPrint(r) || r == '"' || r == '\\'
+	}
+	if a == "" || !utf8.ValidString(a) || strings.ContainsFunc(a, hides) {
+		return fmt.Sprintf("%q", a)
+	}
+	return a
 }
 
 // capDetail cuts one line of detail to maxDetailArgsBytes, returning the

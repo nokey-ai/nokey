@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The approval dialog (Touch ID or the login password) puts a blank line
+  between the command, the scope and the secrets. For a session grant it
+  states that the grant covers any arguments, directory, environment and
+  input, and no longer lists this call's arguments as well. Secret names
+  are shown bare.
+- Arguments in the approval dialog and the elicitation prompt are quoted
+  only when they are empty or contain whitespace, a quote, a backslash or
+  a control character, so a long argument list reads as a command line.
+
 ## [0.11.2] - 2026-11-18
 
 ### Changed

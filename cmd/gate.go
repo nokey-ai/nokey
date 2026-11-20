@@ -99,19 +99,22 @@ const maxReasonDetailBytes = 200
 
 // presenceReason is the dialog text for command reading secretNames. macOS
 // shows it as "nokey is trying to <reason>", so the first line reads on
-// from that and each item after it gets a line of its own, to be read at a
-// glance. detail is what the approval covers besides the command and
+// from that, and a blank line separates each part after it: the dialog is
+// plain text in a narrow panel, and the gaps are what make it readable at
+// a glance. detail is what the approval covers besides the command and
 // secrets (arguments, a token's scope), and remember says the approval
-// will stand for the rest of the session. Both come before the secret
-// names, the part that can run long: the dialog cuts what doesn't fit, and
-// the scope must not be what is cut.
+// will stand for the rest of the session. A session grant covers any
+// arguments, directory, environment and input, so the dialog says that
+// and leaves out this call's detail, which would otherwise read as the
+// scope. The scope comes before the secret names, the part that can run
+// long: the dialog cuts what doesn't fit, and the scope must not be what
+// is cut. Secret names are bare: they can't hold spaces or commas.
 func presenceReason(command string, secretNames []string, detail string, remember bool) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "approve %s", approval.Quote(command))
-	if remember {
-		b.WriteString("\nfor the rest of this session: any arguments, directory, environment and input")
-	}
-	if detail != "" {
+	parts := []string{"approve " + approval.Quote(command)}
+	switch {
+	case remember:
+		parts = append(parts, "for the rest of this session, with any arguments, directory, environment and input")
+	case detail != "":
 		if len(detail) > maxReasonDetailBytes {
 			cut := maxReasonDetailBytes
 			for cut > 0 && !utf8.RuneStart(detail[cut]) {
@@ -119,12 +122,8 @@ func presenceReason(command string, secretNames []string, detail string, remembe
 			}
 			detail = detail[:cut] + "…"
 		}
-		b.WriteString("\n" + detail)
+		parts = append(parts, detail)
 	}
-	quoted := make([]string, len(secretNames))
-	for i, name := range secretNames {
-		quoted[i] = approval.Quote(name)
-	}
-	b.WriteString("\nsecrets: " + strings.Join(quoted, ", "))
-	return b.String()
+	parts = append(parts, "secrets: "+strings.Join(secretNames, ", "))
+	return strings.Join(parts, "\n\n")
 }
