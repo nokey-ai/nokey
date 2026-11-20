@@ -2027,7 +2027,8 @@ func TestHandleExecWithSecrets_ApprovalShowsUnresolvedArgs(t *testing.T) {
 		t.Fatalf("approval calls = %d, want 1", len(rec.calls))
 	}
 	d := rec.calls[0].detail
-	if !strings.Contains(d, `"https://example.com"`) || !strings.Contains(d, `"X: ${{NOKEY:KEY}}"`) {
+	// The URL shows bare; the header holds a space, so it keeps its quotes.
+	if !strings.Contains(d, `args: https://example.com "X: ${{NOKEY:KEY}}"`) {
 		t.Errorf("detail = %q, want both args with the placeholder unresolved", d)
 	}
 	if strings.Contains(d, "supersecret") {

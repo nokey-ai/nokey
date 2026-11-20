@@ -196,7 +196,12 @@ func TestPresenceReason_StatesSessionGrant(t *testing.T) {
 		if strings.Contains(reason, "rest of this session") != remember {
 			t.Errorf("remember %v: reason = %q", remember, reason)
 		}
-		for _, want := range []string{`"gh"`, `args: "api" "/user"` + "\n" + `cwd: "/tmp"`, "GITHUB_TOKEN"} {
+		// A session grant covers any arguments and directory, so this
+		// call's are shown only when the approval is for this call alone.
+		if strings.Contains(reason, `args: "api" "/user"`+"\n"+`cwd: "/tmp"`) == remember {
+			t.Errorf("remember %v: reason = %q", remember, reason)
+		}
+		for _, want := range []string{`"gh"`, "GITHUB_TOKEN"} {
 			if !strings.Contains(reason, want) {
 				t.Errorf("reason = %q, want it to contain %q", reason, want)
 			}
@@ -204,16 +209,32 @@ func TestPresenceReason_StatesSessionGrant(t *testing.T) {
 	}
 }
 
-// The dialog reads on from "nokey is trying to", then one item per line.
+// The dialog reads on from "nokey is trying to", then a blank line
+// between the parts; a session grant states its scope in place of this
+// call's detail.
 func TestPresenceReason_Layout(t *testing.T) {
-	got := presenceReason("gh", []string{"GITHUB_TOKEN", "NPM_TOKEN"}, "args: \"api\" \"/user\"\ncwd: \"/tmp\"", true)
-	want := `approve "gh"
-for the rest of this session: any arguments, directory, environment and input
-args: "api" "/user"
+	detail := "args: api /user\ncwd: \"/tmp\""
+	cases := []struct {
+		remember bool
+		want     string
+	}{
+		{false, `approve "gh"
+
+args: api /user
 cwd: "/tmp"
-secrets: "GITHUB_TOKEN", "NPM_TOKEN"`
-	if got != want {
-		t.Errorf("reason =\n%s\nwant\n%s", got, want)
+
+secrets: GITHUB_TOKEN, NPM_TOKEN`},
+		{true, `approve "gh"
+
+for the rest of this session, with any arguments, directory, environment and input
+
+secrets: GITHUB_TOKEN, NPM_TOKEN`},
+	}
+	for _, c := range cases {
+		got := presenceReason("gh", []string{"GITHUB_TOKEN", "NPM_TOKEN"}, detail, c.remember)
+		if got != c.want {
+			t.Errorf("remember %v: reason =\n%s\nwant\n%s", c.remember, got, c.want)
+		}
 	}
 }
 
