@@ -98,21 +98,21 @@ jobs:
       # build falls back to ad-hoc signing.
       - name: Import code-signing certificate
         env:
-          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
-          MACOS_SIGN_P12_PASSWORD: ${{ secrets.MACOS_SIGN_P12_PASSWORD }}
+          MACOS_CODESIGN_P12_BASE64: ${{ secrets.MACOS_CODESIGN_P12_BASE64 }}
+          MACOS_CODESIGN_P12_PASSWORD: ${{ secrets.MACOS_CODESIGN_P12_PASSWORD }}
         run: |
-          if [ -z "$MACOS_SIGN_P12" ]; then
-            echo "::warning::MACOS_SIGN_P12 is not set; darwin binaries will be ad-hoc signed"
+          if [ -z "$MACOS_CODESIGN_P12_BASE64" ]; then
+            echo "::warning::MACOS_CODESIGN_P12_BASE64 is not set; darwin binaries will be ad-hoc signed"
             exit 0
           fi
           kc="$RUNNER_TEMP/signing.keychain-db"
           kcpw=$(openssl rand -hex 16)
           p12="$RUNNER_TEMP/signing.p12"
-          printf '%s' "$MACOS_SIGN_P12" | base64 --decode > "$p12"
+          printf '%s' "$MACOS_CODESIGN_P12_BASE64" | base64 --decode > "$p12"
           security create-keychain -p "$kcpw" "$kc"
           security set-keychain-settings -lut 21600 "$kc"
           security unlock-keychain -p "$kcpw" "$kc"
-          security import "$p12" -k "$kc" -P "$MACOS_SIGN_P12_PASSWORD" -T /usr/bin/codesign
+          security import "$p12" -k "$kc" -P "$MACOS_CODESIGN_P12_PASSWORD" -T /usr/bin/codesign
           rm -f "$p12"
           # Let codesign use the key without a GUI prompt.
           security set-key-partition-list -S apple-tool:,apple: -s -k "$kcpw" "$kc" >/dev/null
@@ -120,7 +120,7 @@ jobs:
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           identity=$(security find-identity -p codesigning "$kc" | awk '$1 == "1)" { print $2; exit }')
           if [ -z "$identity" ]; then
-            echo "::error::no code-signing identity found in MACOS_SIGN_P12"
+            echo "::error::no code-signing identity found in MACOS_CODESIGN_P12_BASE64"
             exit 1
           fi
           echo "Signing darwin binaries with $identity"
