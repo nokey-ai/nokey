@@ -126,11 +126,14 @@ jobs:
           echo "Signing darwin binaries with $identity"
           echo "NOKEY_CODESIGN_IDENTITY=$identity" >> "$GITHUB_ENV"
 
+      # The action deprecated app-id for client-id. It reads both into the
+      # same value, and GitHub accepts the App ID as well as the Client ID
+      # when issuing the token, so the existing secret still works here.
       - name: Generate tap token
         id: tap-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          app-id: ${{ secrets.TAP_APP_ID }}
+          client-id: ${{ secrets.TAP_APP_ID }}
           private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
           owner: nokey-ai
           repositories: homebrew-tap
