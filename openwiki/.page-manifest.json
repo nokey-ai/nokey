@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "pages": {
+    "/openwiki/architecture/exec-and-redaction.md": {
+      "pageVersion": "sha256:01395e964cf0fa653716cb4197be0ccd7594993838280c4e130be4454691f754",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/architecture/macos-keychain.md": {
+      "pageVersion": "sha256:5e75235589402ec938e210a88e3e23426ed89614a1f21694ff5570af1b1f594e",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/architecture/mcp-server.md": {
+      "pageVersion": "sha256:27cb5a581de8cc9a8ea250f6a86e7e02c35884bfc3004e4263ade68e1afc9d65",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/architecture/overview.md": {
+      "pageVersion": "sha256:9e93eb2fe76edcff689ad1cb3e08043a070d162323d6a29164ebf6bf3064ccd5",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/architecture/proxy.md": {
+      "pageVersion": "sha256:8fda60293b314dafa0cdbf8a1d6f2b13469cbc4aaf2e86494e842908827ea255",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/architecture/secret-storage.md": {
+      "pageVersion": "sha256:b71692459f4f540cf2a6232ee18871144dba5839ed17cb2e5e8b9b4e7f38c9a7",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/operations/build-test-release.md": {
+      "pageVersion": "sha256:20fb34fbd13a6a35dcaf0ff85d95539ba3df6e646facd86a86731776d681f5ac",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/operations/testing.md": {
+      "pageVersion": "sha256:c39cfa8523f6d58ed59f303cc46da0372d14a40048f88da0da3898b69f40c445",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/quickstart.md": {
+      "pageVersion": "sha256:c518aae75b3486b2b7951ed064e8b2ae818e1e0fb9dccf562218142909ea1a5b",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/reference/cli-commands.md": {
+      "pageVersion": "sha256:f919c8060c1345481774de949d0a0b1e41a6699030a563c1af403ac7fc15d68a",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/reference/configuration.md": {
+      "pageVersion": "sha256:6fb1b107f5077517f996dfc781cb5f485ba243e13b0acb6a0ec5ecc445558e4f",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/security/approval-and-tokens.md": {
+      "pageVersion": "sha256:438f6851593813b15623506b9f6f42d45a53ceabe4e629bc9689a627926cd898",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/security/audit-log.md": {
+      "pageVersion": "sha256:4c4f78a9b0c5f3bfbb4f7d9bed278e2027f700762f3db3797feb322903b61b85",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/security/human-presence-and-pin.md": {
+      "pageVersion": "sha256:42a01779efa7a309207ac41dba26f5b201339d69168a93bb0bd90b936df9669f",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/security/policies.md": {
+      "pageVersion": "sha256:9ef676e869bed21eade5ac9fe2bfabd75753135b8395ddbb761ad4f5f07ec0aa",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    },
+    "/openwiki/security/threat-model.md": {
+      "pageVersion": "sha256:52f61c6dc9d906892181f619f98bdc14a2bc784e58835fa2a7e820324610d810",
+      "completedBy": "claude-code",
+      "completedRunId": "47a6b2c7-a88e-4685-bfc5-aec11cb5f8a7",
+      "gitHead": "f79cc531a9cbf6ee770de7cd665fc2136a17b981",
+      "sourceFingerprint": "sha256:2729bd1148a907f5d6070752b24d7a3e212b49156491f7cf918b35053459a055"
+    }
+  }
+}

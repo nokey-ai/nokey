@@ -1,0 +1,172 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:01395e964cf0fa653716cb4197be0ccd7594993838280c4e130be4454691f754",
+  "claims": [
+    {
+      "id": "claim_a7bafb22838a4d32ac678ca2a909f7cc",
+      "statement": "FilterSecrets and FilterNames reject using only and except together, and an only-listed name that does not exist is an error rather than being dropped.",
+      "evidence": [
+        {
+          "resource": "repo://internal/env/filter.go#L10-L88",
+          "version": "repo-lines-v1:sha256:66d7438643fd5303fd20eb472406d9a94ba2b2cdc1ca42c990d1381e6f8b5844:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjliYWFlYmU0ZTk0NzI4NDRjNGYxNzk3OGU4Nzk0ZjZmYzE1OTRlMDc3Mjk5OTQ2ZmEzMTc5MmE5YTEzM2I4ODciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJhMTNhYTA4YzdkZjM0MDM1NTAyYmE0ZjEwOGNkYmFlMTgwMDMyNmU2M2Q2NjZmNjM5NGE5OWQwMGI4YWM1NTQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNiZTk2ZjIyY2Q2ZjYxYWY5NTZjZWRlNWMwOWJlYjQ3YTM5ZGE4MzUwMjg1OGQxYmJmYTBkZWFjYjg0MDAxYWMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_166c4a6f484e4017baec24ea71acd92f",
+      "statement": "The MCP server filters secret names with FilterNames before reading values, so only the values it will inject are read from the keyring, while the CLI exec command loads all secrets then filters the map.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L114-L136",
+          "version": "repo-lines-v1:sha256:be88ac5217a82987e2b44ef1d690f828fc2a9f6f39d205e122fff06535e7ed9b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY0Zjk4MDNkNTA0Mjg5M2EyMzM4OWRkOTk5Mzc4Y2M5N2RmODI0NTNjYjk1Njg3ZmVkYWE0Y2ViYjJiNDJlZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjVmYWE1MjYzYTI4NzUwZGJmNTM3ZjAwOTUyYTQ5ZjI0NDQ1NDY0MTA3MDFmYmU3NGU1ZWUyNDJhNjM0NDY1MjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ2OGZhNzFmM2NmOWM0NTcyMjc2MDM5NDNkYTFjNzc5YzBkOTA5MWJkZjJlNDA1ZjE5Y2UzNjY0NzMwMGIxMzcifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L486-L500",
+          "version": "repo-lines-v1:sha256:84a0d2aff6a22f30a55005b0c579de8f92e7d36be2878dd211a4d467815a5a66:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNmZjMxMjE4MzZkOWU2NjM5MmVlMDY3MjQ2MWNmZTQ4NWU1MzdmMTllNDgyNmI4MWY4MGFlMjNmYzk3NGU2YTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjYxMTEyZTY4NDQ1MDQ2NDI4YjhiNzBkMmJjMjYzYjBiYTc3OGVkNzY2ZGE0MTMyNzA2YTMyMmFkZmExNjQ2N2IiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwYjJkODg5MGJiNjAwMGRhYTEyZjU3NzcyZWUzMTA5MjA0NjMxMDAxZWRmZDY5NmM1MzA2ZjM5MzllOWM2YmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_43735dc781564849bb60ad7430791f77",
+      "statement": "Secret names that would set a reserved environment variable (loader, toolchain, config-redirect, proxy or CA variables, matched case-insensitively by name or prefix) are refused, except names ending in a credential suffix such as _TOKEN or _KEY.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L130-L136",
+          "version": "repo-lines-v1:sha256:c12aaf7876e3535e8d6250a3e34e8b4d259f8bbeecc7933a67146e053744675a:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzVmMjU4ZTlmNzY2MzE0MjQ5M2I3M2IzZWJlN2E5ZmIxOGI5NGE3M2Y4ZDgzMjg3Nzc3NmFkZGJhYTcwMTk3MCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGM2M2U1MTU2MjU0OTdmZDA5MmVjYzY3MjczNTE3NGI2MTQ0OTE1MTMwZDE3YTlhOTA5NjUzMWIyNDkwZGJkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZDY4ZmE3MWYzY2Y5YzQ1NzIyNzYwMzk0M2RhMWM3NzljMGQ5MDkxYmRmMmU0MDVmMTljZTM2NjQ3MzAwYjEzNyJ9"
+        },
+        {
+          "resource": "repo://internal/env/reserved.go#L13-L67",
+          "version": "repo-lines-v1:sha256:0ac54851be15cc99c4e2ce833e7c60a2150224b281cddd3556de301ef4c4d2fb:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNDU2ZDM5ZjZmYWExMjhmZGQ5NzU3NWY0ZDEwMjk2MWExZDYyNTY2NjczZGE0ZTNiZTk4MGMwM2E3ZTlkMzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjU4M2Q5YTg3MmMwNmVmYzc2ZjIxMDEzMzViM2FjN2Q2NWQ1ZDYwMTE2N2VkNzc1MDg0NzU4YzhiNzZhOTU0ZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7cc2908cb65f433386d1f2574f0e6846",
+      "statement": "MergeEnvironment gives secrets precedence over inherited environment variables of the same name, and runners append extra environment entries such as isolation proxy variables after the merge.",
+      "evidence": [
+        {
+          "resource": "repo://internal/env/env.go#L5-L30",
+          "version": "repo-lines-v1:sha256:214f0db40c61efd2e298c7fa8fef01858cd7555f915dca87489a95fd1b7ba92f:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0N2U0Njk0ZDdiN2RlZmZjYjg0YzlmY2MzYzgwOThjMjYxYmUxOTRiMmZiMTBmMTczMGIxYzc1ZjI3YzgyZDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjM4N2I5NWI2ODk2OWExMzI3M2M5YTA3YjA0ZDEwM2FmOGI0YTgzZThlNWU4ZGVlZjIzN2VjMjA4YjkzMGUyZGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhMGJmNDBjODg1YjVhNTNlOTNmMmQ5OTllYTU5Mjc0NGY3NmYyZGRmMDVlY2FhNmQwOGJiNDU1NTY3MTIwZDAifQ"
+        },
+        {
+          "resource": "repo://internal/exec/exec.go#L26-L27",
+          "version": "repo-lines-v1:sha256:5303dbc45ca42ec8f390aeae3ae52e0777299894c8885467c72028f7f0d127ed:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjJiNmI5MmEwMWZkM2U5YTI1OTZhODk3YmNmZmY5NTA4YmU3OTJiZThjNWI3ODJjZTU0ODNhMjY5ODA5YzgwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTQzOTkwZmI3YmFiYjgwNDc2YjIwNWI2NmVkZmY5ZmRjMDQ4ODQ3OGEwODRjYzUzOGQ1MTU1MjAyMDA4MzNkNiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjMzMDc5NDk1NzQ4Mzc1NzcyOTNkZTMyMDQwNTBjNDlmNWMwN2M4ZDgwZjU3ODNkZWE0MjFjNDhmZTFlNmI4NiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiM2UyOTNjYmYzYzc1YTZjOGY3YTA5OWExMTQ3NWI0MmYwNWRmZmFlMjFlZWVlMzNjNzA3NDQwZGM3NTczM2UzNSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ff21b2493e8e4d7caabc58beef84aefd",
+      "statement": "The non-redacting runner forwards SIGINT and SIGTERM to the child only after it starts and returns the child's exit code; the CLI stops the isolation proxy and clears secrets before calling os.Exit because deferred calls are skipped.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L241-L246",
+          "version": "repo-lines-v1:sha256:d99c9e92ef1ae348449ef1eb5207d5d4ad6d655e82d8d8a05fca76ff3d770728:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjRlZjhkMzcxZDZkZDM3NDg0N2IyMDY4ZGFjYjQ3NjI3MGFkMDY1MzdhNjYxZTlkOGVlMzQ2MTNjOGI3YmQ5ZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWRhMWQ3OTE0ODA5ZTM0OTlkNDU3M2U4YmZlNTgyNmFlMDgyZWEyZTJhMTRkYjdjYzE0MTcyNTc3YzZhNzM1YSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmQ0ZWIxZGFiMmNkZmVkYzE1NTE4MTg5Yjc2ZGIwY2U2NDdjZWNiODc5NDAzZDE3MWZhNTUyYWQ3MWQwZDZmZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTgwMWIyM2Q3YzdlZWVmNWIyZGM3ZDYxMThkNjZhMTM1YmE1NGJhNWJmMmVhMDY2NTAyMTdiNWIyNTc1NjM2NiJ9"
+        },
+        {
+          "resource": "repo://internal/exec/exec.go#L34-L70",
+          "version": "repo-lines-v1:sha256:53d725b144d56d71ca25d9931e9afce464eb7661b6bca217f02dd599a2badf30:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRiMGUzNDczZmNiZjU1NWI5ODIzMTUxMDMwYWQyYzc4MWMyNTkyNDFlYWI3ODM1NDBhMWU4Yzg4ZmFkYmYyMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmNWFiY2Q5NzQ0YzA0MDA2OWY1YTJhYTM5NjQxOTFjZmQ2ZmEyNDY3YTI1ZjRjM2FkNDFiMzY2N2ZkYzEyMjQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_4046b4c582e941deaafa5696ade44268",
+      "statement": "Redaction is enabled by --redact or, when the flag is not set explicitly, by the redact_by_default config setting.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L197-L222",
+          "version": "repo-lines-v1:sha256:6fccba63361bf5059487a088f23298457cf95f1bc1443ad2520172969de5ca04:eyJzZWxlY3RlZExpbmVDb3VudCI6MjYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAyMmI1NTRjNWQ2MzY5ZDRlZjdiNjE3MjJiYWRmYTgxZmMwYTY4MzE4ZjQwZjkxMDE0ZmQ2MDE4N2YwNzY0YjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJmMDRjNWI5N2U1NGE2ZTE2NjFlOTA2NTZhM2JiNzg3ZDQ3NTAzNjI3OGFmMjM1NjY1NzZlODZhNzRlZGNhOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkZjdiY2JiY2ZiYzg4OWZiYTQ2YjAwM2M0MzE5MmQwY2NjY2Y3NzQ0ZDI2MGE4OTEzYWU1ZmIyOWNjY2FiNmUifQ"
+        },
+        {
+          "resource": "repo://internal/config/config.go#L49-L50",
+          "version": "repo-lines-v1:sha256:970fd91373ce95bd4db089f6c9ef548203757a5d4ea37f201fc519ae248afe3f:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYzc3ZTE4NTUzMWM5ZTFhZjk5OTc4N2MxMjRjODE4MWZlN2IxMGE4MDBlODdkNGY0ZGFkM2I1NTY2NDVlZTIzYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDI4NWFhYTEyODZjYzk5YTk0YzAyYjZhMDQzOTExMGU5M2RiMjhjNjc3NGQwOTY3MWVlOTNlOTEyYTEyNWM5MCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNTQyZWQyMjM5Mzc1NzViNGYzODY5Njg5OWZmN2ExYmQzNTRlYzVlYTJjNTY1MzM4MTMwNTY0ZTQ3Yjk3NjM3MSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNTAzOGU0NWQ5YTg5NDNkNWQ2N2NjZWQ0ODY4NzAwZTlkNzEwNWY2ZjQzOTYzZmYxOGM0NTJlMTA4Mzc0YmM0NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_c1ca70dadb084d2dbbf2824ba2dcacf5",
+      "statement": "On non-Windows platforms redacted execution runs the child on a PTY, putting stdin in raw mode, propagating SIGWINCH and passing combined PTY output through a streaming redacting reader; on Windows stdout and stderr are separate pipes each redacted with a shared redactor.",
+      "evidence": [
+        {
+          "resource": "repo://internal/redact/redact_unix.go#L30-L127",
+          "version": "repo-lines-v1:sha256:bbb632a0be9a4346848c2b5c54aede514058ab634a9be63e1199575fefe6a16b:eyJzZWxlY3RlZExpbmVDb3VudCI6OTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1M2Y4NDQ2NWJmN2VhYzE5MzhjYmUxNjc1ZjEyMzdiZDQ0OTI4Y2Q3NWVhNDhjZjFlNjJlMGVjMDkyZGQyNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImViNTI2YmIzYWYzNmExYWY1OTRiZDMyMGIwNzJlNmYxMTc0MDZjN2FkNTIzOWZmN2NhZDFjN2ZjOTNiMjIzNzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZjMzAwMDA5MDRkOWEyYTFlOTIwZWNlZjlmZDI0MDM4OWM4YWY5NjYyZWJhM2VjZjdiZjM1MmMzMDAxYTgzODkifQ"
+        },
+        {
+          "resource": "repo://internal/redact/redact_windows.go#L20-L72",
+          "version": "repo-lines-v1:sha256:bff6367e8e0e31d49c5d2c75981df5237153423b4409e3b266309cc2ffef0fff:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1M2Y4NDQ2NWJmN2VhYzE5MzhjYmUxNjc1ZjEyMzdiZDQ0OTI4Y2Q3NWVhNDhjZjFlNjJlMGVjMDkyZGQyNjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImFhNWQxYzI5ODM0NDJjOTgyMGQyNDk2ODU1YWJhYTZkODBjMmRlMjY3M2VlNDFjMDQyN2IzOGQyMDAyYTgzZTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIwNzgyZTc1NmVjMWIxMjQ2Y2U4NjU0MGM2YmU5YTM2ZDE2NTBkM2RmMDhkNmMwMTc5ZDhlZDU1OWFhYjcwZDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef448849dea245539e1ae6fa4ad28d5b",
+      "statement": "For secrets of at least MinRedactableLen (4) bytes the redactor also matches reversed, base64 (std/URL, padded/raw), URL-escaped, JSON-escaped and hex forms, and for secrets of at least 8 bytes offset base64 middles so a secret embedded in encoded data such as Basic auth is caught.",
+      "evidence": [
+        {
+          "resource": "repo://internal/redact/redact.go#L115-L157",
+          "version": "repo-lines-v1:sha256:59e032ca044ff0311d6a6d448fc0a8efd0a4aaaeb529eb83dada4d8fc9db31fa:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlODYwNGY5YmU2NWYzMGZlMDNhMDJhNDZkMjIxYjUxZjdkMTc5YzRmYzY4NzVhNjZhYjNiYWM2NTY2NGNlNDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc5Y2Q5N2ZhMWVlMmNiNDgzYWVlNDk1MGU5MzZmYjQxNmU0MDJmYjQwMzRiMjU3M2FjMGRmZTQ1ZjNhMDM0ZWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU0N2ZjNmM1N2Q1ZDhlYWMyOTQ2N2NhZTg4YjkyMjJkYzk2YzBkODhjMzQyODE3ZDEyZTQ3Yzg4NGQ5ZDI0MWMifQ"
+        },
+        {
+          "resource": "repo://internal/redact/redact.go#L18-L34",
+          "version": "repo-lines-v1:sha256:7dda0517e8d8b8cddecc0116ff85abc95dfd1d49004ca0a8cb44ac06ecc582d8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjljNGE4YWY0MmMwZjI0ZGZhOWE2NmI3NGYxNjQzN2VlNGYyOGQzZjhkYjdjMTNjNzI4ODA0NDAxMzlmNzM2Y2EiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImY3Yzc2MjIxYTFkNmFlNjFlNGMxZTNlMDc0MzRiMTdiOTM3YmU2MzE2ZDdhZWI3NzVlODZkMTExNzA3ZWY2NzgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRjYjdhMzhhZTVlMmMzODFiY2Y0ZmRjNjAxNzc5ZmQ3YmM5NmU3NGY3ZDA3OTVmMGYwZGZmOTQwNjQ3ZDZjNWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQ4MmNmMTU1NTVmOTkzNWFlZTYzNGE3NDg5YjY3Y2U1ODFhM2M4NjhkODc5MzYyNDE5NTcwYTIxODgxMDU4YTgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_60f2c99b77a94871a5c32b0e74a88c88",
+      "statement": "Redaction is deterministic: literals take their own secret's label before encodings, names are processed sorted, and patterns are applied longest first with ties broken lexically.",
+      "evidence": [
+        {
+          "resource": "repo://internal/redact/redact.go#L50-L113",
+          "version": "repo-lines-v1:sha256:ce54033667bc9c069360ec94941e85296f17e0b48ac38f00471947ca7ae52287:eyJzZWxlY3RlZExpbmVDb3VudCI6NjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU5M2RhZGQ4NzU0MWI4YjMzYjFkOTEwY2M3ZmVjMGZkZTA1ODFiZGUxN2QwYjE5MjY3ZDI1MmFmNWEwNDFlY2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRiOTIyN2IzMGQzNTcxNWFmOWRmNDE4YmJlYWM1YjYyZTJiYzVmOGQ0OGM3MGI5NWIyNDFlODgwYjkzNDY4MjMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYxY2U5Y2Q3MTNmYzdlZGRlMzJhNmRmNmQ2NzQ4YmU0ZTdhNGZlZTk0NzljMzBlYzFkMTZmODBkZTU0M2IyYjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_636b17ae34e546b499708f460ca02796",
+      "statement": "The streaming redacting reader withholds any tail that could begin a secret and never cuts through a complete match, so streamed output equals whole-stream redaction, except that chains of periodic secrets fall back to a bounded cut at 2*maxLen.",
+      "evidence": [
+        {
+          "resource": "repo://internal/redact/redact.go#L257-L344",
+          "version": "repo-lines-v1:sha256:75ff8edd8e22e55cb0adf4978c89a26d48524cbe2eab121c4de3e3f7db915258:eyJzZWxlY3RlZExpbmVDb3VudCI6ODgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzYTdlZWQ2OGE0NTExMzBkM2E0ZjlkYjQ5M2Y1MWUxZWVhMGQ2ODdhNDZlZDUwODQ2ODBlYzFhZGExNmQ0NzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImJmZWRiMmE5YmI5OWM5MDFkNzc2NzY0OTJiM2FjOTRmNzI2YmQzNDc5NGUxMjJiOTVmNjhhNGM5MTgzYjI0YjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjZjNWRlM2I4N2NmMmM4MTA4MDU0MjgyOWJiNWYyNjdiZGRiNGIyY2Q1ZTUzNjE0ZTBlNzJiZjRkODI5YTA5MjkifQ"
+        },
+        {
+          "resource": "repo://internal/redact/redact.go#L346-L419",
+          "version": "repo-lines-v1:sha256:7d7ace4f83831cadecaf26b856445d2368e02865cbfa97e89ddf2935dfa3535c:eyJzZWxlY3RlZExpbmVDb3VudCI6NzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQwZjdmYTI3MTBjZWU5ZDQ0NjEzMjk1YmQwZjM2ZGE0NGM3MWZiOGNmNzc2YmM5Y2FmMTVkYWFlM2I0NGNmYjYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI2YjAwZTc5MDcxMWJhNzgwMjdkMGFhZmYwNjFlOThhMjFkZjkxMjI4OTkxZjBkMGNhZDhjYTMyOWFlZGI5ODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIzN2JlYTViNDBkOTQxZjlmZWU3NzZjOWZiMmUwZGY3MDdiMTUzYWNjNWQzZDE0YzBkODViODlkMTkzODNiN2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_e67813f5f9a447a8b52a0bf1f7fb042a",
+      "statement": "MCP exec output is captured in a capped buffer with slack of 6*longest+4 bytes and redacted with RedactBytes; on overflow the slack is dropped before the truncation notice so a secret fragment cut by the cap cannot leak.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L1228-L1273",
+          "version": "repo-lines-v1:sha256:6dbef92baf3edd8c3645eef173e70ba4e4ab7826003546024d878a4854c21d66:eyJzZWxlY3RlZExpbmVDb3VudCI6NDYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmOTY0MmM3NzI3YzY5NGYwZDY2ZWNlMmEyZjFhNGVkODYyZjhkYzBkNDYxNTQ0OTllMzIyOWY1NmZmZjU3MTgiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk3MzRjMmQ1NDlmNWU2MjdjOTRhOWQ1NjRjYmM5MGJiNDA2YTA0YWRhMWYxYjZjMjU4MTg0YmM5ODRlODI4NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU4YjQ2OWI4Mjk1MmI4ZTMxOWEyOTFjZmM2MjQ1MGZmMWQ0MTcxODlmYjU1M2Y3NWM3NzM4NGEwYTVjZGJhMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUyN2QyOWIzZWU0MDBmMjdlZWJmZGMyMGMzNzI1OTIzMDZmYjJlYWI3NTdjZTYxMDJlNDNhZTU1Mjg4YjY3MWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_cf9f7ff8c75b46a8a5f6bbb335baaae7",
+      "statement": "The MCP server refuses to inject secrets shorter than MinRedactableLen bytes because they cannot be redacted reliably.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L171-L172",
+          "version": "repo-lines-v1:sha256:e1809405262efd0d71b840ff7045365e5fe63053544ea7708a842b16a1a33ef5:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjk4ZjUyMWU2N2RkZGI0ODdiZmM3YTM4YzcwNDRmNTA0MmRiZDAyNWM5Mzk5YzdiNzMyYmRjYzAzNDFmMTdkMiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZWNlNWY1ZDE2OWVhNTY0MTllYjFiY2ZlN2I4YTMyNGFhNmIxOWJkMWNjMTU3YTBmNjI5YTg0NjAxOTU5YTdjOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjUxYTM3YjkwMmYyZTA3MjQyNjY0YjE2MWZmNjA0OWFiYjBjYTY3YTFmYzA0NmViMzZiMjNjMzQ0YmYxNzVhMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjFhYzA4YzJmMzhkNzA2ZTk3YzM2ODhhYzdiMzg2ZTk4MjdkNzVlZjA3NGY5MmI5ZDcyNjhmNzg4YzBhYjE4NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_cdd6babfafb04ea994b08ab953e25ae5",
+      "statement": "Secret memory zeroing is best-effort and documented as unable to reach execve copies, fmt intermediates, library copies, freed pages, or strings shorter than 8 bytes.",
+      "evidence": [
+        {
+          "resource": "repo://internal/sensitive/clear.go#L1-L19",
+          "version": "repo-lines-v1:sha256:f30cb2552846012bd2406d4a79ad6ccd528a4dd0e066d4154aecb6fe39e1e00d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YWIyZTVmY2IyYzg1ZjBkNTE3Y2E5ZjA1ZWQxMjg4YTk2OGFhY2QyOTBkYTZmYjdjMmFlMDBiNDc4NzEyNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YmMwZDg0YmE5NzRmZGFlYjJhMmFjNWQ4MTY1N2IxYWU0ZWNmYjFlMDYxOTExZDA2ZjNhODRkMmY0YTI0MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZThiMjcyNDI1MTk0ZTY0YzIyNDg5OGRkOWQzMWEzZjYyZjlmYTI3MDJhMDI1NmQyZWYzZDNjMmNiMDA0MzYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

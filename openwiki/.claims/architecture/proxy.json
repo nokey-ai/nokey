@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:8fda60293b314dafa0cdbf8a1d6f2b13469cbc4aaf2e86494e842908827ea255",
+  "claims": [
+    {
+      "id": "claim_de18bbaf63a44c469548c304f8211c7b",
+      "statement": "Proxy rules must list hosts and headers, reference at least one $SECRET in a header, use ports 1-65535, and cannot use approval: always because the proxy cannot prompt.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/proxy.go#L34-L86",
+          "version": "repo-lines-v1:sha256:a34a64d5a8ddf763a9f0a8021339f58a2aa0067eafaeb3d136e3d44a24c240f6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxNjFhOTY2YWVlZmFiNTRiY2UyNWQzNGNlNmIwOWViZmNlZjc3NDk2MTYzNmQxNWM4OTIxN2QwOWY3OGU1MmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliNjQzNjBkNjA0ZjdhMGNhOGM1ODhkNmEwY2ViYTdjYWU2MWVkMzBmYWQ0OGU4NWM1MWRlZmU0NDYwMjllNjgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImZiMWMzZTRiNjJhZTgzNzRkMjNjYmIwZTJiYmI4M2Q2MjhhNjdlY2YyNDVkNWMyZWQ5MWJhNmRkMGU4ODcwYmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2f3dcd2d28fa42fba7a76946cf5d0cc3",
+      "statement": "A proxy rule without explicit ports injects only on port 443.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/proxy.go#L103-L110",
+          "version": "repo-lines-v1:sha256:792cff53fe0cf0c1a17cc842fb9b8cbf34b421752bc082b9eac5263a5fa2ad67:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWY0MDI5NzAxODgxMGI2OTdiNGU5NjdkNTZhNzEwYzIzNmY3NmE4MWI2YzU5MTE5NmQ1M2VjYzNlOWYxZTNjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzNiNTI5ODU0NzFhMmM1MTEzNGE3NWZiMTUwZTBkZmYzZDc3MGY0NmViNGI4YjNlYWY5ZmQyMTdhMjBkNmE3NyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://internal/proxy/rules.go#L10-L21",
+          "version": "repo-lines-v1:sha256:25413129234b82bb132930d24fd68042179f4af847a132beeda3cdfb9bbd79c3:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM3NjYyMTc3OWE1MTYyZTczNzU4YzE2ZjM4MTg3N2I3YzUyZDQ2MjhlMzViZTdlZGU5OGE2ZTkwODcyZTlmYTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhN2JjNDRhNTc1ZGFiYTE1Mjg0NzVmODMyZTZkMTY3YzNkZGE5ODEyZmVlNDhiYzM5N2Y1YWVmYjZjNzE4YjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFmMDgzNmU5NTgyODc4ZTE5YThjNGM4YjQ5MTdiMWM3YjcxYmZiODUxMjdhZDFlMzFmYzg5YWM5Nzk0Y2U2MjAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_d2614ab3429241fd9643c4459441e628",
+      "statement": "nokey proxy start validates a loopback listen address before touching the keyring, requires proxy rules in the approved policy, and requires human confirmation naming the injected secrets before reading them.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/proxy.go#L106-L158",
+          "version": "repo-lines-v1:sha256:becb05a9a2abb6e647d5160b95dbc10e15ead5bfe34c5b34d84d928bf47e1d06:eyJzZWxlY3RlZExpbmVDb3VudCI6NTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFhMzQwYmE4YTBiOGZmYTYzYjJkMmIwNTM3MTVhMzhlNzRkNmFiYjYwZDI2ODk0ODIzZDdiYTc0Y2QxMzRhZWUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImMwNTgyMTMwYjcxMGI4Njg2NjUzMmE0NjllNTM4YWRhMTVmM2E5OGVkZGE3N2IwMjdhZTk5Y2M3ZTk3NjA1ZGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgxNjZiMThmZTkzODc2OTRjYjg0MGY1ZThlYTYxMmRhYTE0MWM1MjA2OWI1Y2NmYjY4YmY4OWViMWI0MmZiN2MifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_6f968aa05de240eb9669d33b0069b9ee",
+      "statement": "Each proxy run has a random credential embedded in its URL; requests without it are refused with 407 and audited, and Proxy-Authorization is stripped before forwarding.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/server.go#L103-L139",
+          "version": "repo-lines-v1:sha256:4e090a129235c6efc7928078482079e94fd0e1ee590fb018690ee31b98ee3a6d:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM5Mjg5NmJhNTU4Zjg1N2Y1M2Y4MTNhNjY2NGFkOTI0ZDAzNGI4NjA5YmE1ZDI2ZTUyNTM3ZDlhOTU0NzRlMjAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI3ZjI2OTRlOGJiODNlMzNkNjI5NDViM2QxYTBkZTVkOGQ0YTBlZmJmMjcyZTlhZTNkNjhkODEyMGQxYzUzNTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA3YWYzNDI1N2U1ZTY4ZDZkZjNmMzVkZDBkN2RlYTdiMzUzODgyYTQwYWE1ZWE2NjUzNDI2YWMwZDJjMjJmNTMifQ"
+        },
+        {
+          "resource": "repo://internal/proxy/server.go#L305-L319",
+          "version": "repo-lines-v1:sha256:6aff7d19a9e054d47bef151514d98b35e494aa1e2e09650bd1f899ce2e5af404:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxYTcwNjQxNDE1MGE4Y2E4ODdiODdiNzMwMzkzODljMDcxYThkZTMxYjY1NTAyNjRhMGFkODQ0ZmIxNzE5ZmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQxZmUyYTc4ZDViNWRjMTczZWM2NDUxZGFhM2UxMWZiMTM3NWNhOTBiMjEzZjNmYzI5MTE1ZGZhY2U3YTBmMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4NTRlZjhlNTM1NjdlZWNhNzZhNzExOWY0Mjk1YjBkMDVlMDQzM2MwZDIzNDYyNDM5NzlhOTY0Njg4YTU2MmYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9ad5f9d536914966a76638507ddff5e2",
+      "statement": "The proxy never injects into plain HTTP: requests to a host with a rule are refused with 403, and with egress blocking all unmatched hosts are refused.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/server.go#L321-L357",
+          "version": "repo-lines-v1:sha256:b2f4a306f2ef28c59e869d799bba6ebea5f163808f5bb0368c46c93cd0d78cc9:eyJzZWxlY3RlZExpbmVDb3VudCI6MzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc4NjUxNGU4MzNiM2YyZGEyOGY4OTA3NjUzNjJhOGY4NjZmNjg5ZDljNWQ3YzU0ZjQyYzZkZjU1ZTQ1ZTQyNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0MzYyNzAxYjlkOTZiNmMwNTRiMmIxMmY4MzAwNjA4YjNlMGE5MTgzMDc2NzExNTkxMTllZDg2ZTliZmZhNTIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_01eec70f4a764248aeafb1f606a14bf6",
+      "statement": "CONNECT to hosts no rule names is tunnelled without decryption; for ruled hosts the proxy terminates TLS, requires SNI to match the CONNECT host for DNS names, and requires each inner request Host to match or answers 421.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/server.go#L371-L480",
+          "version": "repo-lines-v1:sha256:1293226f66c5a59c3d71b7ffa4d1529d762b6a61191790ffc7786088659ce415:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzMDljOGZhYjZlZjk3NmZmYTA5MmM3NTYyNGE4OWZjODhmY2NlYmJmMDQ0ZWRjNDdmN2Y2YWY0MzM5ODVkNGEzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI2NGVmYzQ5NDE4ZDI2ZGNmMTI5YjIyYTZhYTIxMTA4Y2VlYzM3Njc3YTMyZDA4ZTlkNWZlZTM1ZGRhNjZiYjlkIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3ZmMzNzNmNzFhNTg0NDc5OWJlZGMxMmE5YTZhMzgxOTA5MGNiYTA5N2FjMmY1Yzc4NzNiNjI0OTYxNDYxZmQ3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwNjBmMGRkNmExMjc0NmI1ZjNkNzllZDI1NjNlNTg4NTUxZjdiY2EwN2IyNmU2ODFiNDlkMmFmZTBlZGVkZGVjIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_9d6786293ecf4635b2f14a693606b7ec",
+      "statement": "If a matched rule's header cannot be resolved the proxy returns 502 and does not forward the request without the header.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/server.go#L488-L510",
+          "version": "repo-lines-v1:sha256:76992345136035ebf03c1613147342a4d6474185969bb3a76d06a37d18473b6b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY0ZWZjNDk0MThkMjZkY2YxMjliMjJhNmFhMjExMDhjZWVjMzc2NzdhMzJkMDhlOWQ1ZmVlMzVkZGE2NmJiOWQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE0YzAwZTE2NzAwMWM3MmVlNjFiYmEzMGNjZGIxMGE1M2IwYTViMzg1YjkwNWJhNzQ3NGMzMTcyYjgwZjRhOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk4M2VkMDQzMDY5ZWY4NTA5YmZjNGZhZWIxY2VmOWYxOTVhODljYjJlNTRmZDk0ODc5ZWJlYmNmOWUyODAxMzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f7c892cdd1ff44748ba3fe9dc0b5e5cb",
+      "statement": "Upstream requests use a transport with Proxy set to nil, ignoring nokey's own HTTP(S)_PROXY environment so injected headers go only to the rule's host.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/server.go#L88-L98",
+          "version": "repo-lines-v1:sha256:0ed92d7564023a88c84dd31653bf7d0e5f14fb49a37a24ea7fbb3a71182d86c6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMyN2RmMTUzOTJhMTFmOTVmM2EzYmVmNWRiN2U5ZDA5YTUxMmEzZWUwODlmZDRiMzFiYzM5NDlkOWE1NzM2ZDAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliNjhlODFjNDQyMzcxMzhhNDRiYTcxOTQwM2Y4MDgyZGZlNWFmNDcxMGQ5NTIxNzY4YzhjOTg5ZjUxNzExOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM1NmNmM2Y5OTIyNzkwNWRmZmNjYzFmMGVjOWYxZDI2YzVlYzQ5ODYwZjYyNDE1ZmUzYzVkMTA1OTk0ZTY0NmUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b6be359ab2164fe89cce6b70be956e7b",
+      "statement": "The proxy CA private key is stored in the keyring as the internal entry __nokey_proxy_ca_key__, not as a file, and the certificate lives at <config>/ca/ca-cert.pem.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/proxy.go#L189-L206",
+          "version": "repo-lines-v1:sha256:0d6f8c828b2f36de62fc446f81444cf84564593a64dd088c3a19d139d928c390:eyJzZWxlY3RlZExpbmVDb3VudCI6MTgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjMzFhZDYzNjY2YzY4OWViYmQyODkzOTE1NjNiNzg1OWFlOGEyY2FmZWNjNTg2YzM2ZjBiN2ZiN2E4YzgzYWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzFiNmUyY2EwN2Q4YmFmMGViNDRlNzQ5ZGJmNDkwYjM5MmUzYTUzNGVmNjEwMjI3NzExNDZjZGY5YWYxYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijc2MTQxMTVjYmUzYWQwNGIyODBlMDA0Mzk0NjY2ZTM5MWVjYjhiMjMzMTNlYmQxNjYzZjY2ZTRlZmVhMjkzYmIifQ"
+        },
+        {
+          "resource": "repo://internal/proxy/ca.go#L33-L41",
+          "version": "repo-lines-v1:sha256:6b340b18a9754cfc7bdcc08f2b6f86b43f51f725c99545dff0036632ec508c0a:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzBkODRhMmFmYjBiNjQyZmVlZjA4Y2RjYzFmZDA2YTdjMTNhYjUxZGJjMGU4ODk2ODE2ZWEyNTIzMzUwZmU5OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMzg0MjM2ODg4OWRhM2UzNWZjOWEyYzkwYjRmMmUyODZkZWJkY2IwZjFmNDE1YjJjMmNkMTNiMTE2YTdjM2UxOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYmY5MzdkMWFkMTQ5ZWE3MDAwOGM5NWNmYjczNDhiMzQ2MjFlZjEyMmFhY2QyMjUxZjkzYzc2NWY5N2ZmYjg4MyJ9"
+        },
+        {
+          "resource": "repo://internal/proxy/ca.go#L66-L75",
+          "version": "repo-lines-v1:sha256:68df0f137b440a2a4b9a29b852e8fc8213cfe2fad4710abcba37dc781a4064c1:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZlNjJhMGQ0NGUyZGM0MTIwYTQ0ODliZGM3ODI2YTAyMDg3NDQxYjdkOWZhNjYyMDAwNzk1ZmUxMWM2ZTY2NzEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImM4MjI3ODY3MGEwZDNlNmY2N2Q3YzgzODFhYzRkZTg2OTI5YWJkZmI5NzQ2YWI1MzJhYjcxNGNkYjk2NTI0NzMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijk4ZmNmMTFkZjgyOWU2MDNjMTkwYWQ0YTFmNTU3YzE0NjA5MjZkYzgxZDA3ODZjM2M0MDI4ZTE1NDdhNjBkZGUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVmOGYxN2IwZGJkNzQwZTQ4ZGMyOWE1MmEzNTg5OTk2OTU1ZDYzZmMwYjgyZGI2NzM1OGFkYWZlZmU2Njk5YjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_5653c7fba6e94139b152e7997347274d",
+      "statement": "The proxy CA is name-constrained to the rule hosts (an IP-only CA permits only nokey.invalid), lasts 90 days with renewal 7 days before expiry, and is regenerated under a directory lock when unfit, removing any legacy unencrypted key file.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/ca.go#L43-L119",
+          "version": "repo-lines-v1:sha256:617938c7b030052d7a1a405447bd3268e088269a2abce1d243aacae601bec368:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwZDk4NmIwZGY3ZTljNDdhYTc4MmIwNjYwOTQ2OWJjOGVlY2E0NzYxMmI4MzhjZjgyOWRkYTRiY2RkZDMzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkyZjViN2E2YzliMzY0MmE3NzIwYTNjNTBlNDkyNWRjZWM3MWE0ZmJlNTJkMmJkNjljYmNkODQ1NjlkYzNhYzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVlYTUxNzZjY2MxOTZiNGI0ZjI4MTM5ZDQ1Y2QzNWQwN2M4YWVkZTliOTIwZWNiYzVhY2U2Zjg3M2I5ZTg2OGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_efe440605f824ae9a4104575758d8112",
+      "statement": "Leaf certificates are ECDSA P-256, valid for 24 hours, cover exactly one host and are not persisted.",
+      "evidence": [
+        {
+          "resource": "repo://internal/proxy/ca.go#L269-L300",
+          "version": "repo-lines-v1:sha256:c113f4abdd5a322d7dbe6ee935dcac95e05edf34ec27c07a64174b3aa133ee65:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQyNjM2YThlNzNjODU2ZGIwODZkNGU5ZWNiNjgyZmU4YjgyNmIzMmY5ZTAzZjJkYWEyYzU2NDA1NzYyMDVhYTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImZhZDcyZGEzMmFkOTc2ZTBkODdjNTlkZDM4ODZkNDg5NGJmMWIwYmM2ZTM2YmU0Y2ViYTU2YTA2MTg3MDNkOTciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU2Y2FmZmZiNWFhZjFhMDAzNTA4ZmI5NDhkY2JhZDkzZDA3NmM5M2I0NjdlYTE4ODhjNDBkODUwZDAyZThkYWIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3367b060189a46b8b88ada22879eb421",
+      "statement": "exec --isolate starts the proxy with unmatched hosts blocked and injects proxy URL, empty NO_PROXY, and CA bundle variables into the child environment.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L288-L343",
+          "version": "repo-lines-v1:sha256:89f5deccf0a429b164e99673271f28aa77c82f499c546e55672d6fc1c967e153:eyJzZWxlY3RlZExpbmVDb3VudCI6NTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ5ZTg1MzNjYzE1YTQ2OWZkNzAxYTcxY2VkYjNiYjIzNzQxYmJiYmIyYzUzZDY0MTY3NGNhMDc3Yjk1YmM2ODEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjNjMzNjYjdjNTc4ZjE0ZjI0OGI4Mzg2OWU3OTc5YzM2YTk2OTQ2MWYwNzVmZGFiOTliYjU2YmRmODA0MTFkMTAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA2MmJlMzY1MjJmNmMyNWU2ZWU5MzkxMzQyMTg3MTZmYTJiYjBmMTRjYmYxZjRkZDVkYzJkYjQ4ZTVmNWJiYTEifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

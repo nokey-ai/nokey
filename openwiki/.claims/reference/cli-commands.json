@@ -1,0 +1,104 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:f919c8060c1345481774de949d0a0b1e41a6699030a563c1af403ac7fc15d68a",
+  "claims": [
+    {
+      "id": "claim_107834ec1e5f4f65874afe13bfe8ce91",
+      "statement": "The global --backend flag selects the keyring backend for every command.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/root.go#L62-L66",
+          "version": "repo-lines-v1:sha256:4c6a085d714338becbe22ce1c72d0f03a3badcaf1d7490b5e86869cd87fcbd23:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiM2JhNjNhNjZiYTUxNWI2MjgyZThjZWMyYjc3ODU1MTA4OGJkNTgzODM0ZmFiOTgzYjZhOWVhMTczMWNlNDgxYyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMGMzZmQwMGRjNDQyMzk1NDExZWRkZDc4NzAzNDBjZGQwMzEwZThlYzlhZmM4MzZiZWU3OTY0NmM4ZmNjMDc0NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTE2ZTFlM2Q2MjY0NGU4YjFiNmEwZjA0YjNlMWE2ZjZkMDYzYTQxNTc4NDIzZGE0ZDRlNTJkYzY4ODdmNDEwNCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_2b93068cca1b4f9ba149b91f796a75af",
+      "statement": "Replacing, renaming, deleting or import-overwriting an existing secret goes through the human gate, while storing a new secret does not.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/delete.go#L36-L36",
+          "version": "repo-lines-v1:sha256:334d42e570dba5596b5bccc03c2c5daac59463c8f673b505773f4b4459f83977:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzM0ZDQyZTU3MGRiYTU1OTZiNWJjY2MwM2MyYzVkYWFjNTk0NjNjOGY2NzNiNTA1NzczZjRiNDQ1OWY4Mzk3NyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzM0ZDQyZTU3MGRiYTU1OTZiNWJjY2MwM2MyYzVkYWFjNTk0NjNjOGY2NzNiNTA1NzczZjRiNDQ1OWY4Mzk3NyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGM4Zjg2MmYzNjcxNGEzMGM5MTJmYWFmM2IwNzEyMDliODU2NDdmYTkzYWU2ZDg1OTZkN2NiNGM1MzkzMGEwMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjY1NzUzOTNjMDg1NTA4NzFkM2JkOGU0NGZjNmQ4NDQzOWE4ZTg4NjY2OWU1MWY1ZTc3ZWJjMzhmODRlNDQwZiJ9"
+        },
+        {
+          "resource": "repo://cmd/import.go#L149-L149",
+          "version": "repo-lines-v1:sha256:94d9bbd4b16ca3633ffd32172a634416dbad093305dea181868114d05ae67803:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRkOWJiZDRiMTZjYTM2MzNmZmQzMjE3MmE2MzQ0MTZkYmFkMDkzMzA1ZGVhMTgxODY4MTE0ZDA1YWU2NzgwMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRkOWJiZDRiMTZjYTM2MzNmZmQzMjE3MmE2MzQ0MTZkYmFkMDkzMzA1ZGVhMTgxODY4MTE0ZDA1YWU2NzgwMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGM2M2U1MTU2MjU0OTdmZDA5MmVjYzY3MjczNTE3NGI2MTQ0OTE1MTMwZDE3YTlhOTA5NjUzMWIyNDkwZGJkOSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGYyZTRjZGFjOGI3MWRhZTBhMmVjNmMxOThkYzg3MTFlM2Q3NmZlMjMxNmZmODAzNzY1NTkwOGQzMzU5ZjVlZiJ9"
+        },
+        {
+          "resource": "repo://cmd/rename.go#L78-L78",
+          "version": "repo-lines-v1:sha256:fe81b286d6ee5957e787a0bb48d06ac21f1ad7aba45ecdf4bebabe5cb3765925:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZmU4MWIyODZkNmVlNTk1N2U3ODdhMGJiNDhkMDZhYzIxZjFhZDdhYmE0NWVjZGY0YmViYWJlNWNiMzc2NTkyNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZmU4MWIyODZkNmVlNTk1N2U3ODdhMGJiNDhkMDZhYzIxZjFhZDdhYmE0NWVjZGY0YmViYWJlNWNiMzc2NTkyNSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMjI0ZDFlOTU4MGJmY2Q3NGFlZjY4YzM4OWM3OTJkYWI3N2U2NTA2M2NjMTdkYmIwNzE1ZjA3NTI2M2QzNjdmNiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        },
+        {
+          "resource": "repo://cmd/secret_gate.go#L13-L24",
+          "version": "repo-lines-v1:sha256:9aa7286463e3783a6d2eb762c0f502c76b7d08b7c5b56ebe219df91f045068d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmZTg4YjE1Y2I3Mjg3ZWQ0MDNlNTBiMjJjZGIzOTRmZTM2NjA3ODM5YzM3M2QzODBmMmEwZjZjZmU0ZDdlZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlZmMwNTk1MDgwOTVmZGM4ZjdmNjVjZjMyMzE5YTUxZWVhNDI1YjI4Nzk3NjFjMWVlODhhNWRkZDJlODgwNzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0MGQ3YThmZjMxYTBmYTYyZThlZTFmMjdjNmUwYzlhZDg1ZDY4YTdhYTZjYjgzZmExOTI1ZWIzYTQ1ZDgwMzQifQ"
+        },
+        {
+          "resource": "repo://cmd/set.go#L91-L96",
+          "version": "repo-lines-v1:sha256:9ef856bbb5e75d9f1dd15fbb5208cedc3c4fae3bc44471a7c469fa0c7b2adac6:eyJzZWxlY3RlZExpbmVDb3VudCI6NiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMjliMjA2NDAxOWQ2NWE2NmYzNWM1NTdkNzM3OTIzYTkxNmJjZGQ3NjM4Mjk4ZjA3NzY4N2NlMzBmNjdhZDhmZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTI2NDY5NjI5MzFiZWJjYWQ5NDY5YjVlMTVhMTEyM2Y1MWY5MTliYjI4NjViMTY3NzRmN2IzYmE2ZDIwN2Y2NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjcwMmViZmZjOTlhY2Q0ZjMxMTE4N2M3YTdkNzc0MWZhNjI0NzAwMDE3ZjkyOTllOTkzMTJmMjc0MmVkZGRiMCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_049831fa13f64dd6a6db5147680e4425",
+      "statement": "nokey export requires the human gate before printing secrets, filters names with only/except before reading values, and then applies the PIN method when configured.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/export.go#L49-L98",
+          "version": "repo-lines-v1:sha256:36b25ba05cdc775559605eff02ed09712196a6417e66ab08ae93accc5ee072a6:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFkNDI5YTRjMjQxODRkZWRmYjBlMWQyYzE2OGVhZjFmNzVjYjQ2ZDNhZWUxYTA3MjljNjlhOWYzODYzOWFkMDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3ZDcwZmJjZGQ4ODYxNTk1OGZkNzVhM2VmYjIzOTI1N2QwMDk1YzdmMDgyYTBkZDUyOWZjZTlmMTljMmRlOWYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQ5OWYxMjg3ZmI2MTQ0ZmM2M2I5ZTNlMGY5NTQwODVlZTMxYmI1YTk0MTJmNjFmOTY5M2ZiZTI1ZGFiOGNhMmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRjNjNlNTE1NjI1NDk3ZmQwOTJlY2M2NzI3MzUxNzRiNjE0NDkxNTEzMGQxN2E5YTkwOTY1MzFiMjQ5MGRiZDkifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7a10806904f449a3a57f16165b845dee",
+      "statement": "policy approve requires the human gate both to approve the current policies.yaml digest and to approve running with no policy file.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/policy.go#L60-L100",
+          "version": "repo-lines-v1:sha256:9b83d4675f263f950f54e628d9fabf9b78cc6016388c8a215136771d3992f36e:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjViYTM5OTUwN2M2MDVlYTkzZTk5YTFlZjg1MjQwYjBlMWJhYTVlOTdiOWZjNjBkOTJlMTVhYjgwNTQ3ODJjZjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM1NWJhODE4NWRjZWJmMzg1YjYzNzNkNzJhYTg1YWQwODgzNjc5ODhiZWZiMDU5ZTRjNGRkMzE3N2FmZTU1Y2EiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiZmM2Y2IwNzQwMWY4Zjc5MWJiZmU3MzVlMjE1OWY1YzA1MzBjNzY1YTYyYjUxN2EyMTQ5YTNjMTlmMGU5MTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImU1NDFkNWZmZWY1Njk1NjNmNjRlMDdiZWFjZTgwZmNjYWQ0NjkyZGQ1ZTllY2I4MWRhOWY4MmQ3NjIwYzEyNzcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_15313c4bd16045a0ac7aee0d54be562f",
+      "statement": "proxy start and keychain backup require the human gate before reading secrets.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/keychain.go#L357-L357",
+          "version": "repo-lines-v1:sha256:37d6c52b8ebf263240c381dd0c1731b564a87ccd63b9d0efa609f2faaad5110e:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdkNmM1MmI4ZWJmMjYzMjQwYzM4MWRkMGMxNzMxYjU2NGE4N2NjZDYzYjlkMGVmYTYwOWYyZmFhYWQ1MTEwZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzdkNmM1MmI4ZWJmMjYzMjQwYzM4MWRkMGMxNzMxYjU2NGE4N2NjZDYzYjlkMGVmYTYwOWYyZmFhYWQ1MTEwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOWNkYzdmODNlZjFmNmJhNGZmMzU5NjBmMDU4NThmMWI5Y2I2ZmZiNThmMWVlNmY1ZTI1MTc4YThmMmI0NTVkZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTg2YzU5OWRjMjQzMWRjZTI0ZjcwNmNhNWNiYTFmMjgxZjU5NTk1NzFhZmEwNGMyMWI2ZjU1ZTkyYzUyMGQ4MiJ9"
+        },
+        {
+          "resource": "repo://cmd/proxy.go#L146-L146",
+          "version": "repo-lines-v1:sha256:ae3e5b5a3182773ee5f80f612dccd02fbbfcc42c9726f585f74fcf25f2776f64:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWUzZTViNWEzMTgyNzczZWU1ZjgwZjYxMmRjY2QwMmZiYmZjYzQyYzk3MjZmNTg1Zjc0ZmNmMjVmMjc3NmY2NCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYWUzZTViNWEzMTgyNzczZWU1ZjgwZjYxMmRjY2QwMmZiYmZjYzQyYzk3MjZmNTg1Zjc0ZmNmMjVmMjc3NmY2NCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGNmYzAzMWE4NGUzNjcwZWY1ZGM2NmUzZGJjYzdmZDU2MmViY2ZmNGUzOTE5MTBkNzM0NTI2M2NiMDkyNTMxZiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMTg2YzU5OWRjMjQzMWRjZTI0ZjcwNmNhNWNiYTFmMjgxZjU5NTk1NzFhZmEwNGMyMWI2ZjU1ZTkyYzUyMGQ4MiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_62539eed45af4ee0af73712be2f49e77",
+      "statement": "audit list supports --since, --secret, --command, --operation, --limit (default 20) and --json, and audit export supports json or csv output.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/audit.go#L86-L101",
+          "version": "repo-lines-v1:sha256:ab5a512d3c6aef7c1915225dd7a828161bf9dd69c40814bdfa47ba03cded5832:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImRiYWQ4YzA4YmY4OWQ2NTk5ZDMwZjk3YWNhOTEyMGMzYzU1N2E3OTU3NTAwNmRjN2Q3NWVkY2YwODI2YTA5OWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ2OTE3YzJlODFhN2EwOGM5NmQ0MThiNjE0YWE0MDQ5ZTQ4N2ZjMWZlMDRkYWE4OGJkYjE1OGI1ODM1MjAwOGMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMGViYjg5ZDQ5ODIwZTE3OTg0NTY4ODQ4MzFmNTZlNTU5YTU4OGI1ZTRjMTExZTgxMGYwNGJiYmZlYzIxNGIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1046a8f78ac84cf7a7c9476f47aa15de",
+      "statement": "status --strict exits non-zero when any check fails, and update supports --check and --force.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/status.go#L34-L35",
+          "version": "repo-lines-v1:sha256:01d3e8d647879287a59879fe2d036b406958daa804c1429ec5d55e4c7a0fcfe0:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNzhmNTJjYmRlNmNmNjA2ZmQ3OTFkMzAwMTE1YTFiMmVjNGEzYTY1NTk2NDY2M2Y4Y2JjMzEwMTAwOTQxMmU4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzA3ZWIwNjIzMDE2NzVmNGYwMTIwMDk4ZGIxNWQ2NDM3YjJjN2NkY2I0MjZiZDI5ZGRjOTM5MTk5M2UxYmM0ZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTM3ZmNiMThmNjg0YzMwOGYzMWFkZDllYWMxZTZmZWEwOTQ2NDA4NDEzMjZiNzE1MTYwOGFhNmNlOTMzNTk2ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYTMyY2FkZWFhZjJjZmQwY2I3YTYyMTA2M2JiOWZkNzlhOTQ2NjgwMTIzMDdkOTQ1YjM1MmY0MGJjZTZiYjc5NyJ9"
+        },
+        {
+          "resource": "repo://cmd/update.go#L49-L50",
+          "version": "repo-lines-v1:sha256:ac8b49ae514990ca38b61663e15249233fa9eb94b8217062c97b7d27d20182b0:eyJzZWxlY3RlZExpbmVDb3VudCI6MiwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZTRjMDhhZGEwMDY2MDFmMGM5YWEyN2JjNzQzYmRjOWYxMjVlYTBkZTNlYzI3ZmZiYTExZTIzNDRkYmNiNjQwOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYTg3YmI1MTg5ODhkZDI3ODllMzIxZTg2MTAzNDU4MTcwMjIyNGFmYWQ0OGVmNzhiNDE3YmYwODA0ZjVhOGVlMyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTk2Y2VlMzJlZTg3NTdjZGMwNDk0NDQ4ZjVmMThhYWQ1ODUwYjdjOThkYTJkZjI4YzY0YjllNjI5YTQ4OTQ4YSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMDBlMThiZjMxM2ZmNGVhYTM4YWMwZDc0MGM1ZDdmYjNkZGQwMDkyYmQwNDMyY2M5M2NkN2Y4MGM3NTNiMjM4MCJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

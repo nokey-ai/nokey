@@ -1,0 +1,120 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:438f6851593813b15623506b9f6f42d45a53ceabe4e629bc9689a627926cd898",
+  "claims": [
+    {
+      "id": "claim_8c452157680b478c8c01ef1afcf4789d",
+      "statement": "MCP approvals are an elicitation prompt followed by the OS presence dialog, because the MCP client answering elicitation may be the requesting agent; with no presence dialog available there is no PIN fallback and approval fails.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/gate.go#L55-L94",
+          "version": "repo-lines-v1:sha256:e0ea903e7675a5a9470263dbf996c343cdeaf4f2b3b42a8a518704c759b76db5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA4MWJkM2VhZDI3YWQ2MDEwYmQ4ODNlNjU5OGU4MmUyMmM2NWUzZGIwZTE4YTJiZjMzNDgxZDFkYjU2OTU0ZWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlZTNjOGJhYzQ2NTFlNGM5ZjdjOGFlMjJlNTgwMGM2MzFhNmIyMTIzNjljYmE1MDBhYzUzMWNhZmUyODMxYWMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNjVjMzMwMDA5NWI0MGEyNzE1MmQ2ZjhkNjFmNWY1OWVhZGJhODgxNWFiMTRiMWJiZTQ2YjlmMjE3MmZkNzIifQ"
+        },
+        {
+          "resource": "repo://internal/presence/presence_other.go",
+          "version": "repo-file-v1:sha256:e216626ece2dd5b32a82b11e042a0e03e7322eec95286af70bda0ed342fe669f"
+        }
+      ]
+    },
+    {
+      "id": "claim_718103328d514fa2ba6db5572f94e793",
+      "statement": "Elicitation approval fails closed: unsupported elicitation or no active session denies access, Accept approves, and Decline, Cancel or any other action denies.",
+      "evidence": [
+        {
+          "resource": "repo://internal/approval/approval.go#L30-L101",
+          "version": "repo-lines-v1:sha256:98b1c700116e099dd0af76bb3e8c60a4f375dad759a332e88c2100ecb423d0b0:eyJzZWxlY3RlZExpbmVDb3VudCI6NzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUyYmY2NWI2YjcwM2Y4NGQyZWM1NmFhY2M2NWM0OTBkNzNmMzMzZTAyNDlhY2Q0MmFkMDVhMmI0Y2FjOGYxNjIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI0MTYxOTllZWI2MTBmMmJlOWM1NmM5NGU2ZTJiM2IyYjdjYWVlMGRiNjE4NmUzYmUxNjE3MTk4YTE3ZWY1MmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjQxYWFjZGRhM2QxN2MzZGY4NjBmYjg0ZTE5ZjlkM2Y5NjJkNDNkMWE5ZDI5NjgzZjExYjU2NDFjNGUwOTMyMDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_9819f3084e164ebfbe89b0b21fee85db",
+      "statement": "A remembered approval is only returned after the presence dialog, whose text states the session-wide scope, has passed.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/gate.go#L100-L126",
+          "version": "repo-lines-v1:sha256:4048a2a8825994b20cefa7fafa7d0df564fe7f2652e18749ddcb6b41fa407abc:eyJzZWxlY3RlZExpbmVDb3VudCI6MjcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBmMGE4NWVkZGJlNGRiZTg0YjY3Yzc2NzA2N2E3MmJkNWMyMWE4ZTg3NDk2M2RiNWQyMDRiY2I3N2RhNzQ4MWYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjgwZmYwNDE1MThkZmFiZGEzNDZhYWIxMWM0ZmE2MzhhYmEwMjhjNDJjM2E3Zjk0YzE3NjA1NmU0YTZkZTc4NmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://cmd/gate.go#L79-L94",
+          "version": "repo-lines-v1:sha256:38e3f5b6d7aa22c42e152e64c63cd2513df0a1211dea128339b60aa1f0890eab:eyJzZWxlY3RlZExpbmVDb3VudCI6MTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjNTBmZTU0OWQwZDk4MmEzOTA0NWUwMGEzMzA0NTZiYzdlNTU1YjAxZWQxYWQ2MTQ0NGIxMjM4NmY0NzI2NTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjBhNjVjMzMwMDA5NWI0MGEyNzE1MmQ2ZjhkNjFmNWY1OWVhZGJhODgxNWFiMTRiMWJiZTQ2YjlmMjE3MmZkNzIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_64c5bd79f66740c9a3f8fbe40a245a3a",
+      "statement": "Model-supplied values in approval prompts are %q-quoted and length-capped (256 bytes per value, 512 for args/env lines, 64-byte stdin preview), and args are shown before placeholder resolution so no secret value appears.",
+      "evidence": [
+        {
+          "resource": "repo://internal/approval/approval.go#L115-L195",
+          "version": "repo-lines-v1:sha256:64282f225b79598b0c4449e3bffa2b004d9c37ae9f8b00a11a7a27b498b0d364:eyJzZWxlY3RlZExpbmVDb3VudCI6ODEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImEwM2I2MWE1NTMwMTJmY2M0ZjM0ZTA1ZmFjMGJiMDA5NDJhYmRkNTI3ODBiNDI2MjgwYmFiMjY5OGJjZDFjZmMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxOTk4YWIzMjNiMDdiMGM0Nzg4NTgwNDcwZDM0NmJkMWI3NjdmMzEwNmI5YzVmOWUzNWJiNTlkZTAyOGExYWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        },
+        {
+          "resource": "repo://internal/approval/approval.go#L20-L28",
+          "version": "repo-lines-v1:sha256:edea747624cf07270ceb89a079237d359f1eb3db15078dd7306113cc2e5aef2e:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNWNhMzE0NmJjM2E2Y2I0ZTljMTIyZjQ2ZDY4MWM3ZmUxOTljMzZiZjBjNDQwZjAwNzczMDk5OTEyMTliZWE3MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNzlhOGJkODFiOTg5YzYwYjEzNjQ2MmUyYzJiNjlhZDljZjQ1MzQ1NGIxODhmNjg4MWE1NTU3ZTM2Mjk0MzY3YiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMTNjMjZjNGI4YWU3YzljY2EwNTg2NGIxNGZjZDkwZDBlOTQ2OWM0NmQ1ZWRmZTI0NWZhMTU1Y2VjNjBiNWNjMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMjI4YThiYmMwYTYzYmExZDFiMzhmOGNlOTQ2ZmEyOTdmYzhmNWE2ODQ2ZTUxYWMwZGY5ZWQyN2VhYjE3ZTE3NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_ae033f6652344a549567a41700db9942",
+      "statement": "Session grants are keyed by command and cover later calls with a subset of the approved secrets, accumulate per command, live only in memory, and are consulted only after policy checks, token_required and approval: never.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L796-L858",
+          "version": "repo-lines-v1:sha256:d84a589d2b52d9d3e250a7d9bede98b14e876385050a4fd762b5f88ddb7b6ad0:eyJzZWxlY3RlZExpbmVDb3VudCI6NjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImIxY2U2ZDI2NDk1MzM4NmNjODhmYjkwZjQwNGUzZTFjZmIzNjRjZjQ4ZjhmMGFkYjg5OTZmOWJmZWY1NmM5MDMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjY5ODU5YTE4MGE0ZjU3MjYxZDhkZDZkNzU0MzdlMWZjZTRmNjRjYmE5OWQ4MmRmNjJhYWFhYTJkNGY3NTA3NDIifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_371ed320e9ac404bb8ca3e195c839a9d",
+      "statement": "Tokens are 32-byte random hex IDs held in a per-process in-memory store, scoped to secrets, a command pattern (default *), an expiry of at most 3600 seconds, and an optional use count.",
+      "evidence": [
+        {
+          "resource": "repo://internal/token/store.go#L14-L112",
+          "version": "repo-lines-v1:sha256:05b1d21cb554271685436773483818ff9f6a46e71fad9c82f8d5f5d7b3d9766a:eyJzZWxlY3RlZExpbmVDb3VudCI6OTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwZDk4NmIwZGY3ZTljNDdhYTc4MmIwNjYwOTQ2OWJjOGVlY2E0NzYxMmI4MzhjZjgyOWRkYTRiY2RkZDMzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBhN2JjNDRhNTc1ZGFiYTE1Mjg0NzVmODMyZTZkMTY3YzNkZGE5ODEyZmVlNDhiYzM5N2Y1YWVmYjZjNzE4YjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIyMTMxODczYjRhZGQxZTIwOTM0NzlhYjlhNWJiNTE2YTQ0YzQ3YTQ4ZjQzN2ZlZGE1MDlhZWUyMDA0ZDQ3M2IifQ"
+        },
+        {
+          "resource": "repo://internal/token/store.go#L218-L224",
+          "version": "repo-lines-v1:sha256:b18bddbf6afeb7ce3aa46268afca934bb441869fb5967619e92c9d52c5b1fd34:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMTI2YTVhYjY3NjE4MWMzYmVkOTliNTc4MGRjYzFlMmQyNmJjYWZiM2Q4MjNiYzA2NWRkNDEzZTJmY2RkZmI5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGFlOWNiZDg4M2FjODBhNWRiZGEwZmYwNWQwOGNmM2VlMWE5NmNmMTlhYjNhZTAzNmJiNDVkZjdhM2U1ZGRmMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_215d34722a814a219852dc4e8ea2616b",
+      "statement": "Token use checks existence, expiry, remaining uses, coverage of every requested secret, and command match via policy command matching, then consumes a use and deletes exhausted tokens.",
+      "evidence": [
+        {
+          "resource": "repo://internal/token/store.go#L121-L216",
+          "version": "repo-lines-v1:sha256:a76e7a6f1409e8d1e09263455ee561dc71ffc9d03e1e1c70fb46fbe3b76bab17:eyJzZWxlY3RlZExpbmVDb3VudCI6OTYsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYyMjM0NTAzM2ZhODdkYmNkNzVhNzc5MzA3NThhZjkxMzVjYTIyOTFjMTY5MDUyYzYyMzBhYWIxYjQ4Njc1NzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImVhZWY2MmZiN2EwNmM4YTY3Yzk4YTA5ZmM0ZDNjZDMwNjAzMWFkNGJkYWFmYjIzNGE1ZTg2ZmRiZGU4YThmZmEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE4MjM5NDUwYzAzNzdhOGExYTQyZWI2ZDk5OTNhNGU5NDljNzA2MGIzN2FhNWEwZjEyNzdhZGQ3MGUyNTQ4OGUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_b59969c1da734c72899f933abb12b39c",
+      "statement": "mint_token validates the request and secret existence before always prompting for approval.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L648-L690",
+          "version": "repo-lines-v1:sha256:9d898d5c248e96326a506f36c8faeb9345f4e25816381c36a26d3bbc3ec237e5:eyJzZWxlY3RlZExpbmVDb3VudCI6NDMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MDdlNTYzZDNmMzAxYmUxMjQ3YWI5MTA0ZjljYmMzNzE3ZjNlMTQ1MGMyNWVhZGIzOWU3Y2EyODczZGNkYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzYzcwOWMzNjYzY2EyNjVjMmEzNWI5NmM3NjM2YzViMWU4NDk3NjQ5MmVjMDUzNGIzOTFmMDg0YmRmYjMyM2QiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMWU0NDIxZjE0NWU1YzBjNmFhYzE4NGEyNmI2NjBlN2VlYWI5YmUyMDc5NjE4OWQ1ODdlYjQ4MTkzODhiMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImM4ZmViNGMyZGNkZTBiMGFmNDQ5Mzc4Mzc1YTUyNTlhMDM5MmY4MmJiZDgzNjVkODYxZTcxYjVmOWJmYjY3MGQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_2bbb8d7f70a94741ac66f08f485a7e5b",
+      "statement": "The macOS presence check uses LocalAuthentication device-owner authentication (Touch ID or login password) and reports unavailability without a GUI session or passcode; other platforms always report it unavailable.",
+      "evidence": [
+        {
+          "resource": "repo://internal/presence/presence.go",
+          "version": "repo-file-v1:sha256:f2908a46a3408e1e3eac0b4dceaf21ee92b23b8068daf623515525638a124b4e"
+        },
+        {
+          "resource": "repo://internal/presence/presence_darwin.go",
+          "version": "repo-file-v1:sha256:9480eee2e74b9626679ff4919b68a76c90f1b56bcc79910e5cf14fae91b43105"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

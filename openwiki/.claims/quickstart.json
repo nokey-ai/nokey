@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:c518aae75b3486b2b7951ed064e8b2ae818e1e0fb9dccf562218142909ea1a5b",
+  "claims": [
+    {
+      "id": "claim_e62a5762ee204dcc8ee9dd00ce751878",
+      "statement": "nokey stores credentials in OS-native secure storage and injects them into subprocesses so AI assistants can use secrets without seeing their values.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L11-L30",
+          "version": "repo-lines-v1:sha256:665e1bb6c96a0d8970dc8649d666cd3737836e18ca36851353f0de45dabc731b:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiZWJmM2YyMzhmMDMzOWIwZTA5ZjkyZGFlYjJhOGNjZDJhODBlMTQ1MmY4ZTVjOGY2MGRiMWMzZTFmNTc5MTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjJiMzMxZThkZmFjNmYwMDRlMjVmOTUxNzk0MTU1NGEwOGJjMDJhMWVmMGRhYTE2MTA4MmQ0NWYwZGZkYTk1NzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNmNWVmZjZhODAzYmVhNTFmNThhYWQ4NmUzZWZjNWM5NjY0N2QxNzllMTBiNGYzNTZlZDJiNzk1M2E5N2FmYWYifQ"
+        },
+        {
+          "resource": "repo://cmd/root.go#L20-L28",
+          "version": "repo-lines-v1:sha256:da69bb8f9165d387d057c8ff85ed8ab986989ab5886c76eff651e21e26596f87:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYWJiNjRkNTM1MWJjZmJhNDU4OTQwMDI4NmYyZWQ3YmY5YWIyNmFmNTIwYzNmNzg1NzYyNTU3YjQ1MGNkNjJjMyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjBlMzIxYzM3ODlkYjY2ZmY1YTVhMDc3MTRhOTRmNTMwNDlkZGMwM2UyODdhNjE1MGQ0NTNjMjRlYTIxNmQ0ZSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjAwZWMwZDM4ZDA3MmJkMTNhNWFlYTQxNmExZDUzNmMwYjlhZDFjZjM2NWYyYmYzNzc3MjRlNjdhOTU1ODg3NyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_92a31bf9abb24341a43bf0828594b7cb",
+      "statement": "The binary entrypoint main.go only calls cmd.Execute.",
+      "evidence": [
+        {
+          "resource": "repo://main.go",
+          "version": "repo-file-v1:sha256:60902f8ccbc0d5af48ea79a385ea9b3c9399a24a07dffaa9ad71bbeab12fe11f"
+        }
+      ]
+    },
+    {
+      "id": "claim_49780a7639f5488d87225da0e8efd1e9",
+      "statement": "make check runs tests, go vet and golangci-lint as the local equivalent of CI.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile#L40-L40",
+          "version": "repo-lines-v1:sha256:94d3a9648d5ef28ec0a336995a0729c49d9c3e9189e84ebe45ee1311232e9a88:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRkM2E5NjQ4ZDVlZjI4ZWMwYTMzNjk5NWEwNzI5YzQ5ZDljM2U5MTg5ZTg0ZWJlNDVlZTEzMTEyMzJlOWE4OCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTRkM2E5NjQ4ZDVlZjI4ZWMwYTMzNjk5NWEwNzI5YzQ5ZDljM2U5MTg5ZTg0ZWJlNDVlZTEzMTEyMzJlOWE4OCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWM0OTIwOTM3MDIwYmViZTE4ZjBkNTg4MGFmYTZmNWJmOTg0Njc1MTcxYmJjMzliMzYyZDAzOGE4ZDEzNzdmYiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiOGIxYTYxZGM4ZWE5NDZkODcwODljMjY1ZjFmOWM4NWY1YWM1MzI3MzJlMThmMmUwNmY3YTE0NzdhM2M1NmU3NiJ9"
+        },
+        {
+          "resource": "repo://Makefile#L57-L57",
+          "version": "repo-lines-v1:sha256:0246587af3e83016ff6f811245b67d26592a64ee3ff675fc2d8f9fbf063a830b:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMDI0NjU4N2FmM2U4MzAxNmZmNmY4MTEyNDViNjdkMjY1OTJhNjRlZTNmZjY3NWZjMmQ4ZjlmYmYwNjNhODMwYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMDI0NjU4N2FmM2U4MzAxNmZmNmY4MTEyNDViNjdkMjY1OTJhNjRlZTNmZjY3NWZjMmQ4ZjlmYmYwNjNhODMwYiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYzI5NzIxZTU4NWRiZDhkMDQ1MzJmOTk4Njg2MzNjZDRhYTUxYjQwYzdmNGU5MTc5M2IzMGNjM2JmYWZjZGYwMSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjIsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZjJiN2QxZmQ0Nzk0YTA2MmQ5ODY0NzkwMDM4N2NhZGU3YTM0NGU4NmM2YWFjYjMwNzY0YzIzNGVlNjQ2NzdmYyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_e3bbe16304a24a969a5eea0722d78186",
+      "statement": "nokey can be installed via Homebrew from nokey-ai/tap or with go install, and nokey init creates starter config and policy files.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L31-L52",
+          "version": "repo-lines-v1:sha256:2bd53bc038fb53292b061b3d03995b4bebeb7ef2a2eae7872887c5b4767390ad:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImMzMmZkZGNmMjFiZGQ2ZTk0NTkwOWMwYzdlOTQxYjI3OWY2NjMxNWU1MjMxMTIyNjMwMGYwMWNmNjYxNTZhZTAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ3YzA2YzU2MWQ1YzMyNzM0MzY4NTI2OGE0NmIzMzkxZjM5OThlZWU4OTBkMmJlNTFmMGQyMWNjNGE1M2FlNmQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjdkNWRjN2FhN2JiZTZhNzM2OTM4YjEyYzk2MmQ3NWI5MjBlNDI0Mjc1MjRmOTQyNjI0OGNlMzFhZjM3MTNmNmQifQ"
+        },
+        {
+          "resource": "repo://README.md#L69-L93",
+          "version": "repo-lines-v1:sha256:b07ac85f502d00c53795ada398958b7bc0e28f2888c1a5660046c7a741965f9a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyOWE0OTAwZTI5MmM0NTU0YTQwNTliOWRkMThmOTY1YzgxYzJmMWUxMmZjNDhlODY4MmFlMzI2MzAyOWNiYjciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAwMWYyZWMxNzU5M2MxMDU0ZWI0NjM2N2Q4NDUzZWYyNGExNzNjZTk2YjcxMTdkOTFmOWE2OGQ0NGZlZjhiMDEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjgzYTEyM2E3ZjUyZTQ5ZjlhNTNmNjQ2ODRhMWYwZWFkMDA2NGQwZTAwZDI3M2ExZmNiOTQ0MTlhOWQxOGJiNWMifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

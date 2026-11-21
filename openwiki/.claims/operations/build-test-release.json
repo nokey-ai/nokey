@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:20fb34fbd13a6a35dcaf0ff85d95539ba3df6e646facd86a86731776d681f5ac",
+  "claims": [
+    {
+      "id": "claim_edea70ca8e0b4427ae272ed93338890e",
+      "statement": "make build and make install inject version metadata via ldflags and ad-hoc codesign the binary on macOS for Touch ID keychain access; make check runs test, vet and lint.",
+      "evidence": [
+        {
+          "resource": "repo://Makefile#L1-L40",
+          "version": "repo-lines-v1:sha256:387d277b55226f6e90d4657149d593d50910e6ad0a89f88db65474cd74e3de34:eyJzZWxlY3RlZExpbmVDb3VudCI6NDAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI5ZTZjODFhZjM4NTZkMGU0MDI5ZWY2MThjZjY5MDg4MGZmNTY0MDMwNDBmMzUyZjZjMjRiNmZkYTgwMmVkMmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijk0ZDNhOTY0OGQ1ZWYyOGVjMGEzMzY5OTVhMDcyOWM0OWQ5YzNlOTE4OWU4NGViZTQ1ZWUxMzExMjMyZTlhODgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhiMWE2MWRjOGVhOTQ2ZDg3MDg5YzI2NWYxZjljODVmNWFjNTMyNzMyZTE4ZjJlMDZmN2ExNDc3YTNjNTZlNzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_00f8c9679c9e49e8875139b3fca758a5",
+      "statement": "CI runs build, race-enabled tests and vet on Ubuntu and macOS, a lint job with golangci-lint v2.15.0, gofmt, go mod tidy -diff and a GOOS=windows vet, and a govulncheck job.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L12-L116",
+          "version": "repo-lines-v1:sha256:f6faed3a9e69e05256ea7d7ef41bb2f393cd8258b77331ecd9aae64855d7629a:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA1LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJlOWQ4MDE1NGVkNDJmYzVjNzc5YjEzMzE1NzhiNThiODljODAxZWFjZTc0ZjI0Y2Q0OGViNGEyMzU3OTQwYTk1IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiIxOGY0ZDMzNjdmNGFhODU4MTNjYjEzZTY3Mzc3MjhmNDAwOTZkZjE0NzFjMGIxYTc3YzBjMWEzNjBlYjg4MmJhIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI2ZjFkNzBkNzJiYWQyMzFkNDNjNTc1YWNlZjY5NDY1ODBlNDM5Yzg3OTc5NGVkMmVhMWY0YTQwMzQwMjQ1MTcyIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MCwiZm9sbG93aW5nQ29udGV4dEhhc2giOiJlM2IwYzQ0Mjk4ZmMxYzE0OWFmYmY0Yzg5OTZmYjkyNDI3YWU0MWU0NjQ5YjkzNGNhNDk1OTkxYjc4NTJiODU1In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_c7cdcfb7bd02404fabfb8e43439e8b44",
+      "statement": "Third-party CI tools are installed with go install because the org only permits GitHub-owned or verified actions.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/ci.yml#L52-L66",
+          "version": "repo-lines-v1:sha256:4624fabb960b4ea278ddafff77ae4621c6ecb3e53d5452e1ea14a2faa16f2e63:eyJzZWxlY3RlZExpbmVDb3VudCI6MTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4NDhhMDMwNzJkZTJmOWI4N2E3Y2FlNmM1YjZhYTQzYzMzMjgxZjAzYmIwYzBmMTIwOTllMDVlZjMyYThhMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxODdjZTRmMDJhYjRmY2Y3Y2Q4MTc2ODMxNTgzNDVjN2ZjNTI0OTc5MzEwMWMxYWVkNWM4NGMxNGViMjg3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUxMmZjZDk0YTE2M2QwOWE1OGFhMmMyMjZmYzM4YmJhODZjZmJkMTI0NjY4ZmE4M2I0OGJiNDM0ZWQ5OWZkODgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRiYWZjZGE4OGMwYmIwNTNkNGVkZWU4Y2VmYjkzYzQ1YzdjZDFiZWFkOWE4NjJhMmEyNTYyZTQ2NjBhNDVjN2IifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/release.yml#L138-L157",
+          "version": "repo-lines-v1:sha256:042afaf5cd8bd5e7257d8d97a80ace57b101e3caf6b0f80e8c9bd899d37a7fd9:eyJzZWxlY3RlZExpbmVDb3VudCI6MjAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjU1MzI0NjcwZTIxNjdjMDFhNGYzYWIzMjc3M2ViOWY3OTgxZmM4MDM4NTc4NWFjNTRiZDk0MmQ4YmZhNmQyNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjIxODdjZTRmMDJhYjRmY2Y3Y2Q4MTc2ODMxNTgzNDVjN2ZjNTI0OTc5MzEwMWMxYWVkNWM4NGMxNGViMjg3ZmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjAzNGEwYjNkMmRiZDU5YTZhNWQwYzk4Y2QzZmRiYjFmOTI5Y2U1ODgzZDk1YmRiOTEyYTRiMzJkZDc3N2M1MWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjVkYzgzMWIzMzhmMTAwZWMwY2NhNGFmNWU3Nzg1NjY0ODYxNjg5OTkzMGE0Yzg1ODEzZGUyMDAyYTMxOGEyM2EifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_28913ac37dc941738e221b06bce80b9c",
+      "statement": "Releases run on v* tags after race-test and govulncheck gates; workflow_dispatch performs a snapshot dry run that publishes nothing.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/release.yml#L1-L62",
+          "version": "repo-lines-v1:sha256:9b892312b66202eb9e383bbbd5c185f497524fa8b63011f48a1b9b062eac408c:eyJzZWxlY3RlZExpbmVDb3VudCI6NjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjEyZWVmOTAzMGQwYzcwMjkwMTBjNDYzNTY4OWY1ODMyOGQxMDllNmE4NWVkMWE5MjQ1YjIwZjM5NTViN2RiMzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYzNDg3YzgzMjJlOWNjNDI2OGY2ODVhZGY1MGFkNDJhZDQ5ZjgzODg0ZDFjMDJiMTQyMGNjMWU4NzdkNDk5NTgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6Ijk0M2NkMjdlMjYwNTVlNDczOWM0OGMwZTI5MWUxMjFlYTUzMTIwOWNkNjFlZmJiZjhjYmQ1Njc1NzZmYzBlZjcifQ"
+        },
+        {
+          "resource": "repo://.github/workflows/release.yml#L162-L172",
+          "version": "repo-lines-v1:sha256:7416d4f6117d745ebd476bf50e175b0e649bce47b17b0b41b84ba05cab25d255:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI1MDQ2YzE3NzY1MWVmN2YwNzAxNTcyN2IxZDUxMTM2NjI2NzYyYzMxMTc2MTc5MjM2Y2JiMjljZjkwMmRlZWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjMzYWJlOGFmZTc5OTExMmU4MzUwYjUzZjM2YmE0YzI4YWJlOTExNjU0YjFkMzVmMTZlY2U5MjE4YTljNjEwYTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI4ZGVlMjI3YmQ0YjVjMWM1MmI1NGU1NWQyNzMyYWQyYTJkZmI0ODc5NGNkNWQ1ZTNiNmRiZmY2M2RhZjhmZmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_17a8c1f95110493f8f84d30a9927105e",
+      "statement": "Darwin release binaries are codesigned with the certificate from MACOS_SIGN_P12 under identifier com.nokey-ai.nokey so the keychain's designated requirement stays stable across releases, falling back to ad-hoc signing when the secret is absent.",
+      "evidence": [
+        {
+          "resource": "repo://.github/workflows/release.yml#L94-L127",
+          "version": "repo-lines-v1:sha256:930b6eae4f55f7dacb4e5a565cd1d45a77c95733fa48c3c43c718c8c2aec9eae:eyJzZWxlY3RlZExpbmVDb3VudCI6MzQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ4ODMwMmEyNmNmOTJmNTEzOTlkMjAwY2E5YWY4YTdkMTU3NmMyNjg5OWUxMWJiNzU2MDU1ZDliOThjZTliYzYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImJmM2MxNjFmMDkzYmMzMmYyYTZiZjkwMTQ3ZWMwNjhhOWY4MTNiZjFiYWZjMjYyNTk0Y2FkZDE3Y2Q2ZmYzN2MiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjhjNTVmMjY3OWQ0MjdiYTUwMzBiOWRlMTU1NjFkMjQ1ZGI2NDM2NDMxZTgwYWFlODExOTJjNmVjZDA0ZDliMGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjczMDVkMTYxYjFhOGExYjJlYzQ1NzM0ZjA2YmFkMzI4NGY5NmFlM2QzYzg5ODI0ODk0YWI1MzNkOTgzNmIzY2YifQ"
+        },
+        {
+          "resource": "repo://.goreleaser.yaml#L25-L34",
+          "version": "repo-lines-v1:sha256:2c2e7707fb7e6af0f8e625f9fedcf28aed6c0e37edf4556280a8fc0916dd97cd:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjcyZWM2OTI1MzY5NzgxOTBhZTRkNDE5Mjg5MDkyNjY5ZGQ3NzU4MzJmNTdmMGMyYzI2MjBlY2MwMTJjM2I3YzkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBjMmRjOWI3YjIyNmFkNGIzNjBhZjFlMDlhNzBjMDc2NzZjOTkyN2YwZDYwZWM0NDdhNjZlOWIyMTFlNTFmODciLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkZDM5MTIwNmViNjU3NzA2ZDczOWU5YjFhZjU4M2QxZjI0OGI4MWM2MzY3OWM0ZDgyMDRkNTdjZDQ5NmI0ZjkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlmYmZiMTRmOGZhOWVmMDM0YjQzMTZmNTI0NGFlZGQwZGQ2NGIxNWFjOTc4NDQyYzkzNzI3ZmZmOGVlNWU0ZjUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_a473d1c11046437f988fc995d470efdb",
+      "statement": "Darwin and Linux release builds require CGO because the onepassword-sdk-go dependency of byteness/keyring breaks without it; Windows builds are CGO-free.",
+      "evidence": [
+        {
+          "resource": "repo://.goreleaser.yaml#L1-L77",
+          "version": "repo-lines-v1:sha256:743e6184443d3e5126a7545ff75b89c8e6821b694194fbaa71a5283a5003ef6a:eyJzZWxlY3RlZExpbmVDb3VudCI6NzcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjE2ZTBkMWFmZDZlOTYwMzZiNzc2YWIyMDY4NGRhMzVmMDc1YzUwZDZmM2MwZmQ1OTlkZGM4MjE4ZWJiZGZiNTYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjdlNzNlNGFkNTU1ZDJmMmI2YWY5YzYxNzllZWY3ZmFkY2I0MmY0NDNiZTJkYmQ0NjBkZjM0ODIyNDljZjMzYWEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQyNTZjMDU5NzJlZjBmM2JhNzA3NDI4MTc1NWZiYTg2YzNmZDRjNmNhMjBiY2NmNjBjMDczMzI0NTI4Yzk5ZmQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_324b2608fba74e51a9283b60ed11893b",
+      "statement": "GoReleaser publishes tar.gz/zip archives with checksums.txt and a Homebrew cask in nokey-ai/homebrew-tap whose postflight removes the quarantine attribute.",
+      "evidence": [
+        {
+          "resource": "repo://.goreleaser.yaml#L79-L116",
+          "version": "repo-lines-v1:sha256:8f45da20a0a0b65b7db60f71a78c3ae480854ec22719a74a9b3b4c73ea403d8f:eyJzZWxlY3RlZExpbmVDb3VudCI6MzgsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM2MWEzNTUzODgxMjUwOGQzZjQ2OGE3ZGFkOTRjYzg2ZDg2NzY4YzgwNWFhOWZjZjE5ODlmNGI2YmQ2NWMxZTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQ1N2RkZDE4NDQ3NjczZDBhN2YzNjlkNmY5NmI2NjZjNGY3M2M4OGQ2NGY5ZGJlM2NhMjI4MzVjY2Y4ZmY3NTAiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImQxMzUzY2NhYjU2Y2Y1ODAzYTBlODc0OTg0Mzg4NGIwMzU1MDk1YjQ1YWQ1OWRlOWUwZjA5OWU2YWViZDRhZmUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImFlZGVlZGM2NGQ3Njg2MmNkNWIxNDA4YjYyOTlmMDE2MTY5YTViMTNjYjQxNDI1NWY4Y2Q5YmJkNjc3Y2Y5NDgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_8fdc751dda984fc984eb9c51dbccdbae",
+      "statement": "nokey update verifies the downloaded release archive's SHA-256 against checksums.txt and replaces the binary via write-then-rename, moving the old binary aside on Windows; Homebrew installs are upgraded with brew instead.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/update.go#L28-L50",
+          "version": "repo-lines-v1:sha256:f5fd63400c6321b97540fd479f35f52e6c6ffcf1a7e997675aecae967771e89a:eyJzZWxlY3RlZExpbmVDb3VudCI6MjMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZDI0ZjIwODFkNDMyMzQwYTliOGZjZDVhNTNjMWU4NTJiMjFiZDIzNGI0ZWNjZDFjNjE5YzhkZDg3OWVmODQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE4N2JiNTE4OTg4ZGQyNzg5ZTMyMWU4NjEwMzQ1ODE3MDIyMjRhZmFkNDhlZjc4YjQxN2JmMDgwNGY1YThlZTMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjMzNWQwZTNmMDk1ZTM1ZTQ4NDFkNzU0ODIwMmZmNzZhNzMwMzgxMzdkZjE3ZDFiZTFjODQ4MzE5NzM0OWMyYWYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZTE4YmYzMTNmZjRlYWEzOGFjMGQ3NDBjNWQ3ZmIzZGRkMDA5MmJkMDQzMmNjOTNjZDdmODBjNzUzYjIzODAifQ"
+        },
+        {
+          "resource": "repo://internal/update/update.go#L216-L256",
+          "version": "repo-lines-v1:sha256:8a31d765c5727e9ec752b6dd2e19ab6cf22a415072dc1a04cdbe35aa220475b6:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImFlM2Q5MzczMDgyNGU3MzQ5NmJjMGY0ZDdlOWI4YmIzZjUyNTY5ZDkzMTQ5ZTQyZWJmZDNjNDlkMmYzNzEwNGUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjEyNjM0ODVkMGZkYTIwN2FkZGI1ZmU3NTMwZDE0NzY1YWFiYzYyYmFmYmZiMjM2OTdmMGIwMDUyYjE5ZGJhMzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNhNzY1Y2ZkOThkZTBkNjExYjA3Zjk5MTdiNzA2YmNlOTI5NDNhNjhjZWJkMmI5ZTg3MTU5YWE3Y2RhMjNhYWUifQ"
+        },
+        {
+          "resource": "repo://internal/update/update.go#L85-L125",
+          "version": "repo-lines-v1:sha256:2d884b122781a38df3dcb89680ca6dfc43ba073d3b0d34ee70a6148b840a6a50:eyJzZWxlY3RlZExpbmVDb3VudCI6NDEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImUxNWI3Yjg4MWQxMjA2NThjMTQyYmZkNDg2MjZiNDllYWU2MWY4MDIwY2IxMjkzNDFmYTY4MjkzYzgzMmQ5YmYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MWFhNzU1NWZjMTBlMGMxNjhmMDhhMDY1OTY3YmQwMmE1YWZkMGI2NzdhYTg2ZWMyODIxYTY0Yjg3NzA3MDMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ5MDc1N2Y1NDBkNDQ1ZThjYzJmYzY5ZDA0NTQ2OGM4YWY5ODZhZDY4NDI3M2MxZTYxOTE0ZDhmMzhmMzUyYWQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjcxMTIwYTVjYmU5Njg4MTdiZmFkZTc4OTBkZmE3YzRhZDI5OGE1ZjM3MDY5ODNiZDllNTM0NDRiMGY4MjVmOTYifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

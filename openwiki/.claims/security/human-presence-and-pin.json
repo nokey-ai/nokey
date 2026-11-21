@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:42a01779efa7a309207ac41dba26f5b201339d69168a93bb0bd90b936df9669f",
+  "claims": [
+    {
+      "id": "claim_49f24d29b5be41f2b86d80cd80755675",
+      "statement": "confirmHuman uses the OS presence dialog and, only when it is unavailable, requires a fresh PIN entry that never accepts the session ticket; with neither available it refuses, since a stdin prompt can be answered by any program.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/gate.go#L30-L53",
+          "version": "repo-lines-v1:sha256:2498b5bed32383ce5828751ffaf189364a7699f31e1a4e5086a1eb0bac9bdc95:eyJzZWxlY3RlZExpbmVDb3VudCI6MjQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNiMmQ2NjZhMDRlNDJiMDMzN2QwNGY5YTc4ODE4NmE4YjQxMTFjMzAzMmE1NmJkMmM3NzYxNjdlZGEzNGZmZDkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImI0NDE2MTFiYzgxODViOWE2NmExMGVjMmY3YjMyZWQ2NTAzNmQ4ZTM5ZGFmODRiNGRhMjA4YjAwZGJmMDFiNTkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAwZmE4ZDliNzJkZTMxZTliMjY2YWJiNDkwMDIyMWY0OWNlYmZhMGYwMDFkZjBjYzNhN2NmNmM3ODYzZTNmY2UifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_ef4b20444f1c4886b53a0ee0ebdb96af",
+      "statement": "The presence dialog is implemented only on macOS via LocalAuthentication device-owner authentication; elsewhere it always reports ErrUnavailable so callers fail closed.",
+      "evidence": [
+        {
+          "resource": "repo://internal/presence/presence.go",
+          "version": "repo-file-v1:sha256:f2908a46a3408e1e3eac0b4dceaf21ee92b23b8068daf623515525638a124b4e"
+        },
+        {
+          "resource": "repo://internal/presence/presence_darwin.go",
+          "version": "repo-file-v1:sha256:9480eee2e74b9626679ff4919b68a76c90f1b56bcc79910e5cf14fae91b43105"
+        },
+        {
+          "resource": "repo://internal/presence/presence_other.go",
+          "version": "repo-file-v1:sha256:e216626ece2dd5b32a82b11e042a0e03e7322eec95286af70bda0ed342fe669f"
+        }
+      ]
+    },
+    {
+      "id": "claim_38e98c9ad0a040c692541804c1ab2b5d",
+      "statement": "CLI commands that replace, rename or delete existing secrets require the human gate because policies match names and commands trust stored values.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/secret_gate.go#L13-L24",
+          "version": "repo-lines-v1:sha256:9aa7286463e3783a6d2eb762c0f502c76b7d08b7c5b56ebe219df91f045068d6:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjRmZTg4YjE1Y2I3Mjg3ZWQ0MDNlNTBiMjJjZGIzOTRmZTM2NjA3ODM5YzM3M2QzODBmMmEwZjZjZmU0ZDdlZGQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNlZmMwNTk1MDgwOTVmZGM4ZjdmNjVjZjMyMzE5YTUxZWVhNDI1YjI4Nzk3NjFjMWVlODhhNWRkZDJlODgwNzMiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA0MGQ3YThmZjMxYTBmYTYyZThlZTFmMjdjNmUwYzlhZDg1ZDY4YTdhYTZjYjgzZmExOTI1ZWIzYTQ1ZDgwMzQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_f01fbb5947ae4d09b425535a6fd7d826",
+      "statement": "PINs are at least 4 characters, hashed with Argon2id (time 3, 64 MiB, 2 threads, 32-byte key, 16-byte salt) and stored in the keyring as __nokey_pin_hash__.",
+      "evidence": [
+        {
+          "resource": "repo://internal/auth/auth.go#L117-L133",
+          "version": "repo-lines-v1:sha256:d3e23479480fb0e45f39939a9fa85e8e14ddb1392759ccc0efdd788a976c2934:eyJzZWxlY3RlZExpbmVDb3VudCI6MTcsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc0OGE5NjIzNjFjZTE2OTczYzI0ZDg4NTg4YjdjMDFlYjA5ZmZiNjBkZTNhNjQyM2IxOTVlMTY5NjU3MjI5YTkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAxYmE0NzE5YzgwYjZmZTkxMWIwOTFhN2MwNTEyNGI2NGVlZWNlOTY0ZTA5YzA1OGVmOGY5ODA1ZGFjYTU0NmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjE2MzFiNmUyY2EwN2Q4YmFmMGViNDRlNzQ5ZGJmNDkwYjM5MmUzYTUzNGVmNjEwMjI3NzExNDZjZGY5YWYxYTIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1NzNlNjE0MjdjZThiNTg2MWQyMzVkNjgzODU3ZGE3MmVhZDg2MWJiODJkNTJlODJiOWEyY2Y3ZWRhMWExMzUifQ"
+        },
+        {
+          "resource": "repo://internal/auth/auth.go#L20-L30",
+          "version": "repo-lines-v1:sha256:7776afe00a66abe0ba5803772b03a6e29147e11f6bf5d88fb33c7e2cfaafdbf8:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjZjYjgzZDRkNTFlYzVjZmMwYjMwNTg4MjgyYWQyMGQ0NjdlMGUyODFkNDhkYTQ2M2Q1MDIxYjk2OTliZDliNWMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6ImZhZmJhMDUyN2MzOTUzYzRiNmUwZTViNTczOWJhODM2MTJmODA1M2JjZGM5NDY2NzMwMTkzY2QxZDU5MGI0MDgiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImNmN2IwOGYxNDczNWEyY2Y5ZDBhZTY1N2NkNjk0YjE4ZjAzNzVkNjI0OGUxZTllYjU5Mjc5YjRlOGQwNWFkMzQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImQxOTEzNzM2ODBjMDA5MTgwOWQ0ZDliMGYxZjdiOTFmYjE1ODY0YzAyMzE0ZjBjMTA5MDkzZTNkNjY2ZWY4MzcifQ"
+        },
+        {
+          "resource": "repo://internal/auth/auth.go#L216-L240",
+          "version": "repo-lines-v1:sha256:79979b1ea378cec94f820581fce2f46ecc1639e271a78d0158d4b3b32a4ffa14:eyJzZWxlY3RlZExpbmVDb3VudCI6MjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImU3MWRjOTg0YThhYjJhZTA5NjA4NTk1MTdiOGRmNzJmOTRjYTE3YzU3M2FmMWE0MTQwMWY3NzU5MGU3MGQ0MDciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc1ZTQ1ODZmNTU2ZDYxMDBjMjE4NDZhMWVlYWYxZWE5YjVjMDFkMGM1ZDBhODM2NGRjNzVjMzQ4YjVjZGY2Y2YiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlN2JiYzg1Y2E4ZDc2MjhkZmMwNzc5NjZmNGY4ODFhZmM4ZWM0YzJmNmQzMTczYWYwMDFjYmY3NDlmOTY2YjYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjhhMjM5OTVhNWZkMDRmZWUxMWJlNjRmOGExZTRhZjFhMTQ0NWFmNWMwMzk4MmZlOGQ2MmMwZDBkYzVkNjhiNjgifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_80ec49f0a19c43be9ec1a46cbf7694c9",
+      "statement": "PIN verification requires stdin to be a TTY, compares in constant time, and bounds Argon2id parameters read from the stored hash; legacy SHA-256 hashes are refused except when changing the PIN.",
+      "evidence": [
+        {
+          "resource": "repo://internal/auth/auth.go#L136-L200",
+          "version": "repo-lines-v1:sha256:746031eedf30470358bcdd641b96921422fd10fe9d2fe390ce4bf0daf405bd73:eyJzZWxlY3RlZExpbmVDb3VudCI6NjUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNhZDlhYTFiOWZjMDVhZThkY2IzMTI0MTkxMDcwMTc4ZWVlODNkNDZmMDIzMTRjYzFmZTMyYzVmY2QxZjk3YTMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQwYmQ4OTU3NjRjY2Q4NDEwZjkxYzkwZjJkMjFiOTRhYTgwN2IyNzRhMGFkNDBiYzEzZDY4NWNiZDc2ZTY2MTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImIxYzliMjlhNDI3ODY3MmE0NjgwZDI4ZGU1ZjMyNDI3ZjBmMDlmZWI5YzFmNjA5ZjVmZTkxYjE4ZjFjNzEyMzMifQ"
+        },
+        {
+          "resource": "repo://internal/auth/auth.go#L32-L115",
+          "version": "repo-lines-v1:sha256:b4e1f1ea13310094390a9786d720283d6db2915df0efefec872990064c36ba1c:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA0ZTA1OGI2NTk2ZDM3YThmZjQ1YjI1MjhmZjAyOGNmN2IzY2U3YzUyN2RmNzg5NGY0ZDYyZmEyYWFlMzhlMzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjFlNjI4N2E3NWM3ODI5ZWRlYjY5ZTYwMGUzYTMzZDRlMGNkZDRlODk0NTM0ZDhhY2I1MDdkYTcyN2M1MTQ3YzIiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjA5MmE1YjhhZDM1ZDdiMjAzMGE1MzNiYWEwZmIyNmFiN2Q4N2FlZTBhOWFmYmU4NDRjYjhmZWZlOWQ2MjVmNTYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_66411be07c6c406ab1e7c8d3286637cb",
+      "statement": "Failed PIN attempts are counted in the keyring under __nokey_auth_failures__; after 3 failures attempts are delayed by 2^(failures-3) seconds capped at 60, and success clears the counter.",
+      "evidence": [
+        {
+          "resource": "repo://internal/auth/backoff.go#L11-L110",
+          "version": "repo-lines-v1:sha256:20678900267eeee39ce6726156426387f2a69ceafa7e2d69ebe6ec1cba47e849:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkMGQ5ODZiMGRmN2U5YzQ3YWE3ODJiMDY2MDk0NjliYzhlZWNhNDc2MTJiODM4Y2Y4MjlkZGE0YmNkZGQzMzI5IiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI3OWVkZDcyYmE2YjQwMDgzY2U5NTI2OWZhNTZmY2YzYWMxYmQ5ODIyMWFhNjYyMWE2ODNmN2Q1NjMyYmIyMWQ1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIzY2NiZjUzM2YwZDczODg2MjI2NGY3MjYwZDY3NDJiZGQ0ZGFjMjFhOTg0ZjQ5YTM4YmRiN2U3MDFjYTgyMjgxIn0"
+        }
+      ]
+    },
+    {
+      "id": "claim_dd51f374a07c4a49bd7da7518d095c8b",
+      "statement": "PIN session tickets contain a random token and an HMAC keyed by the PIN hash over the token and issue time; expiry uses the file mtime bound into the HMAC, and validation rejects non-regular, swapped, group/world-accessible, future-dated or expired tickets.",
+      "evidence": [
+        {
+          "resource": "repo://internal/session/session.go#L1-L8",
+          "version": "repo-lines-v1:sha256:f7156476d7913ff8b4b8eb8948c4084cfe48b6fa62d7e00e5f0267a03b3bb69a:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiMWMzZjQzZDQ2ZGZmZDhiYTUxYjk4YjM4ZWRhYzNjNDJjNzhlZGE0MmMzNjkzOTQ1M2MxM2RmMGExNjgzMDAyYiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOTJjMzcxM2I0NTlmMTk3Zjc1MDQ1ZjY2MDM5MWVhZDVkYWUyNDkzZTNmNDRmMDlhODJlMzM4NTQwMjViNzkwZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjAsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiN2U1YjM2ZGM0OWNiODMwNzg3MDc4OGFiMWJlNDJmYWUxMWEzMWZiMTc5ZGFmNTA0OGMwZWE4YjBlZGUyY2U5ZiJ9"
+        },
+        {
+          "resource": "repo://internal/session/session.go#L56-L174",
+          "version": "repo-lines-v1:sha256:f429e56bcfb03a2b5d6875683981426915156bb9a8fbfd5cfdd38178fb121f5c:eyJzZWxlY3RlZExpbmVDb3VudCI6MTE5LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJkYjA3YWZhNTY2NzQxYjVlY2I1ZjFkOTE2MjE0Mzc1MWFhN2QxOWM2NWUzMTQ3ZjFlYjM3MjBjMGE5MjI0MWFkIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiIxZGFkN2RiNmFmOTZiYTQzNDU3MmM4OGY0NzUzMDVmNmEyNjE3MTg0MzdhZGM5ZWNkZWJlMjM1NzRhMjhkZDI3IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI4YjVkMTkwODczMWY1OGI3ZTQwYjc4ZjA2ZGE1OGZmY2Y5Njg0Mzk3MjQ0MGUzY2I2NjZmYTM2ODQ0ZjI5NzM4In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_d9702e3f315346f4a2e71df40394e21d",
+      "statement": "nokey exec uses PIN session tickets while export always prompts for the PIN.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/exec.go#L114-L114",
+          "version": "repo-lines-v1:sha256:f4f9803d5042893a23389dd999378cc97df82453cb95687fedaa4cebb2b42eee:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRmOTgwM2Q1MDQyODkzYTIzMzg5ZGQ5OTkzNzhjYzk3ZGY4MjQ1M2NiOTU2ODdmZWRhYTRjZWJiMmI0MmVlZSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZjRmOTgwM2Q1MDQyODkzYTIzMzg5ZGQ5OTkzNzhjYzk3ZGY4MjQ1M2NiOTU2ODdmZWRhYTRjZWJiMmI0MmVlZSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNWZhYTUyNjNhMjg3NTBkYmY1MzdmMDA5NTJhNDlmMjQ0NDU0NjQxMDcwMWZiZTc0ZTVlZTI0MmE2MzQ0NjUyOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGM2M2U1MTU2MjU0OTdmZDA5MmVjYzY3MjczNTE3NGI2MTQ0OTE1MTMwZDE3YTlhOTA5NjUzMWIyNDkwZGJkOSJ9"
+        },
+        {
+          "resource": "repo://cmd/exec.go#L422-L453",
+          "version": "repo-lines-v1:sha256:b2729e6e0dada30f38dac4565147566ab3fcb4872b7536fbbc3df77cbf3419a6:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImYxZGY4MjZkYzNlYzI2Y2ZjYTlhZGNlZjk4NWEzM2RiYzg1ZmIyNzBhMGFjZDcyZDFiMjVhMmU1MGUzYmJlMmQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc0ZjkzNDZkZDU1NTcwZDUxZjZiMDZmNmJmMjE1NWQ2Njc0ZDdhMjI3ZDEyMDA4YmI2MTdmMTc3YTdkNzJhOGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjE0ZTk5ZTJhZWM4OWQ5MTQ4YTk4ZjI2ZGQ1YzI0MTc1MWY2M2U0NjAzOGNiZjcxOGNjNzFlNTQxYzQzZDg3M2IifQ"
+        },
+        {
+          "resource": "repo://cmd/export.go#L98-L98",
+          "version": "repo-lines-v1:sha256:b7d70fbcdd88615958fd75a3efb239257d0095c7f082a0dd529fce9f19c2de9f:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYjdkNzBmYmNkZDg4NjE1OTU4ZmQ3NWEzZWZiMjM5MjU3ZDAwOTVjN2YwODJhMGRkNTI5ZmNlOWYxOWMyZGU5ZiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiYjdkNzBmYmNkZDg4NjE1OTU4ZmQ3NWEzZWZiMjM5MjU3ZDAwOTVjN2YwODJhMGRkNTI5ZmNlOWYxOWMyZGU5ZiIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiMDFlMjYwOWM3MTNiMTQyMjA5MDVmYTVlZGM3MGNkZWM2YTk1Y2E3NDlkYzc0YzRiZGJhNTgwYzIyM2Q0MDZiZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNGM2M2U1MTU2MjU0OTdmZDA5MmVjYzY3MjczNTE3NGI2MTQ0OTE1MTMwZDE3YTlhOTA5NjUzMWIyNDkwZGJkOSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

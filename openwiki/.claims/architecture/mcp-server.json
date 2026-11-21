@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:27cb5a581de8cc9a8ea250f6a86e7e02c35884bfc3004e4263ade68e1afc9d65",
+  "claims": [
+    {
+      "id": "claim_6fd01ddfd63d49eba5186dea304928cb",
+      "statement": "nokey mcp serve serves the MCP server over stdio with elicitation enabled and panic recovery, wiring a Handler with the keyring opener, a hot-reloading digest-approved policy store, elicitation approval functions and the audit recorder.",
+      "evidence": [
+        {
+          "resource": "repo://cmd/mcp.go#L103-L110",
+          "version": "repo-lines-v1:sha256:1a4a09f64178630275f0904588befa44d2f30f22aad394b54877e1f4bae1388f:eyJzZWxlY3RlZExpbmVDb3VudCI6OCwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGVkOGJkYjEzYjI1N2M3YTEyYjM1OGNjZjIzNjk1ODRiOGUzYzM2MDIzYjA5OTE0ZThhOTBmNGI1MTliYjU2MyIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiY2ZhYzE4YTNiNTQ5ODY5MDRjMjc3OGE0MGNmNWRlYzRmZWJjNTYyY2U1ZGE5OGU1NjcyYzFlYzY3NjlhYjYxOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNmE4YTExMjEwZDE4ODYyZDdlN2MwYzY1YmE1N2FkMzBkZDExNDc3MDY4OGE4ZDNjY2VmMDkzMWQ0YjVkMjZkMiIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjEsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSJ9"
+        },
+        {
+          "resource": "repo://cmd/mcp.go#L56-L87",
+          "version": "repo-lines-v1:sha256:d9683544c1fed5efc134e55f8d2bd43b127e885c04afc85e7abb70ef3cdf1345:eyJzZWxlY3RlZExpbmVDb3VudCI6MzIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImE0NGYyNTYwZTk4ZWEwMDMzNjhjMGZkNGMwYzMxN2I5YmM1NmMxOTg0NjQ5OGJhZGNlMzgyMDVlMzg3NDk0OTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3OGFjZTk3ZmQ4OGI5YmZlNTc4NTk1ZTFhOWQzODhiNTVlYjM0M2U3YjQ3ODljYzQ3M2RhODFmOTM4ZGIyMDYiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzZWVlMzgwNWJiMGE1MWVkZjE5M2Y5ZjY0N2RkODRlYjBjMmEzYThiZmY3MGVlNWI5MjljZDU5N2EzMjZmMTgiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjlhYzIwOTFiMWYzNzFiMDQwNGFlMmQzMTZjY2IxZDY4ODExYjljYzRiMjJhMmY2OTcyOGI0NDM2MDJmZWU0ZjcifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_24e382ffb3454b7192604b099905269e",
+      "statement": "The MCP server registers seven tools: list_secrets, rename_secret, exec, exec_with_secrets, mint_token, revoke_token and list_tokens.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L179-L368",
+          "version": "repo-lines-v1:sha256:580d7df6b0f3ec9e8d053ccd01679c14c2e6bc682804f355a68978764a23cc0b:eyJzZWxlY3RlZExpbmVDb3VudCI6MTkwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiI0MjU4OWY4Yzc5MjViZWQxMzE4N2IwN2I5MTgzOWFkN2U0MmZiYTllMGQyY2UxZDZiNDQ1MzZjZjM4NzQ4MjMzIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiJlMGJkYzM0ZDkyM2FlMjU3MmRkOWNmZWUzNmIxMTk0OWU5MTg5YmViMGUzNjM0N2UwY2QwY2EwNDRmOGYwNjk1IiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiJhNDI1YzAwNzAxOWE2YWRlNWRjZDdiMjA0ZTkxMDRjZmRkMGI0MGFmYmQ3MTQ2ZjE3MzJmYjk4MmE4MWUxZWM0In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_e9e484be2b2644dabacabad5cfa6b158",
+      "statement": "Exec output is redacted against every secret value the MCP server has read during its lifetime, not only the current call's secrets.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L113-L119",
+          "version": "repo-lines-v1:sha256:60cb0f1153f92d37846020097007db10c9cfaf005cf99273d7e09d3802a2f8b2:eyJzZWxlY3RlZExpbmVDb3VudCI6NywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNDM0NTJmMzA0OTZiMGY1M2NjYzRmNWQwOGI0OTVkYTNhMDdiNjdiNDYzYjkxZGM1MTA5NDQ0Y2ZjYjA3MTFhOCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjQxMThlNzFlMGRmNTdkYjZiNWE2YzYxOTczNTM4MDBjYTUwODliMjMzMDI1YmEwYzBkMDczMjc0Y2NiNzg2YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZGJiOGRlMmVmZTJmZGFlMjk3OWE4NmViNWEyOWI3MDA3NWU5M2Q5NTk4Y2I4Y2UyYzRlOTNmM2MyODI0MjBhZCJ9"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L154-L164",
+          "version": "repo-lines-v1:sha256:ba030c4ce581933120cc964714fe3eb7c139f3cc70c2b9cc19345c9137ba9d96:eyJzZWxlY3RlZExpbmVDb3VudCI6MTEsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjVjNmRhNTRlNDQwOTYzYjIzNmRmMjNhNzc2ZDdhYjZhMDU5MjFlZDFlYzBlZWRhNTliNmQ5ODcwOTliNjI1ZGEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImYyOTY0MDc5YzNjNWM4MTUyMGVmMzNhMmI5ZDJlMTVhMWI4NGQ3MjgwZGI4NTkwZGNkNjU3NDdlM2UwMTJhNDAiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM0MWYzODY0YmJmNDZlMDJkNjQzNmMxMDg2YjVjMjg4ZGRkZWI4NjYxMWYxNmVkOGNhZTA5ZTIzM2NhMGY4ZWYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_569462dbca164c08a2127231f9088e96",
+      "statement": "MCP exec enumerates names, filters them, enforces policy and the token/approval gateway before reading any secret value, and does not use PIN authentication.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L441-L544",
+          "version": "repo-lines-v1:sha256:eb37c0b1b91f7172108b45a3b77f39d6aaa983173eb09845b15b943aa014d194:eyJzZWxlY3RlZExpbmVDb3VudCI6MTA0LCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiIzYzljZDMyYjA3OTQ5ZWI3ZmM2YzRmYjk0NDFlNjQzMjYwMWFkMzMyYWNkNDNiMTE0OGUxNTUwZTg4ODc1Y2MwIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiI0MTJjYTM0NWNjZjc1YmY5YzA4MDZiY2U2OTViZThkZTgwOGI3OTk4NDI1MWE3YTU0ZDIwMmNmNjEwMWRkNDUxIiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI0N2RjZTliNzY3YzM5NzU2ZGQwMjA0ZjAwMzMyMjE1OWI0NmQ2Y2NhMWJmMzEzODc5YTlhMzc4ZTVmY2Y0ZjVjIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiIwZWRhNjMyNWYyY2FmYTZjZmNjOTU3NmUxMWYxNzM5NjgxYzk3MDkzZTg4YmMyN2IzZGJkYTRjMDZmMmNjOGY0In0"
+        }
+      ]
+    },
+    {
+      "id": "claim_663a2696282c41bfb982dc27d2a9e71b",
+      "statement": "exec_with_secrets rejects placeholders in the command, derives the secret set from ${{NOKEY:NAME}} placeholders in args, checks policy before opening the keyring, resolves placeholders only after approval, and does not put secrets in the child environment.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L546-L645",
+          "version": "repo-lines-v1:sha256:91bb69546f4413c6e08f669c38dc13cf6509c8ed1304f34d7478f3e90dfc2085:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAwLCJmaXJzdFNlbGVjdGVkTGluZUhhc2giOiJiYzU2MTNjOTMwMmRhZWRjYTMxNjI4ZTIzYmQ2ZjljZDg0NzU3NTI4ZTA3ZmZkNmE0MWZhNmU2MTZhZThhYzRmIiwibGFzdFNlbGVjdGVkTGluZUhhc2giOiJhMDUzNzhlZTMxZWJjMGExNDJlYjgyNjY3MmZhOTZiMTk1OTU4NmU1NTI0NjM2MmIzMGEwYzY5OTllYzdkMGU3IiwicHJlY2VkaW5nQ29udGV4dExpbmVDb3VudCI6MywicHJlY2VkaW5nQ29udGV4dEhhc2giOiI1ODgxZDcyYzQyYzQ2NzM4MWEwMTIyNjVkNTQ3ZmE4NDAzMGJjOWJiMmNjN2M1YjFiYzQ1NGVkMzJiNzg4ZWRlIiwiZm9sbG93aW5nQ29udGV4dExpbmVDb3VudCI6MywiZm9sbG93aW5nQ29udGV4dEhhc2giOiI3NzJlZjZkZDdhZDcwZDg1NWI3ZDQ5ZTQ4ZmRkM2NkYzI3OTVhMjBlYjFlMGNhODdkNTY1OGNkNDMyM2IxMDllIn0"
+        },
+        {
+          "resource": "repo://internal/placeholder/placeholder.go#L10-L58",
+          "version": "repo-lines-v1:sha256:f615154dd178481d765f083acb21f021d6fff4052f0d25d8582102d2188ba34f:eyJzZWxlY3RlZExpbmVDb3VudCI6NDksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjExNTg2MzM3NGFhODZjMzg2YjgyOTJhNjE4N2I0NDllNGM1NmYxNzE3ODhkZTA4MDU3ODE1YjNjOThjN2IyMjMiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRkNWRlNjczOTBjZTMyYmZmZWYwZGU5NjRjMWM3MjAwOTk1ZDY4Y2EzZWVjYWRlYjNkZDA5Yjg3MmE1NGViNzciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjowLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_29848dc89aee434d8771bc1432e9805b",
+      "statement": "Both exec tools refuse calls that inject no secrets, since nothing would gate running an arbitrary command.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L1018-L1018",
+          "version": "repo-lines-v1:sha256:8b6eba8b535b8cf432afb4282348ebda64758acdea4d586774321514dd641204:eyJzZWxlY3RlZExpbmVDb3VudCI6MSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOGI2ZWJhOGI1MzViOGNmNDMyYWZiNDI4MjM0OGViZGE2NDc1OGFjZGVhNGQ1ODY3NzQzMjE1MTRkZDY0MTIwNCIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiOGI2ZWJhOGI1MzViOGNmNDMyYWZiNDI4MjM0OGViZGE2NDc1OGFjZGVhNGQ1ODY3NzQzMjE1MTRkZDY0MTIwNCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOGUwOWRjN2JlMTNhOTUyODMyMDlmMjNlMDI3NTQwYTdkYzViN2I2NWIyMjYzZmZiMTI4ZTNmM2U0NjE5M2U0YyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiNjlhMmJiNWFhMjIyNDI5NjIzYjdiMGU2N2E0ZTE5NTE4YmM3NmM4ZjAyZjA0ZmQyNTExODQ3MmJjZjFkZDc5ZCJ9"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L492-L494",
+          "version": "repo-lines-v1:sha256:1c02adab6362307e3ccc062772f33c35fc01b5bb7f58ce7ec88d0049d5134ab0:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiOTY4ZTc1OTc3YmFhNGY5YWQwMzQzZDBiOGIwYzZiZmYyMWJjNjljOTMyNDNkOWViMWIyOWY1ZGYxMmQ4Yjg5OSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNjdjZGE4MmRhNjA2MjM4ZTA1ZTYyMzk5NTY5YzVlZTAzOTkzNDE5NjQ4YWU1ZDQzYTJiZjhjZDYzNDdmODI2MyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNjQ1NDMzZGY1ZTlmMDNhNjAyYzk4NTQ2NjIyNDQ3MDAyYWE2M2Q4MmI2ZWJmZDkyNjQ2MjVlYzA2ODYwMDUzNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZWNlNTJkOTMzZWFmMjdkYmZiZWE3Y2Y2OTU4MWNjOTRjMDc0NTU1NDM0Y2IxZWM3YjkyN2E5ZTQyZjljN2Y5NCJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_a0dd19c07ef9461393fb34e10f3a7830",
+      "statement": "The token/approval gateway checks an explicit token, then the cached session token, then token_required policy, then requires approval for any secret access when no policy exists (or per RequiresApproval), then session grants, then optional auto-mint, then a per-call prompt that can be remembered.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L756-L828",
+          "version": "repo-lines-v1:sha256:09910d04d28a2abff02561f320b7a722416990bafc5f335ce4ebdf4adfd59d3b:eyJzZWxlY3RlZExpbmVDb3VudCI6NzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImNjODEwZGJkMTgyMDllZjg0NmMyOWUxZDYyMjNkOGI1ZDk1NzU4NGEwMmQwNjlhZGZjZjdmM2Y4Y2MxZTRkNzAiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5YTRhMWE4ZTljZmJiYTcwYzc4NDc3ZGJkOGJmNjcxNWVhMDgxNTAxMDc1MTdjMDIxNzQ0NGUxNTQ2ODJiMmYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhN2NlNmI1ZThhMDFmNmQwNzkwZjYwOGI5MDhhZmQxZTZlNTZlNzMxNWMzZDY0ZmE1ODE5MThkMzcwZjU3OTAifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_199ce802dc3a4f2d9fe6923aeff7a522",
+      "statement": "Auto-mint prompts once for a 1-hour unlimited-use any-command token covering all stored secrets, serialises concurrent mints, times the prompt out after 3 minutes, and a declined auto-mint still requires the per-call prompt.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L35-L46",
+          "version": "repo-lines-v1:sha256:90f17aaf1a69d9ac4032e0523317ce65a984e55ee97d75e9cf03dfb080418b3d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImQwZDk4NmIwZGY3ZTljNDdhYTc4MmIwNjYwOTQ2OWJjOGVlY2E0NzYxMmI4MzhjZjgyOWRkYTRiY2RkZDMzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjI5MTk3NmM5YjhlYjRjYWU5Y2E2ZDA4MjNjZWE2MTAyMWI5YmEyMzNkMDQwY2Q3MWNiMWEyNzkwZDdhMmQyOGIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjI5Mzk1ZjBhNWE4NTAyN2E4ZTBjYzMwNDJlOTUzOGZlOWQ4YWIzMDdmMDg1YmZiYzhmZmZhY2NmZDdkZTBkZjUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImYwOTgxODA1ZjYyM2MyYTk3OTllNmZiZmZmOWRmNGU5N2UzMTgxMDFiZTQ2NTQwZjVmYjM4OWUwYWIwYzEzNjAifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L805-L814",
+          "version": "repo-lines-v1:sha256:fadcf6b88ef5df19832f7db10501c6835339ab94905156d7d1370b308466d352:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQ4NTAzNjEwNTk1ODY5MmI1ZmFjYzRhY2ZlNGMxNWRlYjZhNjA2ZDc3MWZkZWEyOGU2NGJjZWM2NmIyZmYzMjkiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImU3NmVmYWQwYmE4OTgyMThjNmVlNDM0ZmY0NzI4NzcwYWNjMjdhZGY3ZGVjNzRlOTMzZmE4MDBkMzZjM2VmY2UiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjRhNWI5MDMwMmJhYmNhY2Q2YTg4ZmNkMjgwY2E3ZjA4MTY2NWM2YzMyODk4YTA0ZjFkMDY1OWY1NmE2MGI3NTcifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L894-L972",
+          "version": "repo-lines-v1:sha256:2e1354bd16b9c6afb05a4f6700c8b1051834b4f6cde0b761474001aa4729c3c6:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFlODllNWI4NDg2ZmY3OTgzN2YwNGE3MTM1OTM5NmJlODIyNzA5NWUwMWU3M2U5NDgzN2UxYmVjM2E0ZDk2YjUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6Ijc1OWRjODIzNzM4NmMwNzUzNTExOGU3Y2MyNzU2ZjY1MDZlZDVlMWE0ZDUxN2Y1NzVhZTMwOWNiMTE5ZTA2MDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImI1NTA2ZWY5MTQxNTYxYjY2MTlkOTkyMDk5YmFmMGVhZjliYWI0YzcxMmE2ZjQ3N2E0MjQ0NTI3ZTdkNzRkNTUifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_3432d424bbd04164adb8a3df35b56164",
+      "statement": "mint_token and rename_secret always require an approval prompt; revoke_token records only a fingerprint of the token ID in the audit log.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L370-L419",
+          "version": "repo-lines-v1:sha256:883ebf480b59fd34f38634bc0cf64e734c7814ee11d4e4e1aeee047a22cf238a:eyJzZWxlY3RlZExpbmVDb3VudCI6NTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAwMWQzOTc3Y2JkMGZhNGZlNTUwMjQ4MTk0N2RkNjk4N2JkNzgyZjllMzU2ZWI3ZmIzZWU1YzQ5MWMxMjQ4YmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjBmYzVkOGVjN2Q1M2E5MTkzMzI1NjYzZGMwZTdjYmZiZDgzZTg3ZGY3N2UxYzk2NmI2NjU3ZmU2NTc4NDBlMGQiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjJhZDg2OGE2NGFkOTM3YTNlNTRiMjVkNDhjZjdlN2M3NmVkYTEwZjYwZGZkN2QwMWE0Yzc2YTRiNGRhYjVkOGYifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L648-L726",
+          "version": "repo-lines-v1:sha256:835e2e31fcdde27c1fd5f30200d25ffce504a1701d9a75eefae3c4cf6a8fd1c5:eyJzZWxlY3RlZExpbmVDb3VudCI6NzksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6Ijc2MDdlNTYzZDNmMzAxYmUxMjQ3YWI5MTA0ZjljYmMzNzE3ZjNlMTQ1MGMyNWVhZGIzOWU3Y2EyODczZGNkYzciLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjliMWU0NDIxZjE0NWU1YzBjNmFhYzE4NGEyNmI2NjBlN2VlYWI5YmUyMDc5NjE4OWQ1ODdlYjQ4MTkzODhiMTYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImUwNjUzODNiMTViYjI3ZTI3ODZhMDM0NTM0NDhhYzE1ZDA2YzUwMDY1M2IyNjZkZDY3OTI5MzYxZjNiZjQyZWQifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_79eb072d19ea4426b02bd79ceef514b0",
+      "statement": "Exec options validate cwd as an absolute existing directory without '..' and forbid it with relative command paths, reject reserved or secret-named env extras, and give the child no stdin unless supplied because server stdin is the JSON-RPC transport.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L1026-L1109",
+          "version": "repo-lines-v1:sha256:160022970fcef4562f599842a4b4d0541d343ef8d40baa54bf88598cdb777862:eyJzZWxlY3RlZExpbmVDb3VudCI6ODQsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjFkODhiYjJmODMzNTU2YWQ0OWJhNzI2MjY5ZWJmMDY2NGJkYTJlZTM3MWJkYTNjYTlmOTA0ZDRlOWJjZTVhNDQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImRiOWZiMDYwZGZmZjQxNDM4MTRmMDJmZjAwMGRhNDdjNDQ3MzZiZDgzODhiM2U4YThhYjlmYjgzNzczMzJhODciLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjM3MzUzZjM4N2FmZDgxMWU4OWY1NmQ0ODNlZTA1MTI1NmM2ZDhkYmI3MTg0ZmIxYzgwMGY3ZjM5YWVjMzA1N2MifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L1149-L1161",
+          "version": "repo-lines-v1:sha256:83150f07077023bb739220c967f14dc66f5be624f79662835c9553563e68e2db:eyJzZWxlY3RlZExpbmVDb3VudCI6MTMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjYyM2U3NjE0NGJlMTljZjg3NzkzNDNkMTZjNTM2YmFjODkyMTM3NTUyNGZkOTRlYjVlMDhkNDkzN2IwNWUwMDUiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY3Y2RhODJkYTYwNjIzOGUwNWU2MjM5OTU2OWM1ZWUwMzk5MzQxOTY0OGFlNWQ0M2EyYmY4Y2Q2MzQ3ZjgyNjMiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjY4YWY0N2Q0OTI4YTJlYTU0N2YwM2ZmM2NkMzQzNGI4YzgzZGQ5ODJjNDgyYjA0MTUxZGI3MmY5NzJkZmM5NGYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjUxYjVmMTVjODAxNWQwYWVhZWNmOTkwYTUyMDE0MWM0OGQxNzA1MjQxNzQyM2E1YzI1MDdmMzlhNTkxMzQ2NWEifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_25127ea84aea48e286d3bde9078e31a8",
+      "statement": "MCP exec timeouts default to 30 seconds and are clamped to 300; on Unix the child runs in its own process group which is SIGKILLed on timeout, while on Windows only the direct child is killed and WaitDelay bounds the wait.",
+      "evidence": [
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L1152-L1206",
+          "version": "repo-lines-v1:sha256:2d1a94707af95ac4d26edf08c894195472f70d3947ec8e9d062655b196e8cbe0:eyJzZWxlY3RlZExpbmVDb3VudCI6NTUsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjBkYTY3NDZmMWY0NjcwYjZlZDc4MGM1YzE0MTMwYmZiYTNkN2U1NWU0Y2RhZWQ4NDEyZmNmZGUwYmU3YzAyYWEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjRlMTM5NjdkZTVjZTE4YWYzYjQ1YWFkYTVkNzMwMWI5OWFjZWVhMTQwOTk0ODFmNDc5ZTdiYWJiZTIyZmY3NGEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjAyYzQwYjNjMjNiYmU5YWJjYWZjNGUxYmZiZWU3ZjFmZDM3OTM0NzBmYzQ1ZmY0MjI0YjM5YTQ0NDFkMGZkMGMifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/handler.go#L995-L1004",
+          "version": "repo-lines-v1:sha256:2765227cec0d336fdd58d9ebbb24e15b7e9c3a985c43de1ca1f13b29e291f985:eyJzZWxlY3RlZExpbmVDb3VudCI6MTAsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjAzZWFjYzJkMWZlMzU0ZGNjMWExNmYzZDQxNDQ5ZDJlMzM4YjQyMjE5MWVkMTRkM2FhZDRiZDY3NmM1MDRlOTQiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImE0MzQwMTY3NDJhZjg0ZmMxOWVmOTQxY2U1N2RhMDk3MTMyZjQ4NDRlMmM3MjU0NjlhMWZmZDYyMTAzZGYwNDYiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6IjNlNzk5NTA1NDBiNDRmNjNjZjg0MzI0NTcxMjczZTU5YzVhYzIwZWRmZTQyMWExNjA2YmMwYjJlMjM4YzEyODEifQ"
+        },
+        {
+          "resource": "repo://internal/mcpserver/proc_unix.go#L10-L18",
+          "version": "repo-lines-v1:sha256:35676d028e747e401c02d93b22ee78ecdd024356fc4ef40b98619b781b19caa4:eyJzZWxlY3RlZExpbmVDb3VudCI6OSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNTYwNGJhMjNmYjJkYTZmNzMwMDJkZGNhOGY2MmNiZGVhMjQ0OWMyNzQzMzQzMmY5M2FhYzY3M2VjOGJiZTRhOSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDEyY2EzNDVjY2Y3NWJmOWMwODA2YmNlNjk1YmU4ZGU4MDhiNzk5ODQyNTFhN2E1NGQyMDJjZjYxMDFkZDQ1MSIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiZWZhMzNhYmQ2ZmRhNGE2MjU5ZDBmZTQ0ZmVkYjkyMWVhNGMxODc1N2YzMzhlYTM4YTYwYjQyOTE2ODAwN2IxMCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        },
+        {
+          "resource": "repo://internal/mcpserver/proc_windows.go#L7-L9",
+          "version": "repo-lines-v1:sha256:9d62ec476ee4f3ef1706adbca60aca2c636c2ea82a4a377b9726dc265dac6df1:eyJzZWxlY3RlZExpbmVDb3VudCI6MywiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiZDY4MGYwMjY1ZjNjZTQyZjA1MTlkYzAzNDYzMTY5NTRlZWI4YzM0OWU5Y2MyMmIzN2E0NjMyOTMzYjZjMmY4NiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiNDNjNTkyYWY2ZTZlNjhlMWM2ZTZkOTFiOWVkOTUxMTYwMzg1NzQwZjM2MDJmODU2YWExZDY3YjIxOTEyZDQzNyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiNGE1MTMyZGE0OTg5ZWI1OTFmZmQzZDFiOGYxZTllNDVkZDRmNWJhNTEwODNkYjdmMzU3YThmMTEzNThjN2EzOCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjAsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiZTNiMGM0NDI5OGZjMWMxNDlhZmJmNGM4OTk2ZmI5MjQyN2FlNDFlNDY0OWI5MzRjYTQ5NTk5MWI3ODUyYjg1NSJ9"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}

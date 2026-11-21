@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "pageVersion": "sha256:52f61c6dc9d906892181f619f98bdc14a2bc784e58835fa2a7e820324610d810",
+  "claims": [
+    {
+      "id": "claim_fa721cc4faec4ec780a5337bb263a99e",
+      "statement": "nokey is documented as not a sandbox: a subprocess given secrets via nokey exec can read and exfiltrate them, with --only as mitigation.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L985-L989",
+          "version": "repo-lines-v1:sha256:680850388a49efe73a020b73beb79127b94d96326dafe42a3ae71427fea5101f:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiN2UzMDE4NTg1NjI3M2U5YTFiMTBjMTJlZjEwYWViNmQ2ZGVlZWRiZDU2ZTAxZDM5ZjA1MmY3MGQ3NzkxN2JiNSIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiZTg0YTkwOGYwYTYzNWM4ZDZlNTZmOThhODM3MWQ4MzJhNjJlMjdhNTFkZjJjNTc5N2MzYmFjMGI2ODhkYmQwYyIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYjdkNTg5ODMyZWYyNWUwZDFhODNkZGZiNTAyODBiMmJjZjdmNDM0YTE0M2NhZGM4MzYyMzE1NmY0ZTQ1NjU0ZCIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiMmMwMjUxN2ZmNzVkZjU5NjkwNDZkOGIxNWQ4ZWI5MGVkMDc4OTU3ZTgyNzNlNWQ0ZmQxOTFhYjVjMGY1M2M4YiJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_931653a402e64ad98cfdb26121570b48",
+      "statement": "Redaction is documented as defence-in-depth that misses encodings outside its fixed transform set, compression, encryption, and split or character-by-character output.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L995-L999",
+          "version": "repo-lines-v1:sha256:6f127c62b47dddf08cbe197c9d4c3b0e59612344d7797d6fa375b70242bb059b:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiYmNhNzRhZTBkYmQ1YTJiYzQ2Y2VjZjUxN2NhYjZlNTJmMTRlZmFkM2IzZmY3NDQxZmVkMDhlNjNiMDdlNTA3MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMWYzNWFiMTVlMzhiMGNlMmM5MTNhMWQwOGFhNmFlY2Y2ZTlkY2VhODczZjk0NTFlNzNmM2U5NWM0ZmUyZTZkZCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiOTUwZWUwMjMyYzljMzJkZmFkZDQ4ZTdlNmFhOTFjMmY2NDdkYTU2ZDNlMzdjZTljNGJkZTQwYTlmMjVhMjJiYyIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiYjYyNDYzMjQzY2YzOGVkMDdkYTNmMTcyYjRhMzViY2Q5OTcwZjE5YTFkZGU3MDZlN2RjMTA4MmM1OTM1Mzg4MyJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_027a0803e2fa49149a21b32408143171",
+      "statement": "The README documents that processes running as the user can delete nokey's keyring entries with OS tools; deleting the policy digest and file yields more prompts, while deleting the PIN hash removes the PIN from CLI approval: never rules.",
+      "evidence": [
+        {
+          "resource": "repo://README.md#L1001-L1012",
+          "version": "repo-lines-v1:sha256:12f771b1a809bdc0c12f50e7494e506760391f92ed9682276dd09a5d0967c442:eyJzZWxlY3RlZExpbmVDb3VudCI6MTIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA5NTA1M2I3NzUxNjNjMzk1YTQ4YTNkMjFjODk5ZjYxOWZjYjZjZTNmODNlMTU1ZDRmZjE5MjcwOWJlMDNlN2IiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjlmMjYxN2QwM2Y3ZTZkNjFlYWMxYmE2OTg3ZjJhZDBhYWQxYjc0ZmM3MTE2MzZlY2I4MTI0ZDM5ZGJiNThjMzQiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjkzMmU1NjE0MWYxYjdjOTc4M2VkZjM2YmZkNGNhMzdkYWI5YmRkNzljMDhkMjQ1ZDI2MTJmZDNhYjdhZWQyMTEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImMyMWJlMTE4NmMwY2UzY2VjNmMxNmVmODI1YmM5MTc5NGQzNTljZGUxNDBmNGNkY2FlMDZjNjA2YTdmNGI0MjMifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_7c81e5e183ac4dc1bd0fd912a1792e22",
+      "statement": "Memory zeroing is best-effort and cannot reach execve copies, fmt intermediates, library copies, freed pages, short strings or read-only strings.",
+      "evidence": [
+        {
+          "resource": "repo://internal/sensitive/clear.go#L1-L19",
+          "version": "repo-lines-v1:sha256:f30cb2552846012bd2406d4a79ad6ccd528a4dd0e066d4154aecb6fe39e1e00d:eyJzZWxlY3RlZExpbmVDb3VudCI6MTksImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjY1YWIyZTVmY2IyYzg1ZjBkNTE3Y2E5ZjA1ZWQxMjg4YTk2OGFhY2QyOTBkYTZmYjdjMmFlMDBiNDc4NzEyNGYiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjM0YmMwZDg0YmE5NzRmZGFlYjJhMmFjNWQ4MTY1N2IxYWU0ZWNmYjFlMDYxOTExZDA2ZjNhODRkMmY0YTI0MmIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjowLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImUzYjBjNDQyOThmYzFjMTQ5YWZiZjRjODk5NmZiOTI0MjdhZTQxZTQ2NDliOTM0Y2E0OTU5OTFiNzg1MmI4NTUiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImE3ZThiMjcyNDI1MTk0ZTY0YzIyNDg5OGRkOWQzMWEzZjYyZjlmYTI3MDJhMDI1NmQyZWYzZDNjMmNiMDA0MzYifQ"
+        }
+      ]
+    },
+    {
+      "id": "claim_1e48f2b688f841abbd00c391ae49f14d",
+      "statement": "Because policies.yaml is user-writable, only a policy whose digest matches the human-approved digest stored in the keyring is applied.",
+      "evidence": [
+        {
+          "resource": "repo://internal/policy/policy.go#L107-L128",
+          "version": "repo-lines-v1:sha256:aca905d6bcf30ff01ba20160475be40c74c77171d1856d649136e91e9c099069:eyJzZWxlY3RlZExpbmVDb3VudCI6MjIsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6IjgyY2UwODBiNDBhODQ0ZDAwNGQzZjBhMTU1ZWFiN2U1YjIwMDNjYTg5NGIwN2Y4YzVjODdjOTA1MjUzMjE1ZmIiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjQxMmNhMzQ1Y2NmNzViZjljMDgwNmJjZTY5NWJlOGRlODA4Yjc5OTg0MjUxYTdhNTRkMjAyY2Y2MTAxZGQ0NTEiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6ImM0NDY4MGM4NDNiNDJiYmJmODdhZjRiZDE4ZmFkZGVmMjk2NjI2MmM3M2M5ODRjOWQzZGEyMDA5MjllYmQ4YzkiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImVhNWE4MWRhYTAxN2IwMzU3NTQ2OWM5N2M4ZTA3ZWU1N2Q1NTE0MWU2Mjc5OTM0M2I4MTEzYThhYWE0MzdjNjgifQ"
+        },
+        {
+          "resource": "repo://internal/policy/policy.go#L61-L65",
+          "version": "repo-lines-v1:sha256:01d3f8732dcd277230ccc09efb458f8615e4975875365c8cb4b0e3106f57a406:eyJzZWxlY3RlZExpbmVDb3VudCI6NSwiZmlyc3RTZWxlY3RlZExpbmVIYXNoIjoiNjllOGIzMTkwYzNhNjY0NjUwYmU2ZmFlNzYzZmIxYTgwNmFhN2M4MGExNGFkNDU4MGVlYzlmYTRiMDkxNDQ4MiIsImxhc3RTZWxlY3RlZExpbmVIYXNoIjoiMzg5ZTkzMDQ3ZTFlMzNhZDMzNDg5NmQwOTBhZTZkNDdhMTM3NzZmY2YwMGY5MzNmZjE5MzQ3YjcyNmQyMzdiOCIsInByZWNlZGluZ0NvbnRleHRMaW5lQ291bnQiOjMsInByZWNlZGluZ0NvbnRleHRIYXNoIjoiYWVlYmIwNzNlMmI0NTMxYjVkOTg4NjczNjJjYWQzNTVkNGQ3Zjg3Y2NhOTgxNjgwODY2OTM3MWMyMDY5ZWJhNSIsImZvbGxvd2luZ0NvbnRleHRMaW5lQ291bnQiOjMsImZvbGxvd2luZ0NvbnRleHRIYXNoIjoiY2RmNGZlNTIwOTIwZGNjNjhhNjkwNzZmNDNhNmM2ZjEzYTg2Y2Q1YWUxYjE1MDMzMWY3OWI5NDNhODdjMWRiMSJ9"
+        }
+      ]
+    },
+    {
+      "id": "claim_adb0c309a10d4f2cb42e89afe869ac35",
+      "statement": "Security vulnerabilities are reported privately to security@nokey.ai with acknowledgement within 48 hours, and scope covers keyring interactions, PIN hashing, cryptography, redaction and MCP/proxy injection.",
+      "evidence": [
+        {
+          "resource": "repo://SECURITY.md#L9-L41",
+          "version": "repo-lines-v1:sha256:ca2ef8097bfdf5a4fc94663013588fdd4d41d7d810fcbfd404d4149b72353beb:eyJzZWxlY3RlZExpbmVDb3VudCI6MzMsImZpcnN0U2VsZWN0ZWRMaW5lSGFzaCI6ImI3MWY1NTExYWYwNWU1YzZkMThhMWE4ZWEwNTljNWViYWIyOGE2ZjY2MWI0NTE5Y2FkYmUzYTQ0MjI5MzViNTEiLCJsYXN0U2VsZWN0ZWRMaW5lSGFzaCI6IjA1YmM3MzNkNTFlMDI4ZWZhMTNkZGVjMjgzOWQ0MTA3MjcwMzdmOWZiOGMzZDg4ZDFhYzUzNjFhMDhiZDMxODIiLCJwcmVjZWRpbmdDb250ZXh0TGluZUNvdW50IjozLCJwcmVjZWRpbmdDb250ZXh0SGFzaCI6IjQ1NWM5YThlZjc1YzE2YjEzYzUwYTFiODcyOTM2MzRiN2RiOThkY2FmOWIxYTk5NGEwOTM3MjQ1MmRiOGIxOWEiLCJmb2xsb3dpbmdDb250ZXh0TGluZUNvdW50IjozLCJmb2xsb3dpbmdDb250ZXh0SGFzaCI6ImY3ZmMzMjEyYTA3N2ZmOGQzMWI0ZWZhN2NjMTE2YmM5YWI0NTQxNDE4OGNkZjRkMWU1MWZlNzg2ZjAyZDNiMWUifQ"
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "by": "openwiki/0.9.0",
+    "at": "2026-11-19T03:41:24.016Z"
+  }
+}
